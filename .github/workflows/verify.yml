@@ -37,10 +37,10 @@ jobs:
           bun-version: 1.3.9
 
       - name: Verify tool groups
-        run: just verify-tool-groups
+        run: just sdlc::verify-tool-groups
 
       - name: Verify canvases
-        run: just verify-canvases
+        run: just sdlc::verify-canvases
 
       - name: List canvases (informational)
-        run: just canvases
+        run: just sdlc::canvases
