@@ -28,7 +28,7 @@
           "hooks": [
             {
               "type": "command",
-              "command": "mkdir -p ${CLAUDE_PROJECT_DIR}/.claude/.session && bash ${CLAUDE_PLUGIN_DIR}/scripts/discover-tracker.sh > ${CLAUDE_PROJECT_DIR}/.claude/.session/tracker-context.md 2>/dev/null || true",
+              "command": "mkdir -p ${CLAUDE_PROJECT_DIR}/.claude/.session && bash ${CLAUDE_PLUGIN_DIR}/primitives/task-management/discover.sh > ${CLAUDE_PROJECT_DIR}/.claude/.session/tracker-context.md 2>/dev/null || true",
               "async": false,
               "timeout": 10
             }

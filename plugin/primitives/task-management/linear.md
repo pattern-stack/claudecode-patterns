@@ -18,7 +18,7 @@ Configured via `team_key` in `.claude/sdlc.yml`. dugs-agents uses team `AP` (Age
 
 ## State labels (the v1 gate API)
 
-The loop depends on these labels existing on the team. Provision idempotently via `bash plugin/scripts/bootstrap-tracker.sh` (github-only today; for Linear, provision via the Linear UI or your own setup script).
+The loop depends on these labels existing on the team. Provision idempotently via `bash plugin/primitives/task-management/bootstrap.sh` (github-only today; for Linear, provision via the Linear UI or your own setup script).
 
 | Label | Set by | Means |
 |---|---|---|

@@ -110,7 +110,7 @@ For the `import` collision check: parse existing recipe names from the Justfile 
 
 If `task_management: github`:
 ```bash
-bash "${CLAUDE_PLUGIN_DIR}/scripts/bootstrap-tracker.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/scripts/bootstrap-tracker.sh"
+bash "${CLAUDE_PLUGIN_DIR}/primitives/task-management/bootstrap.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/primitives/task-management/bootstrap.sh"
 ```
 
 Best-effort. Don't halt setup on failure.
@@ -141,7 +141,8 @@ Next: `/sdlc:plan "<your first request>"` to plan a stack.
 If `task_management: github`, append a fourth line:
 ```
 GitHub Project users: set `project_number: <n>` in `.claude/sdlc.yml` to enable
-Status column auto-movement. The `discover-tracker` SessionStart hook auto-loads
+Status column auto-movement. The `discover` SessionStart hook (at
+`plugin/primitives/task-management/discover.sh`) auto-loads
 the project's field IDs on every session start (silent no-op when unset).
 Otherwise specifier degrades to label-only.
 ```
