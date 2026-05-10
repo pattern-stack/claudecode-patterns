@@ -80,11 +80,10 @@ tool_groups:
 # agents read template.md + instructions.yaml from the resolved path. Validate
 # every canvas's instructions.yaml against its schema with `just verify-artifacts`.
 #
-# Empty in PR 2 (substrate). Populated as canvases land:
-#   - PR 6: spec, envelope, plan
-#   - PR 7: session
-artifacts: {}
-  # spec:               .claude/artifacts/spec/
-  # envelope:           .claude/artifacts/envelope/
-  # plan:               .claude/artifacts/plan/
-  # session:            .claude/artifacts/session/
+# Active canvases — registered as they land in the v2 stack:
+#   PR 6 (this PR): spec, envelope, plan
+#   PR 7:           session
+artifacts:
+  spec:               .claude/artifacts/spec/         # producer: specifier; consumers: implementer, coordinator, validator
+  envelope:           .claude/artifacts/envelope/     # cross-surface output wrapper; every phase agent emits
+  plan:               .claude/artifacts/plan/         # producer: planner; consumers: /sync-issues + downstream specifier
