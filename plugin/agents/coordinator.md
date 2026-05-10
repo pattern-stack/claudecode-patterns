@@ -122,6 +122,12 @@ If FAIL: include the failing gate name. The orchestrator decides retry / surface
 
 If BLOCKED: include why (missing approval, missing spec, dep not met).
 
+### Self-blocking authority (load-bearing)
+
+**The coordinator is the only SDLC agent that self-applies the `Blocked` Status.** When the spec is missing, an upstream dependency hasn't merged, or Gate 1 has been awaiting human approval beyond the configured timeout, I set Status=Blocked on the issue and drop it from the orchestrator's queue.
+
+Implementer and validator do **not** self-block. They halt with clear errors but leave Status unchanged — humans disposition. This keeps Status moves predictable: only `/sync-issues`, the human, the implementer (In Progress / In Review on branch + PR), and the coordinator (Blocked) move issues across columns.
+
 ## Output Format
 
 Single terse status line per issue, as above. No long-form output.

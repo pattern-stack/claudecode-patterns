@@ -18,15 +18,35 @@ Configured via `team_key` in `.claude/sdlc.yml`. dugs-agents uses team `AP` (Age
 
 ## State labels (the v1 gate API)
 
-The loop depends on these three labels existing on the team. Provision via `scripts/setup-linear-labels.sh`.
+The loop depends on these labels existing on the team. Provision idempotently via `bash plugin/scripts/bootstrap-tracker.sh` (github-only today; for Linear, provision via the Linear UI or your own setup script).
 
 | Label | Set by | Means |
 |---|---|---|
-| `state:awaiting-strategy-review` | `specifier` agent (after posting strategy comment) | Strategy is ready for human review. AFK gate. |
-| `state:strategy-approved` | **Human** in Linear UI | Approval to proceed to implementation. `implementer` refuses to start without this label. |
-| `state:blocked` | Any agent on hard stop | Blocked on external input or unrecoverable error. Halts the loop. |
+| `state:awaiting-strategy-review` | `specifier` agent (strict mode, after posting strategy comment) | Strategy is ready for human review. AFK gate. |
+| `state:strategy-approved` | **Human** in Linear UI **or** `specifier` agent (auto mode) | Gate-1 satisfied. `implementer` refuses to start without this label. |
+| `state:blocked` | **Coordinator only** (Gate-1 timeout in `/orchestrate`) | Blocked on external input. Implementer + validator halt with errors but do NOT self-block — humans disposition. |
+
+`gate:*` labels — `gate:auto` (auto-approve mode) and `gate:human` (force strict; overrides plan) — control specifier resolution. See `/sdlc:design` for the resolution chain.
 
 Other claudecode-patterns label groups (`type:` / `stack:` / `work:` / `layer:` / priority) are deferred — not provisioned in v1.
+
+## Status taxonomy mapping (working hypothesis)
+
+The 9-option outcome-driven Status taxonomy (defined in `github.md`) maps to Linear's 5 native workflow-state types as follows. Linear's state-type model is coarser than GitHub Projects' Status field, so fine-grained columns ride on labels:
+
+| 9-option Status | Linear workflow state type | Mechanism |
+|---|---|---|
+| **Backlog**     | `backlog`    | native state |
+| **On-Deck**     | `unstarted`  | native state + `status:on-deck` label |
+| **Planning**    | `unstarted`  | native state + `status:planning` label |
+| **Ready**       | `unstarted`  | native state + `status:ready` label (or `state:strategy-approved` as proxy) |
+| **In Progress** | `started`    | native state |
+| **In Review**   | `started`    | native state + `status:in-review` label (or PR-open as proxy) |
+| **Done**        | `completed`  | native state |
+| **Blocked**     | `unstarted`  | native state + `status:blocked` label |
+| **Cancelled**   | `canceled`   | native state |
+
+This is a starting point. Specifier may propose a refined mapping per-stack. The `status:*` labels are not part of v1's required palette — they're an opt-in convention for Linear teams that want the GitHub-Projects-equivalent visualization.
 
 ## Gate mechanics
 

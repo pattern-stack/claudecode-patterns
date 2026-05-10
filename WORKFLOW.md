@@ -45,20 +45,24 @@ After approval:
 # idempotent — re-runs apply diffs only
 ```
 
-## Gate 1 — Strategy (async, in your task management tool)
+## Gate 1 — Strategy (strict by default; auto / "trust mode" available)
 
 **Command:** `/design <ISSUE-KEY>`
 
-For each issue from the plan, run `/design`. The specifier agent reads the issue, drafts an implementation strategy (Goal, Approach, File-level plan, Interfaces, Tests, Out of scope, Open questions — per the [spec canvas](.claude/canvases/spec/README.md)), and posts a condensed view as a task management tool comment. The issue gets labeled `state:awaiting-strategy-review`.
+For each issue from the plan, run `/design`. The specifier agent reads the issue, drafts an implementation strategy (Goal, Approach, File-level plan, Interfaces, Tests, Out of scope, Open questions — per the [spec canvas](plugin/canvases/spec/README.md)), and posts a condensed view as a tracker comment.
 
-You review the strategy on your task management tool — same surface where everything else for that issue lives. If it's good, you label it `state:strategy-approved`. If not, comment with feedback and re-run `/design` (the specifier overwrites).
+**Two paths from there**, selected per-issue by gate-mode resolution (sdlc.yml.gate1_default → plan.yaml.auto_approve → issue gate:* label, most-specific wins):
 
-**Why this gate is async:** Strategies don't need real-time iteration; they need careful review. The task management tool is the authoritative surface for issue state. Approving via label = the strategy lives where the issue lives.
+- **strict mode (default):** specifier sets `state:awaiting-strategy-review`, Status=Planning, halts. You review on the tracker; apply `state:strategy-approved` when satisfied (Status moves to Ready).
+- **auto mode ("trust mode"):** specifier sets `state:strategy-approved`, Status=Ready, completes. No human Gate-1 review. Use for mechanical work (RFC translation, vendor adapter wirings, YAML definitions) where review is theatre.
+
+**Why two paths:** real teams have a mix. Some stacks are novel (port shapes, framework changes) — keep the strict gate. Others are mechanical — let the agent self-approve and unlock parallel implementation. The implementer's hard refusal-without-`state:strategy-approved` is preserved structurally; auto mode just satisfies the gate via the agent.
 
 ```bash
 /design ABC-101
-# (specifier reads issue + writes strategy → task management tool comment)
-# (you review in your task management tool, apply state:strategy-approved label when satisfied)
+# strict: specifier writes strategy → tracker comment → state:awaiting-strategy-review → halts
+#   you review on the tracker → apply state:strategy-approved
+# auto:   specifier writes strategy → tracker comment → state:strategy-approved → completes
 ```
 
 ## Implementation — Topology choice
