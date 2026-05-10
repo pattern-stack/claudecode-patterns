@@ -70,4 +70,6 @@ Plugins distribute via **marketplaces**. Users install via `/plugin install` and
 
 Build one when the same `.claude/` setup needs to ship to multiple repositories or to other teams. The trigger: "a second repo needs the same skills + hooks." Don't package prematurely — start with project files in `.claude/` and lift them into a plugin once shape is validated.
 
-This project's `claude-platform` skill itself is not packaged as a plugin (yet) because it's specific to the dogfood project. If/when this skill graduates, the natural form is to ship it as part of an `agentic-patterns` plugin alongside the SDLC roster (`planner`, `specifier`, `implementer`, `validator`, `coordinator`, `understander`).
+This skill ships as part of the **`sdlc` plugin** (`/plugin marketplace add pattern-stack/claudecode-patterns` + `/plugin install sdlc`) alongside the full SDLC roster: `planner`, `specifier`, `implementer`, `validator`, `coordinator`, `understander`, `canvas-author`, `claude-platform-drift-check`. Project-level overrides (canvases, primitives) layer on top of the plugin defaults via `.claude/canvases/<name>/` and `.claude/primitives/<cat>/<name>.md` — see [`path-resolution.md`](../../../primitives/path-resolution.md).
+
+After install, run `/sdlc:setup` to scaffold your project's `.claude/sdlc.yml` interactively.
