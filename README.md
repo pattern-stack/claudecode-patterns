@@ -4,6 +4,48 @@
 
 ---
 
+## TL;DR
+
+- A team-grade Claude Code distribution. Configure via `sdlc.yml` instead of forking prompts.
+- Plan → strategy → code → review, with hard gates between each. The implementer agent **refuses** to start without strategy approval.
+- `/orchestrate` runs whole epics in parallel — queue approved issues, wake up to validated PRs. Each issue runs through its own gates independently.
+- Swap task management tools (Linear ↔ GitHub Issues ↔ Jira) by changing one config value. Same agents, same commands.
+- Tune artifact shapes (specs, plans, session logs, anything you author) through dialog with the canvas-author agent. Schema-validated, versioned, no prompt edits.
+
+## Quickstart
+
+```bash
+# 1. Clone and copy the .claude/ layer to your project
+git clone https://github.com/pattern-stack/claudecode-patterns
+cp -r claudecode-patterns/.claude  your-project/
+cp    claudecode-patterns/Justfile your-project/
+cp -r claudecode-patterns/scripts  your-project/
+
+# 2. Adjust the dial (one file)
+$EDITOR your-project/.claude/sdlc.yml
+#   language: typescript
+#   quality_profile: strict
+#   task_management: linear     ← or github
+#   team_key: ACME              ← your team's prefix in the task management tool
+
+# 3. Verify the config
+cd your-project
+just verify                     # invariants pass — config is valid
+
+# 4. Run the loop
+/plan "Add Redis caching to the user service"
+# (iterate, approve)
+/sync-issues
+/design ACME-101                # review in your task management tool, label state:strategy-approved
+/develop ACME-101               # or /orchestrate state:strategy-approved
+```
+
+That's the whole flow. The hard part is the first 10 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
+
+A native Claude Code plugin distribution is in flight; when it lands, the install collapses to a single-line command with `extends:` overrides for project-specific tweaks.
+
+---
+
 ## The problem
 
 If you've put Claude Code in front of a team, you've seen this:
@@ -128,38 +170,6 @@ agent-logs/<session-id>/
 ```
 
 Two-tone observability: machine-indexable for analytics, human-skimmable for forensics, replayable for debugging. When code review surfaces a question — "why did the agent do X here?" — you have the trace.
-
----
-
-## Quick start
-
-```bash
-# 1. Clone and copy the .claude/ layer to your project
-git clone https://github.com/pattern-stack/claudecode-patterns
-cp -r claudecode-patterns/.claude  your-project/
-cp    claudecode-patterns/Justfile your-project/
-cp -r claudecode-patterns/scripts  your-project/
-
-# 2. Adjust the dial (one file)
-$EDITOR your-project/.claude/sdlc.yml
-#   language: typescript
-#   quality_profile: strict
-#   task_management: linear     ← or github
-#   team_key: ACME              ← your team's prefix in the task management tool
-
-# 3. Verify the config
-cd your-project
-just verify          # invariants pass — config is valid
-
-# 4. Run the loop
-/plan "Add Redis caching to the user service"
-# (iterate, approve)
-/sync-issues
-/design ACME-101    # review in your task management tool, label state:strategy-approved
-/develop ACME-101   # or /orchestrate state:strategy-approved
-```
-
-That's the whole flow. The hard part is the first 10 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
 
 ---
 
