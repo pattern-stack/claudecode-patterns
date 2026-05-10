@@ -1,5 +1,5 @@
 ---
-description: Generate the implementation strategy for a tracker issue and post it for human review. Implements Gate 1 setup — writes spec, posts comment, sets state:awaiting-strategy-review.
+description: Generate the implementation strategy for a tracker issue and post it. In strict mode (default) sets state:awaiting-strategy-review and halts; in auto mode (per gate:auto label) sets state:strategy-approved directly and completes. Resolution by gate:* label → sdlc.yml.gate1_default.
 argument-hint: [issue-key]
 allowed-tools: Read, Agent
 primitives:
@@ -12,12 +12,31 @@ consumes: [issue, research]
 produces: [spec, comment, label]
 gates:
   enforces: []
-  sets: [awaiting-strategy-review]
+  sets: [awaiting-strategy-review, strategy-approved]  # strict / auto
 ---
 
 # /design
 
-Run the `specifier` agent for one tracker issue. Produces the durable spec + tracker comment + sets the `state:awaiting-strategy-review` gate label. **Halts** there — the human approves via the `state:strategy-approved` label in the tracker.
+Run the `specifier` agent for one tracker issue. Produces the durable spec + tracker comment + sets the gate label per resolved Gate-1 mode.
+
+## Gate-1 modes (strict vs auto)
+
+| Mode | Sets label | Halts | Used for |
+|---|---|---|---|
+| **strict** (default) | `state:awaiting-strategy-review` | yes | Novel work — port shapes, framework changes, first-of-kind decisions where human approval is load-bearing. |
+| **auto** | `state:strategy-approved` | no | Mechanical work — RFC translation, YAML definitions, vendor adapter wirings against an established pattern, where human approval is theatre. Implementer's hard refusal-without-`state:strategy-approved` is preserved structurally; auto mode satisfies the gate via the agent. |
+
+## Mode resolution (most-specific wins)
+
+Specifier reads **only labels** on the issue. `/sync-issues` translates plan-level intent into labels at issue-creation time.
+
+```
+issue carries gate:auto label    → auto mode
+issue carries gate:human label   → strict mode (always wins; explicit override)
+no gate:* label                  → fall through to sdlc.yml.gate1_default
+```
+
+To override the resolved mode for a specific issue, apply `gate:auto` or `gate:human` directly in the tracker UI before running `/design`. To override at the stack level (planning time), set `auto_approve: true` (or `false`) in your plan YAML — `/sync-issues` translates that into per-leaf `gate:*` labels.
 
 > **Workflow judgment** — for re-run scenarios, halt recovery, or what to do if the spec turns out wrong, see the [`sdlc-loop`](../skills/sdlc-loop/SKILL.md) skill.
 

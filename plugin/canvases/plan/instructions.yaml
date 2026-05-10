@@ -18,12 +18,23 @@ plan:
   optional_fields:
     - repo                          # cross-repo flag; defaults to sdlc.yml.repo
     - stack                         # { base, depends_on } — st topology metadata
+    - auto_approve                  # boolean; stack-level Gate-1 mode override (see below)
 
   # Epic body length budget (parent issue body).
   epic_body_max_chars: 3000
 
   # Epic body verbosity hint — producer adapts content depth.
   epic_body_verbosity: medium       # short | medium | long
+
+  # Gate-1 mode default for issues in this stack.
+  # When true, /sync-issues stamps `gate:auto` on each leaf at creation time
+  # (specifier reads only labels at runtime — never reads plan.yaml).
+  # When false (default) or absent, /sync-issues stamps `gate:human` if
+  # explicitly set or leaves the issue unstamped (specifier falls through to
+  # sdlc.yml.gate1_default).
+  # Per-issue override: apply `gate:auto` or `gate:human` on the specific issue
+  # (always wins over the stack-level value).
+  auto_approve_default: false       # boolean; default for plans that omit auto_approve
 
 # ─── Per-issue fields ──────────────────────────────────────────────────
 issue:

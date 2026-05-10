@@ -68,10 +68,49 @@ When updating: facts → CLAUDE.md or primitive. Phase mechanics → agent. Work
 | Gate | Surface | Set by | Approves to |
 |---|---|---|---|
 | **Gate 0 — chat approval** | `/plan` chat turn | Human says "ship it" / "approved" | `/sync-issues` |
-| **Gate 1 — `state:strategy-approved`** | Linear label | Human in Linear UI | `/develop` or `/orchestrate` |
+| **Gate 1 — `state:strategy-approved`** | Tracker label | Human (strict mode) **OR** specifier (auto / "trust" mode) | `/develop` or `/orchestrate` |
 | **Gate 2 — PR review** | GitHub PR | Human reviewer | merge |
 
-Only `specifier` ever sets a gate label (`state:awaiting-strategy-review`). The human owns `state:strategy-approved`. `implementer` halts without it; `coordinator` defers the check to implementer.
+`implementer` halts without `state:strategy-approved` regardless of how it got set — the gate is structurally preserved. `coordinator` defers the check to implementer.
+
+### Gate-1 modes: strict vs auto ("trust mode")
+
+Gate 1 is configurable per-issue via three override layers, most-specific wins:
+
+```
+sdlc.yml.gate1_default: strict          ← global floor (default; safest)
+  └─ plan.yaml.auto_approve: true       ← stack-level override (planning time)
+      └─ issue gate:auto / gate:human   ← per-issue override (always wins)
+```
+
+| Mode | Specifier sets | Halts | Use for |
+|---|---|---|---|
+| **strict** (default) | `state:awaiting-strategy-review` | yes | Novel work where human approval is load-bearing (port shapes, framework changes, first-of-kind) |
+| **auto** ("trust mode") | `state:strategy-approved` | no | Mechanical work where human approval is theatre (RFC translation, YAML definitions, vendor adapter wirings) |
+
+Resolution timing: `/sync-issues` reads `plan.auto_approve` and stamps `gate:auto` or `gate:human` on each leaf at issue-creation. Specifier reads only labels at runtime — never reads plan.yaml.
+
+## Status taxonomy (9 columns)
+
+The outcome-driven Status field for the active task tracker. Outcome names age well as Gate 1 softens; no "Strategy review" column (label-only filter) and no "Specifying" sub-state (collapses to Planning).
+
+```
+Backlog → On-Deck → Planning → Ready → In Progress → In Review → Done       Blocked    Cancelled
+```
+
+| Column | Outcome | Mover |
+|---|---|---|
+| **Backlog** | Synced from plan; no commitment | `/sync-issues` default |
+| **On-Deck** | Committed for this wave | human triage |
+| **Planning** | Spec being written OR strategy posted, awaiting OK | `/sdlc:design` start |
+| **Ready** | Spec is acceptable to start (Gate-1 satisfied) | specifier (auto mode) or human (strict mode) |
+| **In Progress** | Branch + commits, no PR | implementer |
+| **In Review** | PR open | implementer |
+| **Done** | Merged | GitHub |
+| **Blocked** | Parked | coordinator only (Gate-1 timeout in `/orchestrate`); humans set otherwise |
+| **Cancelled** | Won't do | human |
+
+Mover discipline keeps Status moves predictable. Implementer + validator halt with errors but do **not** self-block — only the coordinator does. See `plugin/primitives/task-management/{github,linear}.md` for adapter mapping.
 
 ## Decision tree: which command
 
@@ -92,8 +131,8 @@ When any agent halts, see [halt-recovery.md](halt-recovery.md) for the full cata
 
 | Halt | What it means | Recovery |
 |---|---|---|
-| `awaiting human approval` (specifier set the label) | Strategy is posted; needs human OK | Human reviews Linear comment → adds `state:strategy-approved` |
-| `not state:strategy-approved` (implementer halt) | Gate 1 not yet passed | Run `/design <KEY>` if no spec; else have human approve |
+| `awaiting human approval` (specifier strict mode) | Strategy is posted; Status=Planning; needs human OK | Human reviews tracker comment → adds `state:strategy-approved` (Status moves to Ready) |
+| `not state:strategy-approved` (implementer halt) | Gate 1 not yet passed | Run `/design <KEY>` if no spec; else have human approve OR apply `gate:auto` to the issue + re-run `/design` to auto-approve |
 | `spec missing — specifier did not run` | No spec on disk | `/design <KEY>` |
 | `state:blocked` | Explicit block | Resolve blocker, remove label, re-run |
 | `validator: blocking failure` | Gate failed on PR | Implementer fixes; re-run validator |

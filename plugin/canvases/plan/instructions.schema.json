@@ -33,6 +33,10 @@
         "epic_body_verbosity": {
           "type": "string",
           "enum": ["short", "medium", "long"]
+        },
+        "auto_approve_default": {
+          "type": "boolean",
+          "description": "Default value for plan.auto_approve when omitted in a plan instance. /sync-issues uses this to decide whether to stamp gate:auto / gate:human at issue-creation time."
         }
       }
     },
