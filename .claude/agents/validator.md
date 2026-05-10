@@ -118,7 +118,7 @@ If a previous validator report exists on the PR, append a new comment (keep hist
 
 ## Output envelope (always emit)
 
-After the validator report + PR comment (if applicable), emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
+After the validator report + PR comment (if applicable), emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
 
 For this phase:
 - `phase: validator`

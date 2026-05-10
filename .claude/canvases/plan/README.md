@@ -50,7 +50,7 @@ Two markers — both written into issue bodies as footer lines:
 
 ## Override semantics
 
-Standard Claude Code overlay — project `.claude/artifacts/plan/` overrides plugin `<plugin>/.claude/artifacts/plan/`. Tune knobs by editing `instructions.yaml`; restructure by editing `template.md`.
+Standard Claude Code overlay — project `.claude/canvases/plan/` overrides plugin `<plugin>/.claude/canvases/plan/`. Tune knobs by editing `instructions.yaml`; restructure by editing `template.md`.
 
 ## Versioning
 

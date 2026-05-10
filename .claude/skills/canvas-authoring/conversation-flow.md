@@ -83,7 +83,7 @@ For open-ended probes (taste calls, reverse-mode confirmation, anything where th
 
 When the user signals done (`thanks`, `that's it`, `looks good now`, `we're good`), close cleanly. The closing format is voice-specific:
 
-- Developer voice: structured `## Session summary` block with applied / deferred / open-questions sections, plus pointers to `just verify-artifacts` and `/canvas validate <name>`. See [`canvas-flow-developer`](../../output-styles/canvas-flow-developer.md).
+- Developer voice: structured `## Session summary` block with applied / deferred / open-questions sections, plus pointers to `just verify-canvases` and `/canvas validate <name>`. See [`canvas-flow-developer`](../../output-styles/canvas-flow-developer.md).
 - Seller voice: one or two sentences confirming what's saved and inviting them back later. No structured block. See [`canvas-flow-seller`](../../output-styles/canvas-flow-seller.md).
 
 In both voices, the agent always:

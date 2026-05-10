@@ -126,13 +126,13 @@ Every multi-issue plan defines a **stack**. Artifacts produced during that plan 
 
 ### 4b. `artifacts:` registry from `sdlc.yml` (canvases)
 
-Each artifact (spec, plan, understanding, validator-report, pr-body, …) is a **canvas** — a `template.md` + `instructions.yaml` + `instructions.schema.json` + `README.md` quartet at `.claude/artifacts/<name>/`. Source of truth: `.claude/sdlc.yml` `artifacts:` registry. Producer and consumer agents read from the resolved path; no inline templates in agent prompts. See [`artifacts/README.md`](../../artifacts/README.md) and the [`canvas-authoring`](../canvas-authoring/SKILL.md) skill.
+Each artifact (spec, plan, understanding, validator-report, pr-body, …) is a **canvas** — a `template.md` + `instructions.yaml` + `instructions.schema.json` + `README.md` quartet at `.claude/canvases/<name>/`. Source of truth: `.claude/sdlc.yml` `artifacts:` registry. Producer and consumer agents read from the resolved path; no inline templates in agent prompts. See [`artifacts/README.md`](../../artifacts/README.md) and the [`canvas-authoring`](../canvas-authoring/SKILL.md) skill.
 
 When authoring a canvas (or tuning one), use `/canvas <mode> [name]` rather than editing the four files by hand. The canvas-author agent applies a probing dialog with full schema awareness and never writes without confirmation.
 
 ### 5. Artifact templates and instructions
 
-Documents agents produce (specs, plans, validator reports, etc.) follow a **template + instructions** pattern. Each artifact lives at `.claude/artifacts/<name>/`:
+Documents agents produce (specs, plans, validator reports, etc.) follow a **template + instructions** pattern. Each artifact lives at `.claude/canvases/<name>/`:
 
 | File | Purpose |
 |---|---|
@@ -148,16 +148,16 @@ Documents agents produce (specs, plans, validator reports, etc.) follow a **temp
 - **Producer** reads both files at start, validates `instructions.yaml` against the schema, renders the template per the knobs, writes the populated document.
 - **Consumers** read the same files to know which sections are required and how to interpret them. The `sections.required` list in `instructions.yaml` is the single source of truth — consumers do not hardcode section names.
 
-**Override semantics:** edit the files in place. When this project ships as a plugin, plugin defaults are overridden by project-local `.claude/artifacts/<name>/` files via Claude Code's standard plugin overlay. No special mechanism.
+**Override semantics:** edit the files in place. When this project ships as a plugin, plugin defaults are overridden by project-local `.claude/canvases/<name>/` files via Claude Code's standard plugin overlay. No special mechanism.
 
 **Source of truth for paths:** `.claude/sdlc.yml` `artifacts:` block. Agents resolve paths from there — never hardcode the directory.
 
 **Currently shipped:**
-- `.claude/artifacts/spec/` — per-issue implementation strategy (specifier produces; implementer / coordinator / validator consume)
+- `.claude/canvases/spec/` — per-issue implementation strategy (specifier produces; implementer / coordinator / validator consume)
 
-**Still embedded in producer agents** (migrate opportunistically when an artifact's structure or behavior next needs to change): `plan`, `understanding`, `validator-report`, `pr-body`, `coordinator-status`. The migration order is "the next time you'd be editing the inline `## Output Format` block, lift it to `.claude/artifacts/<name>/` first, then make your change in one place."
+**Still embedded in producer agents** (migrate opportunistically when an artifact's structure or behavior next needs to change): `plan`, `understanding`, `validator-report`, `pr-body`, `coordinator-status`. The migration order is "the next time you'd be editing the inline `## Output Format` block, lift it to `.claude/canvases/<name>/` first, then make your change in one place."
 
-**Validation:** `scripts/verify-artifacts.sh` (when implemented) validates each `instructions.yaml` against its schema. CI / pre-commit hook candidate; mirrors `verify-tool-groups.sh`.
+**Validation:** `scripts/verify-canvases.sh` (when implemented) validates each `instructions.yaml` against its schema. CI / pre-commit hook candidate; mirrors `verify-tool-groups.sh`.
 
 ### 6. Mission format for command steps
 

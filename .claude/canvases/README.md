@@ -1,6 +1,6 @@
 # Artifact registry
 
-Each subdirectory under `.claude/artifacts/` defines one **canvas** — the contract for one kind of document the SDLC produces (specs, plans, validator reports, PR bodies, …). A canvas separates the artifact's **structure** (template) from its **behavior** (instructions), so each can evolve at its own cadence.
+Each subdirectory under `.claude/canvases/` defines one **canvas** — the contract for one kind of document the SDLC produces (specs, plans, validator reports, PR bodies, …). A canvas separates the artifact's **structure** (template) from its **behavior** (instructions), so each can evolve at its own cadence.
 
 ## What lives in each canvas
 
@@ -52,8 +52,8 @@ Filesystem overlay, no special mechanism:
 
 | Source | Path |
 |---|---|
-| Plugin defaults (when shipped) | `<plugin>/.claude/artifacts/<name>/…` |
-| Project local | `.claude/artifacts/<name>/…` |
+| Plugin defaults (when shipped) | `<plugin>/.claude/canvases/<name>/…` |
+| Project local | `.claude/canvases/<name>/…` |
 
 Project-local files override plugin defaults via Claude Code's standard plugin overlay. Edit `instructions.yaml` to tune; edit `template.md` to restructure.
 
@@ -63,7 +63,7 @@ Don't author canvases by hand — use the [`canvas-authoring`](../skills/canvas-
 
 ## Validation
 
-`scripts/verify-artifacts.sh` validates every `instructions.yaml` against its sibling `instructions.schema.json` (auto-detects the JSON Schema draft from each schema's `$schema` URI). Run via `just verify-artifacts` (or `just verify` to also run `verify-tool-groups`). Pre-commit / CI hook candidate.
+`scripts/verify-canvases.sh` validates every `instructions.yaml` against its sibling `instructions.schema.json` (auto-detects the JSON Schema draft from each schema's `$schema` URI). Run via `just verify-canvases` (or `just verify` to also run `verify-tool-groups`). Pre-commit / CI hook candidate.
 
 ## Versioning
 

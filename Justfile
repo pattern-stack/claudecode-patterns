@@ -6,14 +6,14 @@ default:
 
 # ─── Verify (SDLC config invariants) ──────────────────────────────────
 
-# verify everything (artifacts + tool groups)
+# verify everything (canvases + tool groups)
 [group('verify')]
-verify: verify-artifacts verify-tool-groups
+verify: verify-canvases verify-tool-groups
 
-# verify .claude/artifacts/<name>/instructions.yaml against its schema
+# verify .claude/canvases/<name>/instructions.yaml against its schema
 [group('verify')]
-verify-artifacts:
-    @bash scripts/verify-artifacts.sh
+verify-canvases:
+    @bash scripts/verify-canvases.sh
 
 # verify each agent's # tool_group: matches its tools/disallowedTools list
 [group('verify')]
@@ -36,7 +36,7 @@ canvas-seller:
 
 # ─── Canvas reconciliation ────────────────────────────────────────────
 
-# list canvases on disk reconciled against sdlc.yml.artifacts
+# list canvases on disk reconciled against sdlc.yml.canvases
 [group('verify')]
 canvases:
     @bash scripts/list-canvases.sh

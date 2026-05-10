@@ -128,7 +128,7 @@ Single terse status line per issue, as above. No long-form output.
 
 ## Output envelope (always emit)
 
-After the terse status line above, emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. The envelope aggregates the spawned implementer + validator subagents' outcomes into a single coordinator-level summary.
+After the terse status line above, emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. The envelope aggregates the spawned implementer + validator subagents' outcomes into a single coordinator-level summary.
 
 For this phase:
 - `phase: coordinator`
