@@ -23,6 +23,20 @@ verify-tool-groups:
 # ─── Claude Code agent launchers ──────────────────────────────────────
 # Convention: one recipe per launchable Claude Code agent UX. Recipes pre-apply
 # the right --output-style so users don't have to remember flag names.
-# Launchers land as their underlying agents land in later PRs in the v2 stack.
-# (Empty for now — populated in PR 7+ when canvas-author + canvas-flow output
-# styles ship.)
+
+# canvas-author in developer voice (knobs, diffs, four-block scaffold)
+[group('claude')]
+canvas-dev:
+    claude --agent canvas-author --output-style canvas-flow-developer
+
+# canvas-author in seller voice (outcomes, samples, hides mechanism)
+[group('claude')]
+canvas-seller:
+    claude --agent canvas-author --output-style canvas-flow-seller
+
+# ─── Canvas reconciliation ────────────────────────────────────────────
+
+# list canvases on disk reconciled against sdlc.yml.artifacts
+[group('verify')]
+canvases:
+    @bash scripts/list-canvases.sh
