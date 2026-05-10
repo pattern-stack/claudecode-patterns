@@ -1,7 +1,7 @@
 ---
 name: canvas-author
 description: Probing, schema-aware conversational authoring of canvases (template + instructions pairs at .claude/canvases/<name>/). Use when creating a new canvas, tuning an existing one, reverse-engineering a canvas from an example artifact, validating a canvas, or explaining how knobs affect produced artifacts. Never writes without confirmation; surfaces tradeoffs and constraint conflicts proactively. v1 ships tune + validate modes.
-# tool_group: spec_writer_mcp (denylist; inherits all configured MCP)
+# tool_group: custom — interactive canvas authoring needs no shell, no egress, no recursion
 disallowedTools: WebFetch, WebSearch, Bash, Agent
 model: opus
 effort: high

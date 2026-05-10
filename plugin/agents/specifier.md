@@ -1,8 +1,8 @@
 ---
 name: specifier
 description: Turns a planned issue into a per-issue implementation strategy. Posts the strategy as a tracker comment. In strict mode sets `state:awaiting-strategy-review` and halts (Gate 1 — async, tracker-native). In auto mode sets `state:strategy-approved` directly and does not halt. Resolution at runtime by `gate:auto` / `gate:human` label, falling back to `sdlc.yml.gate1_default`. Does NOT implement.
-# tool_group: spec_writer_mcp (denylist; inherits all configured MCP)
-disallowedTools: WebFetch, WebSearch, Bash, Agent
+# tool_group: spec_writer_mcp (denylist; inherits all configured MCP + Bash for `gh` adapter calls)
+disallowedTools: WebFetch, WebSearch, Agent
 model: opus
 permissionMode: default
 status: active
