@@ -30,6 +30,10 @@ issue-plan-*.json
 # unless team shares the same project).
 .claude/project.json
 
+# Per-session tracker context written by the discover-tracker.sh SessionStart
+# hook. Regenerated on every session start; never committed.
+.claude/.session/
+
 # Build artifacts
 *.pyc
 __pycache__/

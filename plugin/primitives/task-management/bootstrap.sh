@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# bootstrap-tracker.sh — provision the SDLC label palette in the active tracker.
+# bootstrap.sh — provision the SDLC label palette in the active tracker.
+# Colocated with the task-management primitive (port + adapter docs).
 #
 # Idempotent: re-running is safe (existing labels are skipped, not overwritten).
 # Reads task_management from .claude/sdlc.yml; halts if Linear/Jira (only github
@@ -14,7 +15,7 @@
 #   gate:auto                      — issue is in auto-approve mode
 #   gate:human                     — issue forces strict mode (overrides plan)
 #
-# Usage:  just sdlc::bootstrap-tracker   (or bash plugin/scripts/bootstrap-tracker.sh)
+# Usage:  bash plugin/primitives/task-management/bootstrap.sh
 # Exit:   0 = OK, 1 = vendor unsupported, 2 = config error / missing tooling
 set -euo pipefail
 
@@ -34,7 +35,7 @@ TM="$(yq -r '.task_management // ""' "$SDLC")"
 case "$TM" in
   github) ;;
   linear|jira)
-    echo "ℹ️  task_management=$TM — bootstrap-tracker.sh is github-only today."
+    echo "ℹ️  task_management=$TM — bootstrap.sh is github-only today."
     echo "   Linear: gate semantics live in workflow states; provision via Linear UI."
     echo "   Jira: similar — use Jira project workflow."
     exit 1

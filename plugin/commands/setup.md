@@ -110,7 +110,7 @@ For the `import` collision check: parse existing recipe names from the Justfile 
 
 If `task_management: github`:
 ```bash
-bash "${CLAUDE_PLUGIN_DIR}/scripts/bootstrap-tracker.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/scripts/bootstrap-tracker.sh"
+bash "${CLAUDE_PLUGIN_DIR}/primitives/task-management/bootstrap.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/primitives/task-management/bootstrap.sh"
 ```
 
 Best-effort. Don't halt setup on failure.
@@ -140,8 +140,11 @@ Next: `/sdlc:plan "<your first request>"` to plan a stack.
 
 If `task_management: github`, append a fourth line:
 ```
-GitHub Project users: run `/sdlc:link-project <project-url>` to enable Status
-column auto-movement (otherwise specifier degrades to label-only).
+GitHub Project users: set `project_number: <n>` in `.claude/sdlc.yml` to enable
+Status column auto-movement. The `discover` SessionStart hook (at
+`plugin/primitives/task-management/discover.sh`) auto-loads
+the project's field IDs on every session start (silent no-op when unset).
+Otherwise specifier degrades to label-only.
 ```
 
 ## Halt and error handling
@@ -156,12 +159,12 @@ column auto-movement (otherwise specifier degrades to label-only).
 - End-to-end run in a fresh tmpdir produces a valid `.claude/sdlc.yml` (with `gate1_default: strict`) and a resolvable `.claude/sdlc.justfile` symlink.
 - Verifiers (`just sdlc::verify`) pass post-setup (when `just` is installed).
 - Reconfigure path on existing sdlc.yml is non-destructive by default (default-quit; reconfigure writes backup before overwrite).
-- Next-steps output includes the gate-mode override-layers line; the link-project line appears iff `task_management: github`.
+- Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
 
 ## Out of scope
 
 - TUI/wizard. AskUserQuestion IS the v1 wizard.
 - Asking about gate mode (defaults strict; documented in next-steps).
-- Running `/sdlc:link-project` automatically (opt-in post-setup).
+- Asking for a GitHub Project URL during setup. Project linkage is opt-in via `project_number:` in `sdlc.yml`; discovery happens automatically at every SessionStart.
 - Multi-project setup (`extends:` sdlc.yml layering — deferred to v2).

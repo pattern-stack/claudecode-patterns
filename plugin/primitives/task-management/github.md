@@ -65,7 +65,7 @@ Cache the result for the session — owner-type doesn't change mid-session. If t
 
 ## Label provisioning
 
-Run `bash plugin/scripts/bootstrap-tracker.sh` once per repo to provision the SDLC label palette idempotently. The script creates two groups:
+Run `bash plugin/primitives/task-management/bootstrap.sh` once per repo to provision the SDLC label palette idempotently. The script creates two groups:
 
 **`state:*` (lifecycle):**
 - `state:planned` — synced from plan; not yet started
