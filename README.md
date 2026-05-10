@@ -36,9 +36,9 @@ This works because every domain capability is modeled as a **primitive**: a smal
 
 The same pattern extends to [language conventions](.claude/primitives/language/typescript.md), [quality profiles](.claude/primitives/quality/strict.md), [commit styles](.claude/primitives/commit/conventional.md), and [task management adapters](.claude/primitives/task-management/linear.md). Want strict TypeScript with typecheck-on-save in one project and forgiving Python in another? Two values in `sdlc.yml`. Same agents work both.
 
-### 2. Customize without touching agents
+### 2. Customize without editing fifteen markdown files
 
-`sdlc.yml` is the dial. You change behavior by editing config, not by editing agent prompts.
+`sdlc.yml` is the dial. You change behavior by editing one YAML, not by hunting through agent / skill / command files.
 
 ```yaml
 language: typescript           # primitives/language/typescript.md gets loaded
@@ -51,9 +51,11 @@ develop_team:                  # who shows up for /develop
 orchestrate_concurrency: 3     # how many issues run in parallel
 ```
 
-Want to pin a different commit style for one project? Change one line. Add a custom validator step? Drop a primitive. The agents read the config; you don't have to fork the agents to change how they behave.
+Want to pin a different commit style for one project? Change one line. Add a custom validator step? Drop a primitive. The agents read the config — you don't have to fork prompt files to change behavior.
 
-This makes onboarding a team trivial. Clone the repo. Adjust two values for your stack. Your AI behaves consistently for everyone.
+This is what makes onboarding a team trivial — clone the repo, adjust two values, your AI behaves consistently for everyone. No "whose `~/.claude/` setup is the source of truth" debate.
+
+> Today the install is `cp -r .claude/` into your project. A native Claude Code plugin distribution is in flight; when it lands, the same behavior moves to a single-line install with `extends:` overrides for project-specific tweaks.
 
 ### 3. Build your own templates without writing prompts
 
