@@ -1,233 +1,177 @@
-# Claude Code Patterns: Autonomous Development Workflow
+# claudecode-patterns
 
-**Reusable template for AI-assisted development with human-in-the-loop gates**
+**A Claude Code distribution for autonomous development with human gates, tracker-agnostic primitives, and a canvas-based artifact system.**
 
-This repository contains a production-ready workflow architecture for building software autonomously using Claude Code, with strategic human review gates.
+This repository ships an opinionated `.claude/` configuration layer designed for teams running Claude Code in production. It encodes:
 
-## 🎯 What This Provides
+- **Gate-disciplined workflows** — explicit human checkpoints at strategy approval and PR review
+- **Tracker-agnostic SDLC** — Linear / GitHub Issues / Jira via the task-management primitive
+- **Two execution topologies** — flat team (`/develop`) and parallel batch (`/orchestrate`)
+- **Canvas-based artifacts** — specs, plans, observability sessions governed by template + instructions canvases
+- **Dual-voice authoring** — developer-facing and seller-facing UX through swappable output styles
 
-- **Autonomous Development Workflow**: AI generates strategies → human approves → AI implements
-- **100% Commit Consistency**: All commits follow conventions via git-workflow skill
-- **Linear Integration**: Full issue tracking with state machine workflow
-- **Quality Gates**: Automated format, lint, typecheck, test validation
-- **AFK Development**: ~80% hands-off time (only review strategies + PRs)
-
-## 📊 Workflow Architecture
+## Architecture at a glance
 
 ```
-Triage → Ideation → Backlog → Refinement (HUMAN GATE) → Ready → In Progress → In Review (HUMAN GATE) → Done
+┌─────────────────────────────────────────────────────────────┐
+│  .claude/                                                   │
+│  ├── sdlc.yml                  central config              │
+│  ├── primitives/               language / quality / commit  │
+│  │                             / task-management            │
+│  ├── agents/                   6 SDLC phase agents +        │
+│  │                             canvas-author + drift-check  │
+│  ├── commands/                 /plan /design /develop       │
+│  │                             /orchestrate /sync-issues    │
+│  │                             /canvas                      │
+│  ├── skills/                   claude-platform, sdlc-loop,  │
+│  │                             skill-authoring, handoff,    │
+│  │                             prime, canvas-authoring      │
+│  ├── output-styles/            canvas-flow-{developer,      │
+│  │                             seller}                      │
+│  ├── artifacts/                spec, envelope, plan,        │
+│  │                             session canvases             │
+│  └── hooks/                    lifecycle event fan-out      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Two Human Gates**:
-1. **Strategy Approval** (5-10 min) - Review implementation approach in Linear
-2. **PR Review** (10-30 min) - Review code quality in GitHub
+## The gate-disciplined loop
 
-Everything else: **Automated** 🤖
+```
+Decompose → Strategy (HUMAN GATE) → Implementation → PR Review (HUMAN GATE) → Merge
+```
 
-## 🚀 Quick Start
+Two human gates, everything else automated:
 
-### 1. Copy Template to Your Project
+1. **Gate 0 (synchronous, in-chat)** — `/plan` decomposes a request into a YAML plan; you approve in chat before anything reaches the tracker
+2. **Gate 1 (async, tracker-native)** — `/design` posts the implementation strategy as a tracker comment with `state:awaiting-strategy-review`; you approve via label
+3. **Gate 2 (async, PR-native)** — Validator posts a quality report on the PR; you review code and merge
+
+The implementer agent **refuses** to start without `state:strategy-approved`. Gates aren't conventions — they're load-bearing.
+
+## Two topologies
+
+| Topology | Command | When |
+|---|---|---|
+| **A — flat team** | `/develop ABC-101` | One issue at a time; full attention; iterative |
+| **B — parallel batch** | `/orchestrate ABC-101 ABC-102 ABC-103` | Multiple approved issues; AFK throughput; one coordinator per issue |
+
+Topology B uses worktree isolation (`isolation: "worktree"` in agent spawning) so parallel implementers don't collide.
+
+## Canvas system
+
+Artifacts produced by SDLC agents (specs, plans, validator reports, …) are governed by **canvases** — `template.md` + `instructions.yaml` + `instructions.schema.json` + `README.md` quartets under `.claude/canvases/<name>/`. Each canvas separates structure (template) from behavior (knobs).
+
+Canvases are authored, tuned, and validated through the `canvas-author` agent in two voices:
+
+| Voice | Launcher | For |
+|---|---|---|
+| **Developer** | `just canvas-dev` | System-fluent users — knobs, schemas, unified diffs, four-block scaffold |
+| **Seller** | `just canvas-seller` | Outcome-thinking users — samples, conversation, mechanism hidden by default |
+
+Both voices apply progressive disclosure: terse headlines by default, detail surfaced only when the user pulls. See [`.claude/skills/canvas-authoring/SKILL.md`](.claude/skills/canvas-authoring/SKILL.md).
+
+## Quick start
+
+### 1. Copy `.claude/` to your project
 
 ```bash
-# Clone this template
-git clone https://github.com/pattern-stack/claudecode-patterns.git
-cd claudecode-patterns
-
-# Copy to your project
-cp -r .claude /path/to/your/project/
-cp BOOTSTRAP-PLAN.md /path/to/your/project/
-cp WORKFLOW.md /path/to/your/project/
-cp .env.example /path/to/your/project/
+git clone https://github.com/pattern-stack/claudecode-patterns
+cp -r claudecode-patterns/.claude your-project/
+cp claudecode-patterns/Justfile  your-project/   # optional — verifier recipes
+cp -r claudecode-patterns/scripts your-project/  # verifier + canvases scripts
 ```
 
-### 2. Configure Your Project
+### 2. Customize `sdlc.yml`
+
+Edit `your-project/.claude/sdlc.yml` to set:
+
+```yaml
+language: typescript           # or python, go
+quality_profile: strict        # or fast
+commit_style: conventional
+task_management: linear        # or github
+team_key: YOUR_TRACKER_KEY     # tracker team key — used in branch convention + sync filters
+```
+
+Each value resolves to `.claude/primitives/<category>/<value>.md`. Add new values by dropping new files in the matching directory.
+
+### 3. Verify
 
 ```bash
-cd /path/to/your/project
-cp .env.example .env
-
-# Edit .env with your values:
-# - PROJECT_NAME (e.g., "myapp")
-# - PROJECT_TEAM_KEY (e.g., "MYAPP")
-# - GITHUB_ORG, GITHUB_REPO
-# - LINEAR_API_KEY (optional if set globally)
+cd your-project
+just verify                    # invariants check: tool groups + canvas schemas
 ```
 
-### 3. Set Up Linear
-
-Create Linear project with:
-- **Team key**: Your PROJECT_TEAM_KEY
-- **Workflow states**: Triage, Ideation, Backlog, Refinement, Ready, In Progress, In Review, Done
-- **Labels**: See `.claude/config/conventions.md` for complete taxonomy
-
-### 4. Use the Workflow
+### 4. Run the loop
 
 ```bash
-# 1. Decompose requirement into issues
-/plan:decompose "Add user authentication"
-
-# 2. Create Linear issues
-/plan:create-issues issue-plan-user-auth.yaml
-
-# 3. Generate implementation strategies
-/analyze-implementation MYAPP-1
-/analyze-implementation MYAPP-2
-
-# 4. Review strategies in Linear, add state:strategy-approved label
-
-# 5. Implement approved issues
-/implement MYAPP-1
-/implement MYAPP-2
-
-# 6. Review PRs in GitHub, merge
-
-# Done! 🎉
+/plan "Add Redis caching to user service"     # Gate 0 — iterate YAML plan
+# (approve in chat)
+/sync-issues                                   # push approved plan to tracker
+/design ABC-101                                # Gate 1 — post strategy
+# (approve via state:strategy-approved label)
+/develop ABC-101                               # Topology A — flat team
+# OR
+/orchestrate ABC-101 ABC-102 ABC-103           # Topology B — parallel batch
 ```
 
-## 📁 What's Included
+## Component layers
 
-### Commands (`.claude/commands/`)
+The components are organized in dependency layers:
 
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `/plan:decompose` | Break requirements into epic + issues | YAML plan |
-| `/plan:create-issues` | Create Linear issues from YAML | Issue IDs |
-| `/analyze-implementation` | Generate strategy for human review | Strategy comment in Linear |
-| `/plan:generate-spec` | Generate detailed implementation spec | Spec file |
-| `/implement` | Execute spec with TDD support | Feature branch + PR |
-| `/test` | Run quality gates with auto-fix | Pass/fail status |
-| `/git:commit` | Atomic commit with conventions | Git commit |
-| `/git:pr` | Create PR with Linear integration | GitHub PR |
+| Layer | Owns | Examples |
+|---|---|---|
+| **Configuration** | What this project's SDLC looks like | `sdlc.yml`, `primitives/` |
+| **Platform reference** | What Claude Code itself supports | `skills/claude-platform/` |
+| **Project SDLC overlay** | How to author components for this stack | `skills/skill-authoring/`, `skills/sdlc-loop/`, `skills/handoff/`, `skills/prime/` |
+| **Workflow agents** | The actual gate-disciplined work | `agents/{planner,specifier,implementer,validator,coordinator,understander}.md` |
+| **Slash commands** | User-facing entry points | `commands/{plan,design,develop,orchestrate,sync-issues}.md` |
+| **Artifact registry** | Canvas-governed structured outputs | `artifacts/{spec,envelope,plan,session}/` |
+| **Canvas authoring** | Tooling for tuning canvases via dialog | `agents/canvas-author.md`, `skills/canvas-authoring/`, `commands/canvas.md`, `output-styles/canvas-flow-*` |
+| **Observability** | Lifecycle event fan-out + invariant checks | `hooks/emit.mjs`, `scripts/verify-*.sh`, `scripts/list-canvases.sh` |
 
-### Skills (`.claude/skills/`)
+## What changed from v1
 
-| Skill | Purpose |
-|-------|---------|
-| `git-workflow` | 100% commit consistency, branch management |
-| `quality-gates` | Format, lint, typecheck, test automation |
-| `task-patterns` | Linear API operations (tp CLI wrapper) |
-| `pattern-stack-architect` | Codebase analysis, architecture guidance |
+This is a near-total architectural rewrite. The skeleton (decompose → spec → implement → validate) is preserved; the implementation differs.
 
-### Documentation
+| Concept | v1 | v2 |
+|---|---|---|
+| **Decomposition** | `commands/plan/{1,2,3}-*.md` (3-step sequential) | `/plan` skill → `planner` agent → YAML → `/sync-issues` |
+| **Spec generation** | `commands/spec-generation/feature.md` | `/design` → `specifier` agent → spec canvas → tracker comment |
+| **Implementation** | `commands/implement.md` | `/develop` (Topology A) / `/orchestrate` (Topology B) → subagents |
+| **Validation** | `commands/test.md`, `analyze-implementation.md` | `validator` agent + report |
+| **Tracker** | Linear-specific bootstrap (`setup-linear-team.md`, `setup-linear-labels.sh`) | Tracker-agnostic via `primitives/task-management/{linear,github}.md` |
+| **Worktree** | `worktree-manager-skill` | `sdlc.yml.worktree:` config block |
+| **Quality** | `quality-gates` skill | `validator` agent + `tool_groups` invariant verifier |
+| **Canvases** | (none) | `artifacts/` registry with spec / envelope / plan / session canvases |
+| **Output styles** | (none) | `canvas-flow-{developer,seller}` for dual-voice canvas authoring |
+| **Verifiers** | (none) | `verify-tool-groups.sh`, `verify-canvases.sh`, `list-canvases.sh` |
+| **Hook fan-out** | (none) | `hooks/emit.mjs` shim — POSTs lifecycle events to dashboard |
 
-- **BOOTSTRAP-PLAN.md**: Complete project setup guide (1,034 lines)
-- **WORKFLOW.md**: Day-to-day usage guide (1,443 lines)
-- **conventions.md**: Commit format, labels, workflow states (791 lines)
+v1's `BOOTSTRAP-PLAN.md` is archived at [`.claude/docs/archive/v1-bootstrap-plan.md`](.claude/docs/archive/v1-bootstrap-plan.md) for historical reference.
 
-## 🏗️ Architecture Principles
+## Verification
 
-### 1. Clean Command Structure
-```markdown
-## Purpose
-What the command does
-
-## Variables
-Input parameters
-
-## Workflow
-High-level steps
-
-## Instructions
-Detailed implementation (delegates to skills)
-
-## Report
-Output format
-```
-
-### 2. Skill Delegation
-```markdown
-# ❌ Bad (embedded bash)
-Run: git commit -m "feat: add feature"
-
-# ✅ Good (delegate to skill)
-Use git-workflow skill to commit changes
-```
-
-### 3. Convention Abstraction
-```markdown
-# ❌ Bad (hardcoded)
-Format: feat(scope): description (PROJ-123)
-
-# ✅ Good (from .env)
-Use COMMIT_FORMAT from project configuration
-```
-
-### 4. 100% Commit Consistency
-Every file change committed via git-workflow skill → guarantees conventional commits
-
-## 🎨 Customization
-
-### Update Team Name
-Edit `.env`:
 ```bash
-PROJECT_TEAM_KEY=YOUR_TEAM
+just verify                # all invariants
+just verify-tool-groups    # agents have valid tool groups per sdlc.yml.tool_groups
+just verify-canvases      # every canvas's instructions.yaml validates against its schema
+just canvases              # list canvases on disk reconciled against sdlc.yml.canvases
 ```
 
-Issues will be: YOUR_TEAM-1, YOUR_TEAM-2, etc.
+These are designed to run in CI; pre-commit hook candidates.
 
-### Update Conventions
-Edit `.claude/config/conventions.md`:
-- Commit format
-- Branch naming
-- Label taxonomy
-- Workflow states
+## Where to read next
 
-Override in `.env` if needed.
+| If you want to | Go to |
+|---|---|
+| Understand the workflow end-to-end | [`WORKFLOW.md`](WORKFLOW.md) |
+| Author a new skill / agent / output-style | [`.claude/skills/skill-authoring/SKILL.md`](.claude/skills/skill-authoring/SKILL.md) |
+| Understand Claude Code platform fundamentals | [`.claude/skills/claude-platform/SKILL.md`](.claude/skills/claude-platform/SKILL.md) |
+| Operate the SDLC loop on a real issue | [`.claude/skills/sdlc-loop/SKILL.md`](.claude/skills/sdlc-loop/SKILL.md) |
+| Tune a canvas | `just canvas-dev` (developer voice) or `just canvas-seller` (outcome-framed) |
+| Configure your project | [`.claude/sdlc.yml`](.claude/sdlc.yml) + [`.claude/primitives/README.md`](.claude/primitives/README.md) |
 
-### Add Custom Commands
-Create new command in `.claude/commands/`:
-```markdown
-# my-command.md
+## License
 
-## Purpose
-...
-
-## Instructions
-- Use git-workflow skill for commits
-- Use task-patterns skill for Linear
-- Use quality-gates skill for validation
-```
-
-## 📊 Production Readiness
-
-**Validated**: 8.2/10 (82% complete)
-
-✅ **Ready for production use**:
-- End-to-end workflow tested
-- Zero crashes predicted
-- Full Linear integration
-- Git commit consistency
-- Quality gates automated
-- Documentation complete
-
-⏸️ **Optional enhancements** (not blocking):
-- `/implement-epic` - Batch epic implementation
-- `/refine-idea` - Interactive requirement refinement
-
-## 🤝 Contributing
-
-This is a template repository. Fork it, customize it, make it your own!
-
-**Improvements welcome**:
-- Additional skills
-- New commands
-- Better documentation
-- Bug fixes
-
-## 📜 License
-
-MIT - Use freely in your projects
-
-## 🙏 Credits
-
-Built for autonomous development with Claude Code by the Pattern Stack team.
-
-**Based on**:
-- Claude Code by Anthropic
-- Pattern Stack framework
-- Linear for issue tracking
-- Conventional Commits standard
-
----
-
-**Questions?** Check WORKFLOW.md for detailed usage guide or BOOTSTRAP-PLAN.md for setup instructions.
+MIT.
