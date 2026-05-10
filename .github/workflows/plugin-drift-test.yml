@@ -37,9 +37,9 @@ jobs:
       - name: Validate plugin manifest exists and parses
         run: |
           test -f plugin/.claude-plugin/plugin.json
-          test -f marketplace.json
+          test -f .claude-plugin/marketplace.json
           jq empty plugin/.claude-plugin/plugin.json
-          jq empty marketplace.json
+          jq empty .claude-plugin/marketplace.json
           echo "✅ plugin.json + marketplace.json valid JSON"
 
       - name: Validate plugin structure

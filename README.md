@@ -258,7 +258,7 @@ repo/
 │   ├── hooks/  output-styles/  scripts/
 │   ├── sdlc.justfile          ← recipes (just sdlc::verify, etc.)
 │   └── sdlc.example.yml       ← rendered by /sdlc:setup
-├── marketplace.json           ← so `/plugin marketplace add` works
+├── .claude-plugin/marketplace.json   ← so `/plugin marketplace add` works
 ├── .claude/                   ← THIS REPO's dogfood — symlinks to plugin/<dir>
 │   ├── sdlc.yml               ← dogfood project config
 │   ├── sdlc.justfile          → ../plugin/sdlc.justfile
