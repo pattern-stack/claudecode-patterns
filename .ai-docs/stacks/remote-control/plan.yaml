@@ -1,0 +1,258 @@
+plan:
+  slug: remote-control
+  summary: Ship `/implement <ISSUE>` — an autonomous, gate-1-respecting full-pipeline command (specifier → impl⇄val loop) that activates the existing-but-skeleton coordinator agent in teammate mode.
+  milestone: SDLC v2.1 — autonomous loop
+
+  epic_title: "Remote control: /implement command + coordinator activation"
+  epic_body: |
+    ## Goal
+
+    Add a single `/implement <ISSUE>` command that drives one tracker issue end-to-end
+    (specifier → implementer ⇄ validator loop) without further human steering between
+    Gate 1 and PR-ready. This is the missing third command alongside `/develop`
+    (Topology A, co-present teammates) and `/orchestrate` (Topology B, parallel
+    issues): a single-issue, single-pipeline, headless-friendly run.
+
+    The mechanism is **promotion of the existing coordinator agent from `status:
+    skeleton` to active**, plus a thin slash command that spawns it. The
+    task-management port (`.claude/primitives/task-management/README.md`) and the
+    GitHub adapter (`.claude/primitives/task-management/github.md`) already exist
+    in their final shape — we extend them with soft-entry and cap-hit conventions
+    rather than creating contracts. The specifier already honors `gate:auto` /
+    `gate:human` / `sdlc.yml.gate1_default` (specifier.md §40-45); coordinator
+    therefore needs no gate-mode logic of its own — it just spawns specifier and
+    polls for `state:strategy-approved`.
+
+    ## Side effect: de-dormants `sdlc.yml.gate1_default`
+
+    `gate1_default: strict` exists in sdlc.yml today with a comment marking it
+    dormant pending the sdlc-plugin-distribution stack. `/implement` is the first
+    command to run a coordinator-driven loop that respects gate1, which de-dormants
+    the knob in practice. We ship without changing its default value (still
+    `strict`); humans opt into auto via per-issue `gate:auto` label or per-stack
+    `plan.auto_approve`.
+
+    ## Cross-stack relationship (informational)
+
+    Two adjacent items live in the planned `sdlc-plugin-distribution` stack and
+    are NOT preconditions: PR 2 (org-level gate1 activation) and PR 5
+    (`/sdlc:link-project`, the Project v2 field-ID cache populator). We ship the
+    loop now; coordinator's Status-field moves degrade to label-only when the cache
+    is absent — same pattern specifier already implements (specifier.md §65-71).
+
+    ## Out of scope (fast-follow)
+
+    Critic agent / true auto-approve mode; process-harness orchestrator; promoting
+    `state:*` labels to native Linear workflow states; the `/sdlc:link-project`
+    command itself; org-level gate1 default flips.
+
+    ## Operator precondition (not a tracked issue)
+
+    Before running `/sync-issues` on this plan, operator should smoke-test the
+    github backend end-to-end: `gh auth status` shows `repo` + `project` scopes;
+    `bash plugin/primitives/task-management/bootstrap.sh` has run (state:* and
+    gate:* labels exist); a throwaway `gh issue create` followed by `/design` flips
+    state labels as expected. Catches token/label/Project misconfiguration before
+    it bites mid-stack.
+
+issues:
+  - key: config-knobs-and-soft-entry
+    title: "sdlc.yml knobs + port-level soft-entry & cap-hit conventions"
+    layer: L0
+    depends_on: []
+    parallel_with: []
+    labels: []
+    description: |
+      Add three knobs to `sdlc.yml` and document two cross-cutting conventions
+      coordinator will rely on. No agent behavior changes ship in this issue —
+      it lays the contract surface the coordinator PR consumes.
+
+      `sdlc.yml` adds:
+      - `validator_max_iterations: 3`
+      - `spec_critic_max_iterations: 3` (placeholder; consumed by fast-follow)
+      - `coordinator_specifier_timeout_seconds: null` (null = wait forever; finite
+        override per-project; reconciles coordinator.md's hard-coded "Gate-1
+        timeout" prose at §125-129)
+
+      Extends `.claude/primitives/task-management/README.md` with two new
+      port-level concepts (no operations added):
+      - **Soft-entry interpretation**: agents never gate on a single hard
+        `status.name == "Ready"` check; they read status + lane + labels
+        intelligently and halt with one short reason if the issue isn't
+        actionable. Codifies the pattern specifier already uses.
+      - **Cap-hit halt convention**: when an iteration cap (validator,
+        spec-critic, future) is reached, the agent halts with `status: halted`
+        (not `failed`), `next.command: null`, and a clear `next.reason`. Humans
+        triage; no auto-retry, no auto-flagged-PR.
+
+      Extends `.claude/primitives/task-management/github.md` Status-taxonomy
+      section with a one-line cross-reference to README's soft-entry guidance
+      (pointer only, no duplication).
+
+      Updates `coordinator.md` Self-blocking section (§125-129) to remove the
+      hard-coded Gate-1 timeout assumption and defer to
+      `coordinator_specifier_timeout_seconds`.
+
+      Acceptance:
+      - Three knobs present in `sdlc.yml` with comments + null/integer defaults.
+      - README.md has new "Soft entry" and "Cap-hit halts" subsections.
+      - github.md Status taxonomy table cross-references README soft-entry.
+      - coordinator.md self-block prose no longer hard-codes timeout language;
+        defers to sdlc.yml knob.
+      - `bash scripts/verify-tool-groups.sh` (or equivalent invariants check)
+        still passes.
+
+  - key: coordinator-full-pipeline
+    title: "Promote coordinator skeleton → active; add specifier phase, loop, mode-aware fanout, resume"
+    layer: L2
+    depends_on: [config-knobs-and-soft-entry]
+    parallel_with: []
+    labels: []
+    description: |
+      Significant surgery on `.claude/agents/coordinator.md` — promotes it from
+      `status: skeleton` to `active`, removes the top-of-file SKELETON banner,
+      and adds the four mechanics `/implement` requires.
+
+      1. **Specifier as a downstream phase**: prepend a Step 2.5 that spawns
+      specifier when no spec exists on disk. Polls for `state:strategy-approved`
+      thereafter (no timeout default; respects
+      `coordinator_specifier_timeout_seconds`). In auto mode the label appears
+      immediately (specifier set it); in strict mode it appears when the human
+      flips it. Same poll loop either way — coordinator carries zero gate-mode
+      logic.
+
+      2. **Mode-aware fanout (teammate vs subagent)**: spawning command passes
+      `coordinator_mode: teammate|subagent` arg. Teammate mode dispatches each
+      downstream phase via `TeamCreate` (fresh CC sessions, fresh context budget,
+      real observability — `/implement`'s use case). Subagent mode dispatches via
+      `Agent(specifier|implementer|validator)` (orchestrator's use case where
+      TeamCreate is forbidden from a teammate slot). Frontmatter `tools:`
+      extended to include both `TeamCreate` and `Agent(specifier, implementer,
+      validator)`.
+
+      3. **Idempotent resume**: Step 1 detects pipeline state from issue +
+      git, not internal state. If `state:strategy-approved` or
+      `state:awaiting-strategy-review` already present → skip specifier spawn.
+      If a linked branch exists (per `read-issue` project_items / `gh issue
+      view`) → skip to validator. Re-invoking `/implement <ISSUE>` after a halt
+      or session-kill is safe.
+
+      4. **Capped impl⇄val iteration loop**: convert the existing single
+      implementer + single validator spawn into a loop bounded by
+      `validator_max_iterations`. On validator failure, capture the failure
+      envelope, prepend `body.failures` into the next iteration's implementer
+      mission prompt (real plumbing in teammate mode where context doesn't
+      carry across spawns), respawn. Cap-hit → `status: halted` with full
+      context (no auto-retry, no auto-flagged-PR). Implementer-halt and
+      validator-halt (vs failure) surface verbatim — coordinator never
+      re-spawns past a halt without human direction.
+
+      Status-field moves through Project v2 lanes (Planning → Ready → In
+      Progress → In Review) when `/sdlc:link-project` cache is present; degrade
+      silently to label-only otherwise (mirrors specifier.md §65-71 pattern).
+
+      Acceptance:
+      - `coordinator.md` frontmatter `status: active`; SKELETON banner removed.
+      - Frontmatter `tools:` includes `TeamCreate` and
+        `Agent(specifier, implementer, validator)`.
+      - Step 1 documents resume-from-existing-state branches.
+      - Step 2.5 spawns specifier when spec missing; polls for
+        `state:strategy-approved` honoring `coordinator_specifier_timeout_seconds`.
+      - Steps 3-5 form a capped impl⇄val loop reading
+        `sdlc.yml.validator_max_iterations`.
+      - Validator-failure body injection into next implementer prompt is
+        documented with example payload.
+      - Cap-hit, implementer-halt, validator-halt all → `status: halted`,
+        `next.command: null`.
+      - Status-field move logic includes graceful label-only degradation.
+
+  - key: implement-command
+    title: "Add /implement slash command (single issue, teammate mode default)"
+    layer: L3
+    depends_on: [coordinator-full-pipeline]
+    parallel_with: []
+    labels: []
+    description: |
+      New `.claude/commands/implement.md`. Thin command that resolves one
+      tracker issue, performs trivial preflight, then spawns the coordinator
+      in teammate mode.
+
+      - Accepts a **single** issue key argument; rejects multi-arg invocation
+        with a one-line message pointing to `/orchestrate` for batch.
+      - Preflight: refuses to start if `coordinator.md` frontmatter still has
+        `status: skeleton` (defense in depth — won't run until issue 2 ships).
+      - Spawns coordinator via `TeamCreate` with payload
+        `{ issue_key: <KEY>, coordinator_mode: teammate }`.
+      - Returns terse confirmation to the operator and exits; coordinator
+        teammate runs autonomously thereafter and emits its own envelope.
+
+      Acceptance:
+      - `.claude/commands/implement.md` exists and is documented in
+        `.claude/sdlc.yml`-adjacent registry if one exists.
+      - Single-issue argument enforced; batch invocation rejected.
+      - Preflight skeleton-check verified by reading coordinator frontmatter.
+      - Coordinator spawn payload includes `coordinator_mode: teammate`.
+
+  - key: coordinator-envelope-extension
+    title: "Extend envelope schema for coordinator iteration loop + halt states"
+    layer: L1
+    depends_on: [config-knobs-and-soft-entry]
+    parallel_with: [coordinator-full-pipeline]
+    labels: []
+    description: |
+      Update `.claude/canvases/envelope/` (template, instructions, schema) so
+      coordinator can faithfully report multi-iteration loop outcomes and the
+      new halt states.
+
+      Decisions to lock:
+      - Iteration sub-phasing: either a `phase: coordinator.implementer.iter_2`
+        convention OR a separate `iteration: <n>` field. Pick one; document
+        rationale.
+      - `status: halted` (already valid) carries `next.command: null` plus a
+        clear `next.reason`. Halt sources enumerated: cap-hit, implementer-halt,
+        validator-halt, specifier-timeout.
+      - Resume surfaces in body: e.g. "spec already present, skipping specifier
+        step" or "branch already exists, skipping implementer step".
+      - `required_per_phase.coordinator` updated for the loop case.
+
+      Acceptance:
+      - `instructions.yaml` and `instructions.schema.json` validate together
+        (`just verify-canvases` or equivalent).
+      - Either `phase` convention or `iteration` field documented with an
+        example envelope per halt source.
+      - At least one example envelope showing resume-from-existing-state body.
+      - Coordinator agent prose updated to reference the new shape (cross-link
+        only — does not duplicate schema).
+
+  - key: sdlc-loop-skill-update
+    title: "Update sdlc-loop skill: /implement semantics, resume, halt-recovery, decision matrix"
+    layer: L4
+    depends_on: [implement-command, coordinator-envelope-extension]
+    parallel_with: []
+    labels: []
+    description: |
+      Update the `sdlc-loop` skill (and any operator-facing README sections it
+      cross-links) to teach the new command and its operational semantics.
+
+      Sections to add:
+      - **`/implement` command**: single-issue, autonomous full pipeline,
+        teammate mode default. Contrast with `/develop` (co-present, multi-
+        teammate, Topology A) and `/orchestrate` (multi-issue, Topology B).
+      - **Decision matrix**: `/develop` vs `/implement` vs `/orchestrate` —
+        when to reach for each; what `needs:*` labels imply; which respects
+        gate1 in which mode.
+      - **Cap-hit halt-recovery**: how the human triages an `/implement` halt
+        — read coordinator's envelope `body`, decide retry / re-spec / abandon;
+        re-invocation is idempotent.
+      - **Resume semantics**: re-running `/implement <ISSUE>` after a halt,
+        crash, or session-kill picks up wherever the issue + git state allow
+        (spec present? skip specifier; branch present? skip to validator).
+
+      Acceptance:
+      - Skill document(s) updated; new sections present and discoverable from
+        the skill's table of contents.
+      - Decision matrix covers all three commands with at least one
+        when-to-use-this row each.
+      - Halt-recovery section names the three halt sources from issue 4
+        (cap-hit, implementer/validator-halt, specifier-timeout).
+      - Resume section provides at least two concrete re-invocation examples.
