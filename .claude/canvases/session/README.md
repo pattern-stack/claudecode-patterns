@@ -77,14 +77,14 @@ Standard Claude Code overlay:
 
 | Source | Path |
 |---|---|
-| Plugin defaults (when shipped) | `<plugin>/.claude/artifacts/session/…` |
-| Project local | `.claude/artifacts/session/…` |
+| Plugin defaults (when shipped) | `<plugin>/.claude/canvases/session/…` |
+| Project local | `.claude/canvases/session/…` |
 
 Edit `instructions.yaml` to tune (session ID format, retention, what's tracked); edit `template.md` to change the directory contract.
 
 ## Validation
 
-`just verify-artifacts` validates this canvas's `instructions.yaml` against `instructions.schema.json` like every other canvas.
+`just verify-canvases` validates this canvas's `instructions.yaml` against `instructions.schema.json` like every other canvas.
 
 ## Status
 

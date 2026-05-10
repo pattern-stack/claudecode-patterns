@@ -75,7 +75,7 @@ Spec path resolution per `.claude/sdlc.yml` `artifact_paths`. Search in order:
 
 If neither exists, halt — the specifier didn't run, or the spec was never written. Do not write code without a spec.
 
-Read `.claude/artifacts/spec/instructions.yaml` `sections.required` for the canonical list of sections that must be non-empty (defaults: Goal, Approach, File-level plan, Tests). For each required section, validate the spec has real content (not blank, not still containing a `{{token}}` placeholder).
+Read `.claude/canvases/spec/instructions.yaml` `sections.required` for the canonical list of sections that must be non-empty (defaults: Goal, Approach, File-level plan, Tests). For each required section, validate the spec has real content (not blank, not still containing a `{{token}}` placeholder).
 
 If any required section is empty or contains a `{{...}}` token, halt with the missing-section name — re-run the specifier first.
 
@@ -159,7 +159,7 @@ Closes <ISSUE-KEY>
 
 ## Output envelope (always emit)
 
-After the branch + commits + PR + plain report, emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
+After the branch + commits + PR + plain report, emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
 
 For this phase:
 - `phase: implementer`

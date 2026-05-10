@@ -67,7 +67,7 @@ The render skill (planned) reads the envelope, looks up the surface in `instruct
 
 ## Override semantics
 
-Standard Claude Code overlay — project `.claude/artifacts/envelope/` overrides plugin `<plugin>/.claude/artifacts/envelope/`. Edit `instructions.yaml` to tune; edit `template.md` to add or remove fields (also update the schema).
+Standard Claude Code overlay — project `.claude/canvases/envelope/` overrides plugin `<plugin>/.claude/canvases/envelope/`. Edit `instructions.yaml` to tune; edit `template.md` to add or remove fields (also update the schema).
 
 ## Versioning
 

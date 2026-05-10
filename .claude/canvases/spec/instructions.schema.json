@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://pattern-stack/claudecode-patterns/.claude/artifacts/spec/instructions.schema.json",
+  "$id": "https://pattern-stack/claudecode-patterns/.claude/canvases/spec/instructions.schema.json",
   "title": "Spec artifact instructions",
   "description": "Knobs governing how the specifier produces the spec artifact and how consumers parse it.",
   "type": "object",
