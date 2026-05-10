@@ -80,10 +80,9 @@ tool_groups:
 # agents read template.md + instructions.yaml from the resolved path. Validate
 # every canvas's instructions.yaml against its schema with `just verify-artifacts`.
 #
-# Active canvases — registered as they land in the v2 stack:
-#   PR 6 (this PR): spec, envelope, plan
-#   PR 7:           session
+# Active canvases (v2 set):
 artifacts:
   spec:               .claude/artifacts/spec/         # producer: specifier; consumers: implementer, coordinator, validator
   envelope:           .claude/artifacts/envelope/     # cross-surface output wrapper; every phase agent emits
   plan:               .claude/artifacts/plan/         # producer: planner; consumers: /sync-issues + downstream specifier
+  session:            .claude/artifacts/session/      # producers: every workflow command; two-tone observability (session.json + execution.log + summary.md)

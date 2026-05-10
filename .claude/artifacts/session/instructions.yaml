@@ -1,0 +1,86 @@
+# Session canvas — tunable knobs for workflow observability.
+# Schema: instructions.schema.json
+# Producers: every workflow command (/plan, /design, /develop, /orchestrate)
+# Consumers: humans browsing past sessions; future render skill; analytics
+
+$schema: ./instructions.schema.json
+artifact: session
+version: 1
+
+# Session ID format and generation rules.
+# The format string uses {placeholder} tokens substituted by the producer at init.
+session_id:
+  format: "{date}_{workflow}_{description}_{hash}"
+  date_format: "%Y-%m-%d"        # strftime — applied to session start time
+  description_max_chars: 30       # kebab-case slug derived from user request
+  description_kebab_case: true
+  hash_bytes: 3                   # `openssl rand -hex <bytes>` for collision avoidance
+
+# Where session directories live, and how subagent mode is invoked.
+paths:
+  base: agent-logs/                # relative to repo root
+  parent_subdir_param: "--parent-session-dir"  # CLI flag a producer accepts to enter subagent mode
+  index_file: agent-logs/sessions.json         # optional flat index of all sessions
+
+# File names + roles within a session directory.
+files:
+  session_json:
+    name: session.json
+    role: structured_summary
+    update_policy: incremental    # writes throughout execution
+  input_json:
+    name: input.json
+    role: original_request
+    update_policy: immutable      # written once at init, never updated
+  execution_log:
+    name: execution.log
+    role: per_turn_discourse
+    format: jsonl
+    source: envelope.surfaces.log # cross-canvas reference — envelope writes envelopes; session writes them HERE
+    update_policy: append_only
+  summary_md:
+    name: summary.md
+    role: closing_render
+    update_policy: write_at_finalize  # written once at workflow close
+
+# Which artifact keys session.json.artifacts tracks. Producers may add custom keys
+# (e.g. /develop adds prs_opened) — these are the canonical defaults all workflows
+# should at least populate.
+artifacts_tracked:
+  - issues_created      # tracker keys (LIN-123, AP-7, GH-#42, …)
+  - specs_generated     # paths to spec files written
+  - files_modified      # source-code paths touched
+  - commits             # git SHAs created
+
+# Retention policy for old sessions. Tooling honors this when sweeping agent-logs/.
+retention:
+  policy: keep_all      # keep_all | keep_n | rotate_after_days
+  # keep_n: 100         # only when policy=keep_n
+  # days: 30            # only when policy=rotate_after_days
+
+# Subagent mode behavior — when a producer is invoked with parent-session-dir.
+subagent_mode:
+  enabled: true
+  subdir_naming: by_workflow_name   # by_workflow_name | by_invocation_index
+  parent_records_subagent: true     # parent session.json adds entry to subagents[] array
+  output_handoff_file: output.json  # subagent writes its structured result here for parent to read
+
+# Error capture — what gets recorded when a workflow fails.
+errors:
+  capture_phase: true               # which phase agent was running
+  capture_message: true             # error text
+  capture_timestamp: true           # iso8601
+  capture_stack_trace: false        # noisy by default; opt-in if useful
+
+# Human render rules for summary.md (closing report).
+summary_render:
+  include_request: true             # echo the user's original request
+  include_artifacts: true           # render the artifacts list
+  include_errors: true              # render errors if any
+  include_follow_ups: true          # surface deferred items
+  include_subagent_summaries: true  # roll up child sessions
+  duration_format: human            # human ("12 minutes") | iso ("PT12M") | seconds (720)
+
+# Disable session logging entirely (escape hatch for short / read-only commands).
+# Producers respect this knob; if false, none of the files above are written.
+enabled: true
