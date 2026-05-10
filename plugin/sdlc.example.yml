@@ -44,6 +44,27 @@ develop_team:
   - implementer
   - validator
 
+# === Loop iteration caps + Gate-1 timeout ===
+# Consumed by the coordinator-driven impl⇄val loop (issue #44 wires these in).
+# Today they are dormant — no agent reads them yet — but they ship now so the
+# coordinator PR is a pure-behavior change with no contract drift.
+
+validator_max_iterations: 3
+# Maximum impl⇄val loop iterations before coordinator halts with
+# `status: halted`, `next.command: null`. Cap-hit is NOT a failure — it's
+# a structured halt that surfaces full context to the human. See port
+# README §"Cap-hit halts".
+
+spec_critic_max_iterations: 3
+# Placeholder for the spec-critic agent (out-of-scope, fast-follow). Same
+# cap-hit semantics. Setting this today is a no-op.
+
+coordinator_specifier_timeout_seconds: null
+# How long coordinator polls for `state:strategy-approved` after spawning
+# specifier in strict mode, before self-blocking with Status=Blocked.
+# null = wait forever (current implicit behavior, preserved).
+# Finite integer (e.g. 3600 = 1 hour) bounds the wait for unattended /orchestrate runs.
+
 # === Topology B — /orchestrate concurrency ===
 orchestrate_concurrency: 3
 
