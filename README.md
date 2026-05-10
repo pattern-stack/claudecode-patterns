@@ -1,176 +1,255 @@
 # claudecode-patterns
 
-**A Claude Code distribution for autonomous development with human gates, tracker-agnostic primitives, and a canvas-based artifact system.**
+**Run Claude Code as a team.** Plan-first, gate-disciplined, customizable to your stack — without forking anyone's prompts.
 
-This repository ships an opinionated `.claude/` configuration layer designed for teams running Claude Code in production. It encodes:
+---
 
-- **Gate-disciplined workflows** — explicit human checkpoints at strategy approval and PR review
-- **Tracker-agnostic SDLC** — Linear / GitHub Issues / Jira via the task-management primitive
-- **Two execution topologies** — flat team (`/develop`) and parallel batch (`/orchestrate`)
-- **Canvas-based artifacts** — specs, plans, observability sessions governed by template + instructions canvases
-- **Dual-voice authoring** — developer-facing and seller-facing UX through swappable output styles
+## TL;DR
 
-## Architecture at a glance
+A team-grade Claude Code distribution. Configure via [`sdlc.yml`](.claude/sdlc.yml) instead of forking prompts.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  .claude/                                                   │
-│  ├── sdlc.yml                  central config              │
-│  ├── primitives/               language / quality / commit  │
-│  │                             / task-management            │
-│  ├── agents/                   6 SDLC phase agents +        │
-│  │                             canvas-author + drift-check  │
-│  ├── commands/                 /plan /design /develop       │
-│  │                             /orchestrate /sync-issues    │
-│  │                             /canvas                      │
-│  ├── skills/                   claude-platform, sdlc-loop,  │
-│  │                             skill-authoring, handoff,    │
-│  │                             prime, canvas-authoring      │
-│  ├── output-styles/            canvas-flow-{developer,      │
-│  │                             seller}                      │
-│  ├── artifacts/                spec, envelope, plan,        │
-│  │                             session canvases             │
-│  └── hooks/                    lifecycle event fan-out      │
-└─────────────────────────────────────────────────────────────┘
-```
+<h3 align="center">
+  <a href=".claude/agents/planner.md">Plan</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/specifier.md">Strategy</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/implementer.md">Code</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/validator.md">Review</a>
+</h3>
 
-## The gate-disciplined loop
+<p align="center"><em>Hard gates between each. The implementer agent <b>refuses</b> to start without strategy approval.</em></p>
 
-```
-Decompose → Strategy (HUMAN GATE) → Implementation → PR Review (HUMAN GATE) → Merge
-```
+- **`/orchestrate` runs whole epics in parallel** — queue approved issues, wake up to validated PRs. Each issue runs through its own gates independently.
+- **Swap task management tools** (Linear ↔ GitHub Issues ↔ Jira) by changing one config value. Same agents, same commands.
+- **Tune artifact shapes** (specs, plans, session logs, anything you author) through dialog with the [canvas-author agent](.claude/agents/canvas-author.md). Schema-validated, versioned, no prompt edits.
 
-Two human gates, everything else automated:
-
-1. **Gate 0 (synchronous, in-chat)** — `/plan` decomposes a request into a YAML plan; you approve in chat before anything reaches the tracker
-2. **Gate 1 (async, tracker-native)** — `/design` posts the implementation strategy as a tracker comment with `state:awaiting-strategy-review`; you approve via label
-3. **Gate 2 (async, PR-native)** — Validator posts a quality report on the PR; you review code and merge
-
-The implementer agent **refuses** to start without `state:strategy-approved`. Gates aren't conventions — they're load-bearing.
-
-## Two topologies
-
-| Topology | Command | When |
-|---|---|---|
-| **A — flat team** | `/develop ABC-101` | One issue at a time; full attention; iterative |
-| **B — parallel batch** | `/orchestrate ABC-101 ABC-102 ABC-103` | Multiple approved issues; AFK throughput; one coordinator per issue |
-
-Topology B uses worktree isolation (`isolation: "worktree"` in agent spawning) so parallel implementers don't collide.
-
-## Canvas system
-
-Artifacts produced by SDLC agents (specs, plans, validator reports, …) are governed by **canvases** — `template.md` + `instructions.yaml` + `instructions.schema.json` + `README.md` quartets under `.claude/canvases/<name>/`. Each canvas separates structure (template) from behavior (knobs).
-
-Canvases are authored, tuned, and validated through the `canvas-author` agent in two voices:
-
-| Voice | Launcher | For |
-|---|---|---|
-| **Developer** | `just canvas-dev` | System-fluent users — knobs, schemas, unified diffs, four-block scaffold |
-| **Seller** | `just canvas-seller` | Outcome-thinking users — samples, conversation, mechanism hidden by default |
-
-Both voices apply progressive disclosure: terse headlines by default, detail surfaced only when the user pulls. See [`.claude/skills/canvas-authoring/SKILL.md`](.claude/skills/canvas-authoring/SKILL.md).
-
-## Quick start
-
-### 1. Copy `.claude/` to your project
+## Quickstart
 
 ```bash
+# 1. Clone and copy the .claude/ layer to your project
 git clone https://github.com/pattern-stack/claudecode-patterns
-cp -r claudecode-patterns/.claude your-project/
-cp claudecode-patterns/Justfile  your-project/   # optional — verifier recipes
-cp -r claudecode-patterns/scripts your-project/  # verifier + canvases scripts
+cp -r claudecode-patterns/.claude  your-project/
+cp    claudecode-patterns/Justfile your-project/
+cp -r claudecode-patterns/scripts  your-project/
+
+# 2. Adjust the dial (one file)
+$EDITOR your-project/.claude/sdlc.yml
+#   language: typescript
+#   quality_profile: strict
+#   task_management: linear     ← or github
+#   team_key: ACME              ← your team's prefix in the task management tool
+
+# 3. Verify the config
+cd your-project
+just verify                     # invariants pass — config is valid
+
+# 4. Run the loop
+/plan "Add Redis caching to the user service"
+# (iterate, approve)
+/sync-issues
+/design ACME-101                # review in your task management tool, label state:strategy-approved
+/develop ACME-101               # or /orchestrate state:strategy-approved
 ```
 
-### 2. Customize `sdlc.yml`
+That's the whole flow. The hard part is the first 10 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
 
-Edit `your-project/.claude/sdlc.yml` to set:
+A native Claude Code plugin distribution is in flight; when it lands, the install collapses to a single-line command with `extends:` overrides for project-specific tweaks.
+
+---
+
+## The problem
+
+If you've put Claude Code in front of a team, you've seen this:
+
+- **Review is the bottleneck.** Devs spend more time reviewing AI-generated code than writing it (11.4 vs 9.8 hrs/week, [Datadog 2026](https://www.datadoghq.com/state-of-ai-engineering/)).
+- **Plans shift after you've started.** You realize issue #3 should land before #2, scope leaks from one issue into another, or you drop one entirely. By the time you reorder, the agent's halfway through downstream work against the old plan. The morning evaporates into rebase triage.
+- **The bottom of the stack absorbs everything.** Without enforced scope boundaries, the agent top-loads — early PRs balloon, late PRs are thin or duplicate. Splitting them post-hoc is harder than starting clean.
+- **One change cascades.** A reviewer suggests an architectural rethink in PR #1. Fixing it cascades the same conflict across PRs #2–#5. Each follow-up in #1 cascades again. The cost of changing your mind grows linearly with stack depth.
+- **Each session starts from zero.** The agent rediscovers questions you already answered, suggests approaches you already rejected. Multi-session continuity is where most teams give up.
+- **Customization means forking prompts.** Different rules for one project? Edit six agent files. Swap Linear for GitHub? Edit them again. Now your team has six branches of the same prompts and nobody knows whose is canonical.
+
+Most "AI for teams" tooling addresses pieces of this. None addresses all of it without locking you into one task management tool, one workflow, and one prompt style.
+
+## What this distribution gives you
+
+Three load-bearing features:
+
+### 1. Plug-and-play task management
+
+Your task management tool is a configuration value, not a hardcoded dependency.
 
 ```yaml
-language: typescript           # or python, go
-quality_profile: strict        # or fast
-commit_style: conventional
-task_management: linear        # or github
-team_key: YOUR_TRACKER_KEY     # tracker team key — used in branch convention + sync filters
+# .claude/sdlc.yml
+task_management: linear   # or github, or jira
 ```
 
-Each value resolves to `.claude/primitives/<category>/<value>.md`. Add new values by dropping new files in the matching directory.
+The agents don't change. The commands don't change. The same `/plan`, `/design`, `/develop`, `/orchestrate` workflow works against whichever task management tool you use today — or the one you migrate to next quarter.
 
-### 3. Verify
+This works because every domain capability is modeled as a **primitive**: a small file declaring how one specific vendor maps to the same domain shape the agents already expect. Linear, GitHub Issues, Jira sit behind the same interface — `find issue by key`, `post comment`, `apply label`, `list children`. When you need a task management tool we don't ship, you author one new primitive: a single file that maps that vendor's API to the domain shape. The agents and commands don't change. The work is bounded — adapter logic lives in the primitive; nothing else needs to know about it.
+
+The same pattern extends to [language conventions](.claude/primitives/language/typescript.md), [quality profiles](.claude/primitives/quality/strict.md), [commit styles](.claude/primitives/commit/conventional.md), and [task management adapters](.claude/primitives/task-management/linear.md). Want strict TypeScript with typecheck-on-save in one project and forgiving Python in another? Two values in `sdlc.yml`. Same agents work both.
+
+### 2. Customize without editing fifteen markdown files
+
+`sdlc.yml` is the dial. You change behavior by editing one YAML, not by hunting through agent / skill / command files.
+
+```yaml
+language: typescript           # primitives/language/typescript.md gets loaded
+quality_profile: strict        # primitives/quality/strict.md
+commit_style: conventional     # primitives/commit/conventional.md
+team_key: ACME                 # team key
+develop_team:                  # who shows up for /develop
+  - implementer
+  - validator
+orchestrate_concurrency: 3     # how many issues run in parallel
+```
+
+Want to pin a different commit style for one project? Change one line. Add a custom validator step? Drop a primitive. The agents read the config — you don't have to fork prompt files to change behavior.
+
+This is what makes onboarding a team trivial — clone the repo, adjust two values, your AI behaves consistently for everyone. No "whose `~/.claude/` setup is the source of truth" debate.
+
+> Today the install is `cp -r .claude/` into your project. A native Claude Code plugin distribution is in flight; when it lands, the same behavior moves to a single-line install with `extends:` overrides for project-specific tweaks.
+
+### 3. Versioned, tunable contracts for every artifact your AI produces
+
+Most tooling treats AI output as the side effect of a prompt. Want a different shape? Edit the prompt. Want a new kind of artifact? Write another prompt. Six PRs later, your team's "agreed format" has drifted into six variants and nobody knows whose is canonical.
+
+The canvas system inverts that. Every artifact your AI produces — [specs](.claude/canvases/spec/README.md), [plans](.claude/canvases/plan/README.md), [session logs](.claude/canvases/session/README.md), the [per-turn envelope every phase agent emits](.claude/canvases/envelope/README.md), the next thing you haven't built yet — is governed by a **canvas**: a typed contract with tunable knobs, schema-validated, versioned, and read by every consumer downstream (agents, validators, analytics, future render targets).
 
 ```bash
-cd your-project
-just verify                    # invariants check: tool groups + canvas schemas
+just canvas-dev      # knob-level dialog with the canvas-author agent (developer voice)
+just canvas-seller   # outcome-framed dialog — hides system mechanics, works from samples
 ```
 
-### 4. Run the loop
+What this unlocks:
 
-```bash
-/plan "Add Redis caching to user service"     # Gate 0 — iterate YAML plan
-# (approve in chat)
-/sync-issues                                   # push approved plan to tracker
-/design ABC-101                                # Gate 1 — post strategy
-# (approve via state:strategy-approved label)
-/develop ABC-101                               # Topology A — flat team
-# OR
-/orchestrate ABC-101 ABC-102 ABC-103           # Topology B — parallel batch
+- **Tune via knobs, not prompts.** Want shorter specs? Adjust verbosity. Want validator reports on a different surface? Tune distribution rules. The producing agent reads the canvas at runtime — no prompt edit required, no fork.
+- **Reverse-engineer from examples.** Hand the [`canvas-author` agent](.claude/agents/canvas-author.md) a daily brief, post-mortem, or PR summary you like. It extracts the structural shape, infers knob values with confidence ratings, and emits a reusable canvas you can tune from there. The "what does good look like" conversation becomes a contract.
+- **Two voices, one agent.** [Developer voice](.claude/output-styles/canvas-flow-developer.md) speaks knobs and schemas. [Seller voice](.claude/output-styles/canvas-flow-seller.md) speaks outcomes and samples — hides system mechanics entirely, lets non-technical users iterate via "shorter, drop the diagrams, add a TLDR." Same agent, different surface, one flag to swap.
+- **Progressive disclosure as a discipline.** Both voices default to terse headlines and ratchet up detail only when the user pulls. Replaces the "wall of options" that kills configurability for anyone who doesn't already know the system.
+- **Schema-enforced.** Each canvas validates against a JSON Schema in CI. No silent drift between what the agent produces and what downstream consumers expect.
+- **Open-ended.** Daily standups, RFC drafts, post-call summaries, weekly reports, runbooks — same system. The four-file canvas pattern (template + instructions + schema + README) carries any artifact type your team produces.
+
+This is structured artifact engineering, not prompt engineering. The difference shows up the third time you change the format — when "edit fifteen prompts and hope" becomes "tune two knobs and ship."
+
+---
+
+## How it actually works
+
+### The two-gate workflow
+
+Three gates: two synchronous (chat, label), one async (PR review).
+
+1. `/plan "<request>"` — **Gate 0 (chat, ~5 min)**: iterate YAML, approve before anything reaches your task management tool.
+2. `/sync-issues` — epic + leaf issues + dependency labels created.
+3. `/design ISSUE` — **Gate 1 (label, ~5 min per issue)**: specifier posts strategy on the issue, you review and apply `state:strategy-approved`.
+4. `/develop ISSUE` or `/orchestrate FILTER` — implementer writes code and opens a PR, validator runs the quality profile and posts a report.
+5. **Gate 2 (PR review)** — confirm and merge.
+
+The implementer agent **refuses** to start without `state:strategy-approved` on the issue. Not a convention — a hard refusal. That's what kills decision drift: the agreed approach lives on the issue, the implementer reads it, reviewers can compare what was agreed against what got built.
+
+You're approving plans (cheap) and reviewing code-against-plan (fast). Not reading 800-line PRs from cold context.
+
+### AFK throughput via parallel orchestration
+
+Two execution paths once strategies are approved:
+
+**`/develop ISSUE-KEY`** — flat team, one issue at a time. Implementer writes code, validator checks, you stay in the loop. Best for the issues you want to think hard about.
+
+**`/orchestrate <FILTER>`** — parallel batch. The filter scales with the level of work you want to throw at it:
+
+- **One issue at a time:** `/orchestrate ABC-101`
+- **Several explicit issues:** `/orchestrate ABC-101 ABC-102 ABC-103`
+- **Everything matching a label:** `/orchestrate state:strategy-approved`
+- **A plan file:** `/orchestrate plans/redis-caching.yaml`
+- **An entire epic or project:** `/orchestrate ABC-100` — every approved leaf issue under that parent gets picked up
+
+Whatever the input, **each leaf issue runs through the same gates independently**. One coordinator per issue. Their own implementer and validator. Worktree isolation so parallel work doesn't collide. Concurrency bounded by `sdlc.yml.orchestrate_concurrency` (default 3); the rest queue. Issues that aren't `state:strategy-approved` get dropped with a clear log entry — Gate 1 enforcement doesn't bend just because you're moving fast.
+
+This is the feature: queue an entire approved epic at 6pm, wake up to a stack of pre-validated PRs ready for Gate 2 review. A team of two ships work that used to take five — without sacrificing the gates that keep AI from running into walls.
+
+### Audit trail by default
+
+Every workflow execution writes a session directory:
+
+```
+agent-logs/<session-id>/
+├── session.json     # structured state — status, artifacts produced, errors
+├── execution.log    # JSONL — every phase agent's full envelope per turn
+├── summary.md       # human-readable closing report
+└── input.json       # original request
 ```
 
-## Component layers
+Two-tone observability: machine-indexable for analytics, human-skimmable for forensics, replayable for debugging. When code review surfaces a question — "why did the agent do X here?" — you have the trace.
 
-The components are organized in dependency layers:
+---
 
-| Layer | Owns | Examples |
-|---|---|---|
-| **Configuration** | What this project's SDLC looks like | `sdlc.yml`, `primitives/` |
-| **Platform reference** | What Claude Code itself supports | `skills/claude-platform/` |
-| **Project SDLC overlay** | How to author components for this stack | `skills/skill-authoring/`, `skills/sdlc-loop/`, `skills/handoff/`, `skills/prime/` |
-| **Workflow agents** | The actual gate-disciplined work | `agents/{planner,specifier,implementer,validator,coordinator,understander}.md` |
-| **Slash commands** | User-facing entry points | `commands/{plan,design,develop,orchestrate,sync-issues}.md` |
-| **Artifact registry** | Canvas-governed structured outputs | `artifacts/{spec,envelope,plan,session}/` |
-| **Canvas authoring** | Tooling for tuning canvases via dialog | `agents/canvas-author.md`, `skills/canvas-authoring/`, `commands/canvas.md`, `output-styles/canvas-flow-*` |
-| **Observability** | Lifecycle event fan-out + invariant checks | `hooks/emit.mjs`, `scripts/verify-*.sh`, `scripts/list-canvases.sh` |
+## What's in `.claude/`
+
+```
+.claude/
+├── sdlc.yml                      # the dial — primitives + topology + verifier config
+├── primitives/                   # vendor-specific implementations of each domain
+│   ├── language/                 #   typescript, python, ...
+│   ├── quality/                  #   strict, fast, ...
+│   ├── commit/                   #   conventional, ...
+│   └── task-management/          #   linear, github, ...
+├── agents/                       # 6 SDLC phase agents + canvas-author + drift-check
+├── commands/                     # /plan /design /develop /orchestrate /sync-issues /canvas
+├── skills/                       # workflow knowledge (when to use what; how to recover)
+├── output-styles/                # canvas-flow voices (developer, seller)
+├── canvases/                     # spec, envelope, plan, session — artifact contracts
+└── hooks/                        # lifecycle event fan-out for observability
+```
+
+Each file is small. Each file is replaceable. Nothing is implicit.
+
+---
 
 ## What changed from v1
 
-This is a near-total architectural rewrite. The skeleton (decompose → spec → implement → validate) is preserved; the implementation differs.
+A near-total architectural rewrite. The skeleton — decompose, spec, implement, validate — is the same. Almost everything underneath is different:
 
 | Concept | v1 | v2 |
 |---|---|---|
-| **Decomposition** | `commands/plan/{1,2,3}-*.md` (3-step sequential) | `/plan` skill → `planner` agent → YAML → `/sync-issues` |
-| **Spec generation** | `commands/spec-generation/feature.md` | `/design` → `specifier` agent → spec canvas → tracker comment |
-| **Implementation** | `commands/implement.md` | `/develop` (Topology A) / `/orchestrate` (Topology B) → subagents |
-| **Validation** | `commands/test.md`, `analyze-implementation.md` | `validator` agent + report |
-| **Tracker** | Linear-specific bootstrap (`setup-linear-team.md`, `setup-linear-labels.sh`) | Tracker-agnostic via `primitives/task-management/{linear,github}.md` |
-| **Worktree** | `worktree-manager-skill` | `sdlc.yml.worktree:` config block |
-| **Quality** | `quality-gates` skill | `validator` agent + `tool_groups` invariant verifier |
-| **Canvases** | (none) | `artifacts/` registry with spec / envelope / plan / session canvases |
-| **Output styles** | (none) | `canvas-flow-{developer,seller}` for dual-voice canvas authoring |
-| **Verifiers** | (none) | `verify-tool-groups.sh`, `verify-canvases.sh`, `list-canvases.sh` |
-| **Hook fan-out** | (none) | `hooks/emit.mjs` shim — POSTs lifecycle events to dashboard |
+| **Decomposition** | 3-step `commands/plan/{1,2,3}-*.md` | `/plan` skill → `planner` agent → YAML |
+| **Spec** | `commands/spec-generation/feature.md` | `specifier` agent + spec canvas + task management tool comment |
+| **Implementation** | `commands/implement.md` | `/develop` (flat) / `/orchestrate` (parallel) |
+| **Validation** | `commands/test.md` | `validator` agent + report |
+| **Task management** | Linear-specific scripts | Primitives (Linear, GitHub, swap one value) |
+| **Worktree** | `worktree-manager-skill` | `sdlc.yml.worktree:` config |
+| **Quality** | `quality-gates` skill | `validator` + `tool_groups` invariant verifier |
+| **Canvases** | (none) | Active registry — spec, envelope, plan, session |
+| **Output styles** | (none) | Dual-voice canvas-flow (developer, seller) |
+| **Verifiers** | (none) | `verify-canvases.sh`, `verify-tool-groups.sh` |
+| **CI** | (none) | GitHub Actions — invariants on every PR |
 
-v1's `BOOTSTRAP-PLAN.md` is archived at [`.claude/docs/archive/v1-bootstrap-plan.md`](.claude/docs/archive/v1-bootstrap-plan.md) for historical reference.
+v1's `BOOTSTRAP-PLAN.md` is preserved at [`.claude/docs/archive/v1-bootstrap-plan.md`](.claude/docs/archive/v1-bootstrap-plan.md) for historical reference.
 
-## Verification
+---
+
+## Verifying your setup
+
+Three commands. Each catches a specific class of drift:
 
 ```bash
-just verify                # all invariants
-just verify-tool-groups    # agents have valid tool groups per sdlc.yml.tool_groups
-just verify-canvases      # every canvas's instructions.yaml validates against its schema
-just canvases              # list canvases on disk reconciled against sdlc.yml.canvases
+just verify-tool-groups    # agent frontmatter matches sdlc.yml.tool_groups
+just verify-canvases       # every canvas's instructions.yaml validates against its schema
+just canvases              # canvases on disk are registered in sdlc.yml.canvases
 ```
 
-These are designed to run in CI; pre-commit hook candidates.
+These run in CI on every PR. If a contributor edits an agent and forgets to update its tool group declaration, the build fails. If someone adds a canvas without registering it, the build fails. The conventions are checked.
+
+---
 
 ## Where to read next
 
 | If you want to | Go to |
 |---|---|
-| Understand the workflow end-to-end | [`WORKFLOW.md`](WORKFLOW.md) |
-| Author a new skill / agent / output-style | [`.claude/skills/skill-authoring/SKILL.md`](.claude/skills/skill-authoring/SKILL.md) |
-| Understand Claude Code platform fundamentals | [`.claude/skills/claude-platform/SKILL.md`](.claude/skills/claude-platform/SKILL.md) |
-| Operate the SDLC loop on a real issue | [`.claude/skills/sdlc-loop/SKILL.md`](.claude/skills/sdlc-loop/SKILL.md) |
-| Tune a canvas | `just canvas-dev` (developer voice) or `just canvas-seller` (outcome-framed) |
+| Operate the loop on a real issue | [`.claude/skills/sdlc-loop/SKILL.md`](.claude/skills/sdlc-loop/SKILL.md) |
+| Understand the human-side workflow | [`WORKFLOW.md`](WORKFLOW.md) |
+| Author a new skill, agent, or output-style | [`.claude/skills/skill-authoring/SKILL.md`](.claude/skills/skill-authoring/SKILL.md) |
+| Tune or build a canvas | `just canvas-dev` (knobs) or `just canvas-seller` (outcomes) |
 | Configure your project | [`.claude/sdlc.yml`](.claude/sdlc.yml) + [`.claude/primitives/README.md`](.claude/primitives/README.md) |
+| Understand Claude Code itself | [`.claude/skills/claude-platform/SKILL.md`](.claude/skills/claude-platform/SKILL.md) |
 
 ## License
 
