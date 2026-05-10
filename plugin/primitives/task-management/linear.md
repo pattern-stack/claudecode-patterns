@@ -69,9 +69,21 @@ The gate is idempotent — any phase can be re-run.
 
 ## Branch and PR conventions
 
-- **Branch**: `dugshub/<issue-key-lowercase>-<slug>` (e.g. `dugshub/ap-12-add-pm-domain`). When stacked via `st`, use `dugshub/<stack>/<N>-<desc>`.
+- **Standalone branch**: `<user>/<issue-key-lowercase>-<slug>` (e.g. `dugshub/ap-12-pm-domain`).
+- **Stacked branch** (via `st`): `<user>/<stack-slug>/<N>-<slug>` (e.g. `dugshub/plugin-layout/2-gate-modes`). `<N>` is the stack position (1-based, assigned by st). `<slug>` is **terse** — see "Slug rules" below.
 - **PR body** must include `Closes <ISSUE-KEY>` so Linear auto-links and auto-closes.
 - **Commit scope** should be the issue key (e.g. `feat(ap-12): ...`) — the conventional-commits primitive covers this.
+
+### Slug rules
+
+The `<slug>` portion is the only free-form part. Keep it **succinct** — the issue key + commit history + PR description carry the full context.
+
+- **Max 3 words**, kebab-case (`gate-modes`, `link-project`, `tracker-discovery`)
+- **Prefer noun phrases** over action phrases (`docs` not `rewrite-docs`; `nag-hook` not `add-nag-hook`)
+- **No issue keywords** (`pr-N-`, `issue-NN`, `feat-`) — the directory + PR + issue body already carry that
+- **No verbose descriptions** (anti-example: `gate-mode-mechanism-and-status-taxonomy-v2-1-opinion`)
+
+The branch name is for humans skimming `st status` or `git branch -a`; the durable identifiers are the issue key and PR number.
 
 ## CLI / tool reference
 

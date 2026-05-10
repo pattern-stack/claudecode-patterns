@@ -57,11 +57,26 @@ Cache the result for the session — owner-type doesn't change mid-session. If t
 
 ## Issue identifier in branches and commits
 
-- Branch: `<user>/<n>-<slug>` (e.g. `dug/12-add-pm-domain`)
-- Commit scope: `feat(#<n>): ...`
-- PR closing ref: `Closes #<n>`
+- **Standalone branch**: `<user>/<n>-<slug>` (e.g. `dug/12-pm-domain`)
+- **Stacked branch** (via `st`): `<user>/<stack-slug>/<N>-<slug>` (e.g. `dug/plugin-layout/2-gate-modes`). `<N>` is the stack position assigned by st; `<slug>` is terse (3 words max, kebab-case, noun-phrased, no `pr-N-` / `issue-NN` prefixes).
+- **Commit scope**: `feat(#<n>): ...`
+- **PR closing ref**: `Closes #<n>` (only auto-links when PR's base is the default branch — stacked PRs auto-link after upstream merges cascade)
 
-`gh issue develop <n> --name <branch>` creates and checks out a branch already linked to the issue (use this when starting work).
+`gh issue develop <n> --name <branch>` creates and checks out a branch already linked to the issue (use this when starting work; not used for stacked branches — let `st create` / `st branch insert` name them).
+
+### Slug rules (terseness is load-bearing)
+
+Anti-example (from a prior stack — too long, redundant with the directory + PR + issue):
+```
+dugshub/plugin-layout/2-pr-2-gate-mode-mechanism-status-taxonomy-issue-23   ❌
+```
+
+Right shape:
+```
+dugshub/plugin-layout/2-gate-modes                                          ✓
+```
+
+The issue key and PR number are durable identifiers — they live on the issue / PR forever. The branch name is for human skimmability (`st status`, `git branch -a`). Keep it short.
 
 ## Label provisioning
 
