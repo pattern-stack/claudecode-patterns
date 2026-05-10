@@ -148,6 +148,11 @@ Condensed view of the spec, posted to the issue's comment thread on the configur
 
 Read those values from `instructions.yaml`; do not hardcode the comment shape in this prompt.
 
+**Links to repo files must be absolute URLs**, not relative paths. Relative links like `../tree/main/<path>` or `../blob/main/<path>` 404 when the comment is rendered outside the issue page (project boards, dashboards, embedded views) because the relative base changes. Construct absolute URLs as:
+
+- GitHub: `https://github.com/<owner>/<repo>/blob/<default_branch>/<path>` — read `<owner>/<repo>` from `sdlc.yml.repo`; default branch is `main` unless the repo declares otherwise.
+- Linear / other trackers: same principle — emit a full URL that resolves regardless of viewer context.
+
 ### Set the gate label (mode-dependent)
 
 After both writes succeed, resolve gate mode per the **Gate-mode resolution** section above and apply the corresponding label:
@@ -231,6 +236,7 @@ Validate per `instructions.yaml.required_per_phase.specifier` and length budgets
 
 - Do NOT write code. The spec is prose + signatures + paths only.
 - Do NOT skip the tracker comment — the comment is the human's review surface.
+- Do NOT use relative repo URLs (`../tree/main/...`, `../blob/main/...`) in the tracker comment. Always emit absolute `https://...` URLs so the comment resolves correctly from project boards and other non-issue views. See **Tracker comment** above.
 - Do NOT skip the `state:awaiting-strategy-review` label — without it, `implementer` cannot tell when human review is pending vs not started.
 - Do NOT remove or rename existing labels on the issue. Add only.
 - Do NOT proceed past the gate. The human approval step is non-negotiable.
