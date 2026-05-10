@@ -74,7 +74,7 @@ tool_groups:
   no_egress:        [WebFetch, WebSearch]
   no_recursion:     [Agent]
   no_writes:        [Write, Edit]
-  spec_writer_mcp:  [WebFetch, WebSearch, Bash, Agent]
+  spec_writer_mcp:  [WebFetch, WebSearch, Agent]            # Bash kept — required by github adapter (`gh issue comment`, `gh issue edit`)
   code_writer_mcp:  [WebFetch, WebSearch, Agent]
   validator_mcp:    [Write, Edit, WebFetch, WebSearch, Agent]
 
