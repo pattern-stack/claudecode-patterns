@@ -15,7 +15,7 @@ A team-grade Claude Code distribution. Configure via [`sdlc.yml`](.claude/sdlc.y
   <a href=".claude/agents/validator.md">Review</a>
 </h3>
 
-<p align="center"><em>Hard gates between each. The implementer agent <b>refuses</b> to start without strategy approval.</em></p>
+<p align="center"><em>Hard gates between each. The implementer agent <b>refuses</b> to start without strategy approval. Gate 1 is configurable: strict (human-approved) or auto / "trust mode" (specifier self-approves) — per-stack via plan.yaml, per-issue via gate:auto / gate:human label.</em></p>
 
 - **`/orchestrate` runs whole epics in parallel** — queue approved issues, wake up to validated PRs. Each issue runs through its own gates independently.
 - **Swap task management tools** (Linear ↔ GitHub Issues ↔ Jira) by changing one config value. Same agents, same commands.

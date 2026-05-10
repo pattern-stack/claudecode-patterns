@@ -105,12 +105,31 @@ For each issue:
 **Create** — call `create-issue` with:
 - `title`: from YAML
 - `body`: YAML description + footer line `[plan-key:<plan.slug>/<issue.key>]`. If `depends_on` is non-empty, also append `Depends on: <comma-separated-keys>` (the active adapter's `set-blocking` operation will translate this into the right native or approximated form in Step 7).
-- `labels`: any extras from `issue.labels` (e.g. `needs:*`)
+- `labels`: any extras from `issue.labels` (e.g. `needs:*`) **plus** the resolved `gate:*` label per Gate-mode resolution below.
 - Apply `issue.milestone || plan.milestone` via `update-issue` after creation.
 
 **Update** — call `update-issue(existing_key, { title, body, milestone })`. Preserve labels not mentioned (do not strip human-set labels).
 
 Do NOT set `state:*` labels here — those are owned by agents and the human, not by sync.
+
+**Gate-mode resolution at creation (auto_approve translation):**
+
+`/sync-issues` is the **single integration point** that translates `plan.auto_approve` into per-issue labels. Specifier reads only labels at runtime — never reads plan.yaml.
+
+For each leaf issue, decide which `gate:*` label to stamp:
+
+```
+plan.auto_approve == true   → stamp `gate:auto`
+plan.auto_approve == false  → stamp `gate:human`
+plan.auto_approve unset     → no `gate:*` label (specifier falls through to sdlc.yml.gate1_default)
+```
+
+Per-issue overrides take precedence: if `issue.labels` already includes `gate:auto` or `gate:human`, honor that instead of computing from `plan.auto_approve`.
+
+The `gate:*` label is added alongside `needs:*` and any other extras during the `create-issue` call. On update of an existing issue (re-sync), do not strip `gate:*` if it was set manually by the user — only set it if it's missing AND `plan.auto_approve` resolves cleanly.
+
+If the `gate:auto` / `gate:human` labels aren't provisioned on the tracker, halt with one line:
+> Run `bash plugin/scripts/bootstrap-tracker.sh` to provision the SDLC label palette.
 
 ### Step 6: Wire sub-issues (epic → leaves)
 
