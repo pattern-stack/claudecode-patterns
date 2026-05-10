@@ -62,6 +62,16 @@ Reference:
 - `.claude/primitives/language/{language}.md` for stack conventions
 - `.claude/primitives/task-management/linear.md` for label IDs and gate semantics
 
+## Tracker context (auto-discovered)
+
+The `SessionStart` hook `discover-tracker.sh` runs once per session, dispatches by `task_management:` (currently github → Project v2 field IDs; linear is a stub; jira not implemented), and writes the resulting context to `.claude/.session/tracker-context.md`. The block below `@`-mentions that file.
+
+When the block is empty (no recognized vendor, missing config, or discovery failure), there's no auto-context — degrade to label-only when setting Status (the `state:*` label still goes on the issue; skip vendor-specific Status-field mutation).
+
+For github projects with `project_number:` set, the file contains the Project node ID, Status field ID, and option IDs needed for `gh project item-edit --field-id <Status> --option <id>` in Step 5 below.
+
+@.claude/.session/tracker-context.md
+
 ## Primitives
 
 | Primitive | Required | Purpose |
