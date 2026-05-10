@@ -65,13 +65,19 @@ Cache the result for the session — owner-type doesn't change mid-session. If t
 
 ## Label provisioning
 
-Run once per repo to provision the gate labels documented in `README.md`:
+Run `bash plugin/scripts/bootstrap-tracker.sh` once per repo to provision the SDLC label palette idempotently. The script creates two groups:
 
-```bash
-gh label create state:awaiting-strategy-review --description "Strategy ready for human review" --color 0E8A16
-gh label create state:strategy-approved        --description "Human approval to implement"    --color 0075CA
-gh label create state:blocked                  --description "Blocked on external input"      --color B60205
-```
+**`state:*` (lifecycle):**
+- `state:planned` — synced from plan; not yet started
+- `state:awaiting-strategy-review` (yellow) — strict-mode specifier posted strategy, awaiting human Gate-1 approval
+- `state:strategy-approved` (green) — Gate-1 satisfied (human-set or auto-mode)
+- `state:blocked` (red) — coordinator self-blocked on Gate-1 timeout
+
+**`gate:*` (Gate-1 mode override):**
+- `gate:auto` (green `#0E8A16`) — issue is in auto-approve mode; specifier posts strategy + sets `state:strategy-approved` directly without halting
+- `gate:human` (red-ish `#B60205`) — issue requires human Gate-1 review; overrides plan auto_approve default
+
+Resolution order at runtime (specifier reads issue labels only): `gate:auto` → auto; `gate:human` → strict; no `gate:*` → fall through to `sdlc.yml.gate1_default`.
 
 `needs:*` labels (`needs:browser-pilot`, `needs:tester`, `needs:designer`) are created on demand the first time `/develop` encounters one.
 
@@ -113,3 +119,43 @@ gh project item-add <project_number> --owner <owner from repo> --url <issue url>
 ```
 
 `<owner>` is the part of `sdlc.yml.repo` before the slash.
+
+### Recommended Status field options
+
+The 9-option outcome-driven taxonomy (configure via the GitHub Project UI — `gh` CLI cannot create Status options programmatically):
+
+| Status | Outcome boundary | Mover |
+|---|---|---|
+| **Backlog** | Synced from plan; no commitment yet | `/sync-issues` default |
+| **On-Deck** | Committed for this wave; will be addressed | human triage |
+| **Planning** | Spec being written OR strategy posted, awaiting OK | `/sdlc:design` start |
+| **Ready** | Spec is acceptable to start (Gate-1 satisfied) | specifier (auto mode) or human (strict mode) |
+| **In Progress** | Branch + commits, no PR | implementer |
+| **In Review** | PR open | implementer |
+| **Done** | Merged | GitHub |
+| **Blocked** | Parked, can't progress | **only the coordinator self-blocks** (Gate-1 timeout in `/orchestrate`); humans set otherwise |
+| **Cancelled** | Won't do, never merged | human |
+
+**Intentional dropoffs:**
+- No "Strategy review" column — `state:awaiting-strategy-review` stays as a *filter*, not a kanban swim lane.
+- No "Specifying" sub-state — both spec-being-written and awaiting-review collapse to Planning.
+- "Approved" → renamed "Ready" — outcome name, not gate name.
+
+To wire Status moves at runtime, agents call `gh project item-edit --field-id <Status> --option <id>`. Field IDs are per-project and discovered + cached by `/sdlc:link-project <project-url>` (PR 5 of the sdlc-plugin-distribution stack). Without the cache, the specifier degrades to label-only (sets `state:*`; skips Status-field move).
+
+### Coordinator self-block (load-bearing)
+
+Only the **coordinator** self-applies `Status=Blocked`. Implementer + validator halt with errors but do **not** change Status — humans disposition. This keeps Status moves predictable across the four mover classes (`/sync-issues`, human, implementer, coordinator).
+
+### Saved board views (recommended)
+
+GitHub Projects v2 has no two-axis grouping; multiple saved views give the two-axis read:
+
+| View | Group by | Filter | Question it answers |
+|---|---|---|---|
+| **Workflow** (default) | Status | none | "Where is each issue?" |
+| **By Stack** | Parent epic | none | "How is each stack progressing?" |
+| **By Layer** | Layer (L0–L7) | none | "Where in the architecture is the work?" |
+| **Active only** | Status | `Status: On-Deck, Planning, Ready, In Progress, In Review` | working-session view |
+
+`gh` CLI does not expose Projects v2 saved-view creation programmatically — configure these in the GitHub Project UI (`Settings → Views → New view`).

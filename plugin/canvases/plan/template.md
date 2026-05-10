@@ -15,6 +15,10 @@ plan:
   # stack:                                  # optional stack topology
   #   base: {{plan.stack.base}}
   #   depends_on: {{plan.stack.depends_on}}
+  # auto_approve: {{plan.auto_approve}}     # OPTIONAL: stack-level Gate-1 mode override.
+                                            # When true, /sync-issues stamps `gate:auto` on each
+                                            # leaf at creation; specifier auto-approves at design.
+                                            # Per-issue override via gate:auto / gate:human label.
 
 issues:
   - key: {{issue.key}}
