@@ -85,15 +85,15 @@ This is structured artifact engineering, not prompt engineering. The difference 
 
 ### The two-gate workflow
 
-| Step | Command | Gate | What you do |
-|---|---|---|---|
-| **1. Plan** | `/plan "<request>"` | **0 — chat** | Iterate YAML plan, approve before anything reaches your task management tool |
-| **2. Sync** | `/sync-issues` | — | Plan is pushed: epic + leaf issues + dependency labels |
-| **3. Strategy** | `/design ISSUE` | **1 — label** | Specifier posts strategy to the issue; you review and apply `state:strategy-approved` |
-| **4. Build** | `/develop ISSUE` or `/orchestrate FILTER` | — | Implementer writes code, opens PR; validator runs the quality profile |
-| **5. Review** | (validator report on PR) | **2 — PR review** | Confirm and merge |
+Three gates: two synchronous (chat, label), one async (PR review).
 
-Three gates, two synchronous (chat, label), one asynchronous (PR review). The implementer agent **refuses** to start without `state:strategy-approved` on the issue — it's not a convention, it's a hard refusal. This is what kills decision drift: the agreed approach is on the issue, the implementer reads it, anyone reviewing can compare what was agreed against what got built.
+1. `/plan "<request>"` — **Gate 0 (chat, ~5 min)**: iterate YAML, approve before anything reaches your task management tool.
+2. `/sync-issues` — epic + leaf issues + dependency labels created.
+3. `/design ISSUE` — **Gate 1 (label, ~5 min per issue)**: specifier posts strategy on the issue, you review and apply `state:strategy-approved`.
+4. `/develop ISSUE` or `/orchestrate FILTER` — implementer writes code and opens a PR, validator runs the quality profile and posts a report.
+5. **Gate 2 (PR review)** — confirm and merge.
+
+The implementer agent **refuses** to start without `state:strategy-approved` on the issue. Not a convention — a hard refusal. That's what kills decision drift: the agreed approach lives on the issue, the implementer reads it, reviewers can compare what was agreed against what got built.
 
 You're approving plans (cheap) and reviewing code-against-plan (fast). Not reading 800-line PRs from cold context.
 
