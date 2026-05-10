@@ -25,9 +25,9 @@ Everything else — typecheck, lint, tests, commits, PR creation, validation rep
 
 You start with a request like *"Add Redis caching to the user service"*. The planner agent decomposes it into a YAML plan: an epic + sub-issues + dependencies + labels. You iterate in chat, refining scope and ordering, until you say "approved."
 
-**Output:** `.ai-docs/plans/<slug>.yaml` (local file, NOT yet on the tracker).
+**Output:** `.ai-docs/plans/<slug>.yaml` (local file, NOT yet on your task management tool).
 
-**Why this gate is synchronous:** Plans are negotiated. Tracker round-trips slow this down; chat is the right medium.
+**Why this gate is synchronous:** Plans are negotiated. Task-management round-trips slow this down; chat is the right medium.
 
 ```bash
 /plan "Add Redis caching to user service"
@@ -45,20 +45,20 @@ After approval:
 # idempotent — re-runs apply diffs only
 ```
 
-## Gate 1 — Strategy (async, tracker-native)
+## Gate 1 — Strategy (async, in your task management tool)
 
 **Command:** `/design <ISSUE-KEY>`
 
-For each issue from the plan, run `/design`. The specifier agent reads the issue, drafts an implementation strategy (Goal, Approach, File-level plan, Interfaces, Tests, Out of scope, Open questions — per the [spec canvas](.claude/canvases/spec/README.md)), and posts a condensed view as a tracker comment. The issue gets labeled `state:awaiting-strategy-review`.
+For each issue from the plan, run `/design`. The specifier agent reads the issue, drafts an implementation strategy (Goal, Approach, File-level plan, Interfaces, Tests, Out of scope, Open questions — per the [spec canvas](.claude/canvases/spec/README.md)), and posts a condensed view as a task management tool comment. The issue gets labeled `state:awaiting-strategy-review`.
 
-You review the strategy on the tracker — same surface where everything else for that issue lives. If it's good, you label it `state:strategy-approved`. If not, comment with feedback and re-run `/design` (the specifier overwrites).
+You review the strategy on your task management tool — same surface where everything else for that issue lives. If it's good, you label it `state:strategy-approved`. If not, comment with feedback and re-run `/design` (the specifier overwrites).
 
-**Why this gate is async:** Strategies don't need real-time iteration; they need careful review. The tracker is the authoritative surface for issue state. Approving via label = the strategy lives where the issue lives.
+**Why this gate is async:** Strategies don't need real-time iteration; they need careful review. The task management tool is the authoritative surface for issue state. Approving via label = the strategy lives where the issue lives.
 
 ```bash
 /design ABC-101
-# (specifier reads issue + writes strategy → tracker comment)
-# (you review on tracker, apply state:strategy-approved label when satisfied)
+# (specifier reads issue + writes strategy → task management tool comment)
+# (you review in your task management tool, apply state:strategy-approved label when satisfied)
 ```
 
 ## Implementation — Topology choice
@@ -154,7 +154,7 @@ language: typescript           # primitives/language/typescript.md loaded
 quality_profile: strict        # primitives/quality/strict.md loaded
 commit_style: conventional     # primitives/commit/conventional.md loaded
 task_management: linear        # primitives/task-management/linear.md loaded
-team_key: ABC                  # tracker team key — used in branch convention + sync filters
+team_key: ABC                  # task management tool team key — used in branch convention + sync filters
 
 develop_team:                  # Topology A base roster
   - implementer
@@ -166,7 +166,7 @@ worktree:
   enabled: true                # implementer subagents run in isolated worktrees
 ```
 
-To swap a primitive (Linear → GitHub Issues), change one line in `sdlc.yml` and create the new primitive file. No agent edits required — agents use denylist tool inheritance and read tracker calls through whichever MCP is connected.
+To swap a primitive (Linear → GitHub Issues), change one line in `sdlc.yml` and create the new primitive file. No agent edits required — agents use denylist tool inheritance and read task management tool calls through whichever MCP is connected.
 
 ## Artifacts produced
 
@@ -175,7 +175,7 @@ The workflow produces several structured artifacts, each governed by a canvas:
 | Artifact | Producer | Canvas | Where it lands |
 |---|---|---|---|
 | Plan YAML | `planner` | [plan canvas](.claude/canvases/plan/README.md) | `.ai-docs/plans/<slug>.yaml` |
-| Spec | `specifier` | [spec canvas](.claude/canvases/spec/README.md) | `.ai-docs/stacks/<slug>/specs/<issue>.md` + tracker comment |
+| Spec | `specifier` | [spec canvas](.claude/canvases/spec/README.md) | `.ai-docs/stacks/<slug>/specs/<issue>.md` + task management tool comment |
 | Phase envelope | every phase agent | [envelope canvas](.claude/canvases/envelope/README.md) | end of every agent response |
 | Session log | every workflow command | [session canvas](.claude/canvases/session/README.md) | `agent-logs/<session-id>/` |
 
