@@ -141,7 +141,7 @@ The 9-option outcome-driven taxonomy (configure via the GitHub Project UI — `g
 - No "Specifying" sub-state — both spec-being-written and awaiting-review collapse to Planning.
 - "Approved" → renamed "Ready" — outcome name, not gate name.
 
-To wire Status moves at runtime, agents call `gh project item-edit --field-id <Status> --option <id>`. Field IDs are per-project and discovered + cached by `/sdlc:link-project <project-url>` (PR 5 of the sdlc-plugin-distribution stack). Without the cache, the specifier degrades to label-only (sets `state:*`; skips Status-field move).
+To wire Status moves at runtime, agents call `gh project item-edit --field-id <Status> --option <id>`. Field IDs are per-project and auto-discovered at every SessionStart by `plugin/scripts/discover-tracker.sh` — output lands at `.claude/.session/tracker-context.md` and is `@`-mentioned by specifier. Set `project_number: <n>` in `sdlc.yml` to enable; discovery silent-no-ops otherwise. When the hook produces no context (no `project_number:`, missing GH auth, or discovery failure), specifier degrades to label-only (sets `state:*`; skips Status-field move).
 
 ### Coordinator self-block (load-bearing)
 

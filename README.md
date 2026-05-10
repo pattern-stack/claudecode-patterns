@@ -37,8 +37,9 @@ cd your-project
 #   team_key: ACME             ← your tracker prefix
 # (also writes .claude/sdlc.justfile symlink + wires your Justfile via `mod sdlc`)
 
-# 3. (Optional, GitHub Projects users) Link a Project for Status auto-movement
-/sdlc:link-project https://github.com/orgs/<org>/projects/<n>
+# 3. (Optional, GitHub Projects users) Add `project_number: <n>` to .claude/sdlc.yml
+#    The discover-tracker SessionStart hook auto-loads Status field IDs every
+#    session. No extra command needed; specifier auto-moves Status when set.
 
 # 4. Run the loop
 /sdlc:plan "Add Redis caching to the user service"
@@ -209,7 +210,7 @@ plugin/
 │   └── path-resolution.md        # project-first / plugin-fallback resolution rule
 ├── agents/                       # 6 SDLC phase agents + canvas-author + drift-check
 ├── commands/                     # /sdlc:plan, /sdlc:design, /sdlc:develop, /sdlc:orchestrate,
-│                                 # /sdlc:sync-issues, /sdlc:canvas, /sdlc:setup, /sdlc:link-project
+│                                 # /sdlc:sync-issues, /sdlc:canvas, /sdlc:setup
 ├── skills/                       # workflow knowledge (when to use what; how to recover)
 ├── output-styles/                # canvas-flow voices (developer, seller)
 ├── canvases/                     # spec, envelope, plan, session — artifact contracts
