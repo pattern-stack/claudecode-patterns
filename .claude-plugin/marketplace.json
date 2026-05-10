@@ -8,11 +8,7 @@
   "plugins": [
     {
       "name": "sdlc",
-      "source": {
-        "type": "github",
-        "repository": "pattern-stack/claudecode-patterns",
-        "path": "plugin"
-      },
+      "source": "./plugin",
       "tags": ["sdlc", "agents", "canvases", "workflow", "plan-first", "gate-disciplined"]
     }
   ]
