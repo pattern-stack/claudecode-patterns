@@ -85,29 +85,15 @@ This is structured artifact engineering, not prompt engineering. The difference 
 
 ### The two-gate workflow
 
-```mermaid
-flowchart LR
-    R[Request] --> P["/plan<br>(Gate 0 — chat)"]
-    P --> S["/sync-issues<br>→ task management"]
-    S --> D["/design ISSUE<br>(Gate 1 — label)"]
-    D -->|state:strategy-approved| I["/develop or /orchestrate"]
-    I --> V[Validator report on PR]
-    V --> M["Gate 2 — PR Review<br>→ Merge"]
+| Step | Command | Gate | What you do |
+|---|---|---|---|
+| **1. Plan** | `/plan "<request>"` | **0 — chat** | Iterate YAML plan, approve before anything reaches your task management tool |
+| **2. Sync** | `/sync-issues` | — | Plan is pushed: epic + leaf issues + dependency labels |
+| **3. Strategy** | `/design ISSUE` | **1 — label** | Specifier posts strategy to the issue; you review and apply `state:strategy-approved` |
+| **4. Build** | `/develop ISSUE` or `/orchestrate FILTER` | — | Implementer writes code, opens PR; validator runs the quality profile |
+| **5. Review** | (validator report on PR) | **2 — PR review** | Confirm and merge |
 
-    style P fill:#fef3c7,stroke:#d97706
-    style D fill:#fef3c7,stroke:#d97706
-    style M fill:#fef3c7,stroke:#d97706
-```
-
-Three gates, two synchronous, one asynchronous:
-
-| Gate | Where | What you do |
-|---|---|---|
-| **0 — Plan** | In chat (5 min) | Iterate the YAML plan; approve before anything reaches your task management tool |
-| **1 — Strategy** | On your task management tool (5 min per issue) | Review the implementation strategy before any code is written |
-| **2 — PR review** | GitHub | Validator pre-checks; you confirm and merge |
-
-The implementer agent **refuses** to start without `state:strategy-approved` on the issue. It's not a convention — it's a hard refusal. This is what kills decision drift: the agreed approach is on the issue, the implementer reads it, anyone reviewing can compare what was agreed against what got built.
+Three gates, two synchronous (chat, label), one asynchronous (PR review). The implementer agent **refuses** to start without `state:strategy-approved` on the issue — it's not a convention, it's a hard refusal. This is what kills decision drift: the agreed approach is on the issue, the implementer reads it, anyone reviewing can compare what was agreed against what got built.
 
 You're approving plans (cheap) and reviewing code-against-plan (fast). Not reading 800-line PRs from cold context.
 
@@ -117,9 +103,17 @@ Two execution paths once strategies are approved:
 
 **`/develop ISSUE-KEY`** — flat team, one issue at a time. Implementer writes code, validator checks, you stay in the loop. Best for the issues you want to think hard about.
 
-**`/orchestrate state:strategy-approved`** — parallel batch. Spawns one coordinator per approved issue, each running its own implementer + validator in worktree isolation. You queue 5 approved issues at 6pm; you wake up to 5 PRs, each pre-validated, ready to review.
+**`/orchestrate <FILTER>`** — parallel batch. The filter scales with the level of work you want to throw at it:
 
-The orchestrator is the feature. It's how a team of two ships work that used to require a team of five — without sacrificing the gates that keep AI from running into walls.
+- **One issue at a time:** `/orchestrate ABC-101`
+- **Several explicit issues:** `/orchestrate ABC-101 ABC-102 ABC-103`
+- **Everything matching a label:** `/orchestrate state:strategy-approved`
+- **A plan file:** `/orchestrate plans/redis-caching.yaml`
+- **An entire epic or project:** `/orchestrate ABC-100` — every approved leaf issue under that parent gets picked up
+
+Whatever the input, **each leaf issue runs through the same gates independently**. One coordinator per issue. Their own implementer and validator. Worktree isolation so parallel work doesn't collide. Concurrency bounded by `sdlc.yml.orchestrate_concurrency` (default 3); the rest queue. Issues that aren't `state:strategy-approved` get dropped with a clear log entry — Gate 1 enforcement doesn't bend just because you're moving fast.
+
+This is the feature: queue an entire approved epic at 6pm, wake up to a stack of pre-validated PRs ready for Gate 2 review. A team of two ships work that used to take five — without sacrificing the gates that keep AI from running into walls.
 
 ### Audit trail by default
 
