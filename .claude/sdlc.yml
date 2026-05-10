@@ -8,9 +8,9 @@
 # This file is also the canonical reference template for downstream projects
 # adopting the v2 SDLC: copy to your project's `.claude/sdlc.yml` and adjust
 # the primitives + team_key + topology values. The structural blocks (worktree,
-# artifact_paths, tool_groups, artifacts) are universal and rarely change.
+# artifact_paths, tool_groups, canvases) are universal and rarely change.
 #
-# When agents land in PR 3, the empty `artifacts:` registry below populates as
+# When agents land in PR 3, the empty `canvases:` registry below populates as
 # canvases land in subsequent PRs (spec/envelope/plan in PR 6, session in PR 7).
 
 # === Primitives ===
@@ -75,14 +75,19 @@ tool_groups:
   code_writer_mcp:  [WebFetch, WebSearch, Agent]
   validator_mcp:    [Write, Edit, WebFetch, WebSearch, Agent]
 
-# === Artifact registry — canvases (template + instructions + schema + README) ===
-# Each name maps to a directory under .claude/artifacts/. Producer and consumer
+# === Canvas registry ===
+# Each canvas is a contract (template + instructions + schema + README) that
+# governs the shape of one kind of artifact (the populated instance). Each
+# name below maps to a directory under .claude/canvases/. Producer and consumer
 # agents read template.md + instructions.yaml from the resolved path. Validate
-# every canvas's instructions.yaml against its schema with `just verify-artifacts`.
+# every canvas's instructions.yaml against its schema with `just verify-canvases`.
+#
+# Note: this registry names CANVASES (the contracts). Where the actual
+# ARTIFACT INSTANCES land is governed by `artifact_paths:` above.
 #
 # Active canvases (v2 set):
-artifacts:
-  spec:               .claude/artifacts/spec/         # producer: specifier; consumers: implementer, coordinator, validator
-  envelope:           .claude/artifacts/envelope/     # cross-surface output wrapper; every phase agent emits
-  plan:               .claude/artifacts/plan/         # producer: planner; consumers: /sync-issues + downstream specifier
-  session:            .claude/artifacts/session/      # producers: every workflow command; two-tone observability (session.json + execution.log + summary.md)
+canvases:
+  spec:               .claude/canvases/spec/         # producer: specifier; consumers: implementer, coordinator, validator
+  envelope:           .claude/canvases/envelope/     # cross-surface output wrapper; every phase agent emits
+  plan:               .claude/canvases/plan/         # producer: planner; consumers: /sync-issues + downstream specifier
+  session:            .claude/canvases/session/      # producers: every workflow command; two-tone observability (session.json + execution.log + summary.md)

@@ -85,9 +85,9 @@ If a spec already exists at the chosen path, overwrite (the previous version liv
 
 The spec's structure and behavior are not embedded in this prompt. They live in:
 
-- `.claude/artifacts/spec/template.md` — structural skeleton (`{{token}}` placeholders)
-- `.claude/artifacts/spec/instructions.yaml` — tunable knobs (section order, verbosity, diagram tool, citation strictness, tracker-comment shape)
-- `.claude/artifacts/spec/instructions.schema.json` — JSON Schema validating `instructions.yaml`
+- `.claude/canvases/spec/template.md` — structural skeleton (`{{token}}` placeholders)
+- `.claude/canvases/spec/instructions.yaml` — tunable knobs (section order, verbosity, diagram tool, citation strictness, tracker-comment shape)
+- `.claude/canvases/spec/instructions.schema.json` — JSON Schema validating `instructions.yaml`
 
 Path resolution: `.claude/sdlc.yml` `artifacts.spec`.
 
@@ -135,7 +135,7 @@ Awaiting human approval (state:strategy-approved label) before /develop or /impl
 
 ## Output envelope (always emit)
 
-After the spec + tracker comment + label set, emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
+After the spec + tracker comment + label set, emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response.
 
 For this phase:
 - `phase: specifier`

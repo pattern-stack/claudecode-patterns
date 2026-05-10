@@ -169,7 +169,7 @@ If invoked in a context where this should be posted to a tracker issue, the cond
 
 ## Output envelope (always emit)
 
-After the artifact + condensed chat summary above, emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. Completion or halt only — not on mid-conversation clarifying turns.
+After the artifact + condensed chat summary above, emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. Completion or halt only — not on mid-conversation clarifying turns.
 
 For this phase:
 - `phase: understander`
