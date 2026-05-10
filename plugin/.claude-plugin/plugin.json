@@ -48,6 +48,17 @@
               "timeout": 10
             }
           ]
+        },
+        {
+          "matcher": "",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "node ${CLAUDE_PLUGIN_DIR}/hooks/check-config.mjs",
+              "async": false,
+              "timeout": 3
+            }
+          ]
         }
       ],
       "PreToolUse": [
