@@ -2,7 +2,9 @@
   "name": "sdlc",
   "version": "0.1.0",
   "description": "Plan-first, gate-disciplined SDLC for Claude Code teams. Agents, canvases, primitives, commands.",
-  "author": "pattern-stack",
+  "author": {
+    "name": "pattern-stack"
+  },
   "homepage": "https://github.com/pattern-stack/claudecode-patterns",
   "license": "MIT",
   "components": {
