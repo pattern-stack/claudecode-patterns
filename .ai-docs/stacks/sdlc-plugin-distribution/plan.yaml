@@ -1,0 +1,412 @@
+plan:
+  slug: sdlc-plugin-distribution
+  summary: Convert this repo from cp -r distribution into a native Claude Code plugin (`sdlc`) installable via `/plugin marketplace add` + `/plugin install`, while landing the SDLC v2.1 opinion (gate-mode mechanism + 9-option Status taxonomy) and preserving dogfood-ability via symlinks.
+  milestone: v2-plugin-distribution
+
+  epic_title: "SDLC plugin distribution + v2.1 opinion: vendor `.claude/` into a native Claude Code plugin and ship gate-modes/Status taxonomy"
+  epic_body: |
+    Goal — replace the README's promised-but-unbuilt plugin distribution with a real
+    one, AND land the v2.1 SDLC opinion (gate-mode mechanism + outcome-driven Status
+    taxonomy from issue #20). Move agents, commands, canvases, skills, primitives,
+    output-styles, hooks, and scripts under `plugin/`, expose them via
+    `.claude-plugin/plugin.json` + repo-root `marketplace.json`, and make
+    installation a one-liner: `/plugin marketplace add <repo>` →
+    `/plugin install sdlc` → `/sdlc:setup`. The opinion change ships as a separate
+    PR sandwiched between layout (PR 1) and onboarding (PR 3) so setup's next-step
+    output can reference gate-mode override layers from day one. Naming note:
+    the onboarding command is `/sdlc:setup` (not `/sdlc:init`) to avoid
+    discoverability collision with Claude Code's native `/init` (which generates
+    CLAUDE.md). Plugin commands are namespaced — `/sdlc:plan` etc. are the
+    canonical invocation forms; un-prefixed `/plan` does not resolve to plugin
+    commands.
+
+    Locked-in decisions — distribution (do not re-litigate):
+    - Repo layout: `plugin/` subdir; marketplace `source.path: "plugin"`. Dogfood
+      `.claude/` stays at the repo root and uses symlinks into `plugin/<dir>/` so
+      live edits flow through without reinstall.
+    - Plugin name `sdlc`; commands become `/sdlc:plan`, `/sdlc:design`,
+      `/sdlc:develop`, `/sdlc:orchestrate`, `/sdlc:sync-issues`, `/sdlc:canvas`,
+      `/sdlc:setup`, `/sdlc:link-project`.
+    - Config layering is project-only. No vendored `sdlc.yml` defaults; no
+      `extends:`. Plugin ships `plugin/sdlc.example.yml`.
+    - Canvases + primitives resolve project-first (`.claude/canvases/<name>/`),
+      fall back to `${CLAUDE_PLUGIN_DIR}/canvases/<name>/`. canvas-author writes
+      to project path (fork-on-edit). Same pattern for primitives.
+    - Justfile distribution: plugin ships `plugin/sdlc.justfile`; project's
+      Justfile gets `mod sdlc '.claude/sdlc.justfile'`; `.claude/sdlc.justfile`
+      is a symlink to `${CLAUDE_PLUGIN_DIR}/sdlc.justfile`.
+    - Existing `.claude/settings.json` hooks (emit.mjs fan-out) migrate into
+      `plugin.json` `components.hooks`.
+
+    Locked-in decisions — v2.1 opinion (do not re-litigate):
+    - Naming: `auto_approve` in YAML/agent code; "trust mode" in human-facing
+      prose (READMEs, WORKFLOW.md, sdlc-loop SKILL.md) only. Two surfaces, one
+      concept. Agent prompts use `auto_approve` exclusively.
+    - Resolution timing: `/sync-issues` resolves `auto_approve` at issue-creation
+      time and stamps `gate:auto` or `gate:human` on each leaf issue. Specifier
+      reads labels at runtime, never plan.yaml. Specifier resolution order:
+      `gate:auto` label → auto; `gate:human` label → strict; no label → fall
+      through to `sdlc.yml.gate1_default`.
+    - Link-project: ships as a separate PR 5 command (clean separation from
+      docs); github-only.
+    - Linear taxonomy: user's working-hypothesis mapping is starting input for
+      the spec phase, not a constraint; specifier proposes final mapping.
+    - Self-block scope: only the COORDINATOR self-applies the `Blocked` Status
+      (Gate-1 timeout in `/orchestrate`). Implementer and validator halt with
+      clear errors but do not change Status. One-sentence clarification in both
+      Linear and GitHub primitive docs.
+
+    Out of scope: typed consumes/produces registry (#18), AskUserQuestion+previews
+    ecosystem-wide (#19), full canvas-aware audit (#12), `extends:` sdlc.yml
+    layering, external `cc-patterns` CLI, separate TUI/wizard, programmatic
+    creation of GitHub Project Status options (gh CLI cannot do this; users
+    customize in UI), Linear/Jira analogues of `/sdlc:link-project`. Stack is a
+    linear 6-PR chain; PR 1 is unavoidably file-heavy but logic-light, PR 2 is
+    the architectural opinion change, PRs 3–5 layer onboarding/nag/link, PR 6
+    consolidates docs.
+
+  stack:
+    base: main
+
+issues:
+  - key: plugin-layout-restructure
+    title: "Restructure repo into native Claude Code plugin layout (`plugin/` + dogfood symlinks)"
+    layer: L1
+    depends_on: []
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "needs:browser-pilot=false"
+      - "risk:high"
+    description: |
+      Move agents, commands, canvases, skills, primitives, output-styles, hooks,
+      and scripts under `plugin/`. Add `plugin/.claude-plugin/plugin.json` with
+      components + hooks migrated from `.claude/settings.json`. Add repo-root
+      `marketplace.json` (`source.path: "plugin"`). Ship `plugin/sdlc.example.yml`
+      as a templated copy of the current `.claude/sdlc.yml`, including a new
+      `gate1_default: strict` key with a docstring describing the override
+      layers (`sdlc.yml` → `plan.yaml.auto_approve` → issue `gate:*` label).
+      The key is dormant in PR 1 — PR 2 wires the resolution code that consumes
+      it. Also add `gate1_default: strict` to dogfood `.claude/sdlc.yml` so PR 2
+      doesn't have to coordinate two example-config edits. Create dogfood
+      symlinks `.claude/{agents,canvases,skills,primitives,output-styles,hooks,commands}`
+      → `../plugin/<dir>`. Move root `Justfile` recipes into `plugin/sdlc.justfile`;
+      new root `Justfile` carries `mod sdlc '.claude/sdlc.justfile'`; add
+      `.claude/sdlc.justfile` symlink → `../plugin/sdlc.justfile`. Move
+      verifier scripts to `plugin/scripts/`; update Justfile recipe paths.
+      Audit and rewrite `.claude/<dir>/` references in agent prompts to use
+      project-first / `${CLAUDE_PLUGIN_DIR}` fallback (canvases, primitives,
+      cross-agent refs); leave `@.claude/sdlc.yml` reference intact. Empty or
+      remove `.claude/settings.json`. Add CI "fresh-project plugin install
+      drift-test" job alongside existing invariants — install-smoke only at
+      this stage (fresh tmpdir + plugin install + `/sdlc:plan "smoke"`
+      end-to-end). PR 2 expands the drift-test with the gate-mode smoke run;
+      do not land that ahead of PR 2's behavior.
+
+      Acceptance:
+      - `just sdlc::verify` passes in dogfood (this repo).
+      - Existing CI invariants pass; new fresh-project install-smoke drift-test
+        passes (tmpdir install + smoke `/sdlc:plan` execution).
+      - `/sdlc:plan`, `/sdlc:design`, `/sdlc:develop` continue to operate
+        unchanged in this repo via the symlinked `.claude/`.
+      - All path audits in agent prompts pass (no broken `.claude/...` refs).
+      - `gate1_default: strict` documented with override-layer docstring in
+        both `plugin/sdlc.example.yml` and dogfood `.claude/sdlc.yml`.
+
+  - key: gate-mode-and-status-taxonomy
+    title: "Add gate-mode mechanism + Status taxonomy (SDLC opinion v2.1)"
+    layer: L1
+    depends_on: [plugin-layout-restructure]
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "needs:browser-pilot=false"
+      - "risk:medium"
+      - "opinion-change"
+    description: |
+      Implements the SDLC v2.1 opinion: a 9-option outcome-driven Status taxonomy
+      and a configurable Gate-1 mode (strict vs auto). Both ship as plugin-level
+      defaults projects can override. SOURCE OF TRUTH: GitHub issue #20 — the
+      spec phase MUST read `gh issue view 20` verbatim for the 9-option Status
+      table, the 4 saved views, the gate-mode resolution chain, the worked-example
+      mode assignments per stack, and the label palette additions. This planner
+      summary is intentionally not a substitute.
+
+      Files to change (plugin-relative paths post-PR-1):
+      - plugin/agents/specifier.md — read `gate:auto` / `gate:human` label;
+        dual-path label + Status setting; resolution order shown as an explicit
+        section, not buried in prose.
+      - plugin/agents/coordinator.md — adds "only coordinator self-blocks"
+        sentence.
+      - plugin/canvases/plan/instructions.yaml + template.md — add optional
+        `auto_approve: bool` knob at plan level.
+      - plugin/commands/sync-issues.md — at issue-creation time, read
+        `plan.yaml.auto_approve`, stamp `gate:auto` or `gate:human` on each
+        leaf issue. Single integration point for plan→issue gate-mode mapping.
+      - plugin/commands/design.md — document strict vs auto modes; how labels
+        override plan.
+      - plugin/skills/sdlc-loop/SKILL.md — add Status taxonomy + gate-modes
+        section; update halt-recovery table to reference Ready (not "approved").
+      - plugin/primitives/task-management/github.md — recommend 9-option
+        Status; document `gate:*` palette; gh-snippet stubs for the 4 saved
+        views (or UI-instruction text if `gh` doesn't expose saved-view
+        creation — confirm in spec phase). Add coordinator self-block sentence.
+      - plugin/primitives/task-management/linear.md — Status taxonomy mapping
+        for Linear (working hypothesis: Backlog→backlog state; On-Deck/Planning/
+        Ready→unstarted; In Progress/In Review→started; Done→completed;
+        Cancelled→canceled; Blocked→unstarted+workflow-tag; fine-grained
+        columns ride on labels). Specifier proposes final in spec phase. Add
+        coordinator self-block sentence.
+      - plugin/scripts/bootstrap-tracker.sh — provision `gate:auto` /
+        `gate:human` labels; idempotent on re-run.
+      - WORKFLOW.md — loop diagram update: Planning → Ready dual-path.
+      - README.md — one-line update to loop description (full Quickstart
+        rewrite waits for PR 6).
+      - CI drift-test — expand PR 1's install-smoke drift-test to add a
+        two-issue gate-mode smoke run:
+          * Issue A (strict, no `gate:*` label, sdlc.yml default = strict):
+            after `/sdlc:design`, assert `state:awaiting-strategy-review` set,
+            Status=Planning, specifier halted.
+          * Issue B (auto, plan.yaml `auto_approve: true` →
+            `/sync-issues` stamped `gate:auto`): after `/sdlc:design`, assert
+            `state:strategy-approved` set, Status=Ready, specifier completed
+            without halt.
+
+      Locked decisions inherited from epic: naming (`auto_approve` in
+      YAML/agents; "trust mode" in human prose), resolution timing
+      (`/sync-issues` stamps labels at creation; specifier reads labels only),
+      self-block scope (coordinator only), Linear mapping (hypothesis-as-input).
+
+      Spike notes / known unknowns (surface in spec phase, do NOT block plan
+      approval):
+      - Linear mapping final form (per inherited locked decision #4 above).
+      - Whether `gh` CLI exposes Projects v2 saved-view creation; if not,
+        primitives/task-management/github.md ships UI-instruction text.
+      - Status during validation: PR opens → Status=In Review; on validator
+        failure does it revert or stay? Default: stay In Review until human
+        dispositions.
+      - Whether `state:*` label changes auto-trigger Status field move via
+        project automation, or whether the specifier must call
+        `gh project item-edit --field-id Status --option <id>` explicitly.
+        Suspected: explicit call required; field-ID discovery is PR 5's
+        concern (`/sdlc:link-project`).
+
+      Acceptance:
+      - All listed files updated; no orphan references to "Approved" /
+        "Strategy review" columns anywhere in repo.
+      - `specifier.md` shows the two-step resolution
+        (`gate:*` label → sdlc.yml default) as a section, not buried in agent
+        prose.
+      - `bootstrap-tracker.sh` is idempotent on `gate:*` provisioning
+        (existing repos can re-run safely).
+      - Drift-test runs both gate-mode paths and asserts label + Status state.
+      - Coordinator self-block sentence present in both Linear and GitHub
+        primitive docs.
+      - `gate1_default` consumption code references the key shipped in PR 1's
+        `sdlc.example.yml`.
+
+  - key: sdlc-setup-command
+    title: "Add `/sdlc:setup` slash command (AskUserQuestion-driven onboarding)"
+    # Renamed from /sdlc:init to avoid discoverability collision with native /init (CLAUDE.md generator).
+    layer: L2
+    depends_on: [gate-mode-and-status-taxonomy]
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "uses:AskUserQuestion"
+    description: |
+      New `plugin/commands/setup.md` agent-flavored command. Flow: detect existing
+      `.claude/sdlc.yml` (offer reconfigure/quit; default quit) → AskUserQuestion ×
+      3 enums (language: typescript/python/go/other; quality_profile: strict/fast;
+      task_management: linear/github/jira) → text prompt for `team_key` (validate
+      `^[A-Z][A-Z0-9]{1,9}$`) → render `.claude/sdlc.yml` from a template
+      (includes `gate1_default: strict` by default) → detect Justfile state
+      (none/exists/conflicts) → prompt for mod/import/skip with collision check
+      → create `.claude/sdlc.justfile` symlink to `${CLAUDE_PLUGIN_DIR}/sdlc.justfile`
+      → run `just sdlc::verify` → print next-step guidance. Edge cases: not a
+      git repo (warn, proceed); no `just` installed (warn, skip verify);
+      plugin path env var unavailable (error clearly, optionally derive from
+      filesystem markers).
+
+      Setup does NOT ask about gate mode or run link-project itself — defaults
+      to strict via `sdlc.example.yml`; link-project is opt-in post-setup.
+      Next-steps output gains two items:
+        1. One line on gate-mode override layers: "Default gate mode is
+           strict. Override per-stack via `auto_approve: true` in plan.yaml,
+           or per-issue via `gate:auto` / `gate:human` labels."
+        2. (Conditional, only if `task_management: github`) one line
+           pointing at `/sdlc:link-project <project-url>` for Status field
+           integration: "If you use a GitHub Project to track work, run
+           `/sdlc:link-project <project-url>` to enable Status column
+           auto-movement."
+
+      Spike notes / known unknowns:
+      - Verify `${CLAUDE_PLUGIN_DIR}` is exposed at slash-command render time
+        (vs hook-only). If unavailable, fall back to a Bash step that derives
+        the plugin root from filesystem markers.
+      - Verify plugin-shipped slash commands run in the main agent's context
+        with `AskUserQuestion` available (almost certainly yes).
+
+      Acceptance:
+      - End-to-end run in a fresh tmpdir produces a valid `.claude/sdlc.yml`
+        (with `gate1_default: strict`) and a resolvable `.claude/sdlc.justfile`
+        symlink.
+      - Verifiers (`just sdlc::verify`) pass post-setup.
+      - Reconfigure path on existing sdlc.yml is non-destructive by default.
+      - Next-steps output includes the gate-mode override-layers line; the
+        link-project line appears iff `task_management: github`.
+      - Command is named `/sdlc:setup` (not `/sdlc:init`) — verify no
+        documentation, agent prompt, or hook references the old name.
+
+  - key: missing-config-nag-hook
+    title: "Add UserPromptSubmit nag hook surfacing `/sdlc:setup` when sdlc.yml is missing"
+    # Reminder text references `/sdlc:setup` (the renamed command). Native /init is unrelated and untouched.
+    layer: L2
+    depends_on: [sdlc-setup-command]
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "risk:low"
+    description: |
+      New `plugin/hooks/check-config.{sh,mjs}` UserPromptSubmit hook (match the
+      existing emit.mjs pattern). On missing `.claude/sdlc.yml`, return a
+      `<system-reminder>` block instructing the assistant to surface
+      `/sdlc:setup` to the user. Quiet otherwise. Wire into `plugin.json`
+      `components.hooks.UserPromptSubmit`.
+
+      Spike notes / known unknowns:
+      - Verify plugin-shipped UserPromptSubmit hooks can return
+        `<system-reminder>` blocks the assistant's context sees (vs only stderr
+        to the user). If blocked, fall back to a stderr message with clear
+        instructional text.
+
+      Acceptance:
+      - In a fresh project (no sdlc.yml), the first user prompt produces a
+        system-reminder visible to the assistant.
+      - Once `/sdlc:setup` runs and writes sdlc.yml, subsequent prompts are
+        silent (no reminder).
+      - Hook adds no measurable latency on the configured-project path.
+
+  - key: gh-project-link-command
+    title: "Add `/sdlc:link-project` — discover and cache GitHub Project field IDs"
+    layer: L2
+    depends_on: [missing-config-nag-hook]
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "risk:low"
+      - "github-only"
+    description: |
+      New `plugin/commands/link-project.md` slash command. Resolves the
+      field-ID discovery concern raised by issue #20's known unknown #2:
+      GitHub Project Status field setting requires per-repo runtime IDs
+      (project ID, Status field ID, option IDs for Backlog/Planning/Ready/etc.)
+      that cannot be hardcoded in the plugin. Pulls discovery out of the
+      specifier's hot path; agents read cached IDs at runtime.
+
+      Flow:
+      - Argument: project URL. Accept both forms:
+          github.com/users/<user>/projects/<n>
+          github.com/orgs/<org>/projects/<n>
+      - Validate `task_management: github` in `.claude/sdlc.yml`; halt with
+        a clear error if `linear` or `jira`.
+      - Run `gh api graphql` discovery query: project ID, Status field ID,
+        option ID for each of the 9 recommended Status options (Backlog,
+        On-Deck, Planning, Ready, In Progress, In Review, Done, Blocked,
+        Cancelled). For options that don't exist on the user's project, log
+        a warning naming the missing options and recommend they add them in
+        the GitHub UI (gh CLI cannot create Status options programmatically).
+      - Cache to `.claude/project.json` (gitignored by default; user can
+        opt-in to commit if their team shares the same project).
+      - Idempotent: re-running refreshes the cache.
+
+      Specifier degrade behavior (lives in PR 2's specifier code; referenced
+      here for cross-PR contract):
+      - Cache present + all options matched → set Status field via
+        `gh project item-edit`.
+      - Cache present + some options missing → label-only for missing
+        options; Status-set for matched.
+      - Cache absent → label-only for everything; one-line warning suggesting
+        `/sdlc:link-project`.
+      - Failure of `gh project item-edit` → label-only fallback; specifier
+        does not halt.
+
+      GH-free vs GH-org: command supports both URL patterns transparently.
+      No org-only feature required. Document this in
+      `plugin/primitives/task-management/github.md`.
+
+      Out of scope: programmatic creation of the 9 Status options on user's
+      project (gh CLI cannot); Linear or Jira analogues
+      (`/sdlc:link-project` is github-only).
+
+      Acceptance:
+      - Discovery succeeds against a real GH-free user project AND a GH-org
+        org project; cache file is valid JSON.
+      - Re-run is idempotent (no duplicate keys, fresh option IDs after
+        option renames).
+      - Halts cleanly when `task_management: github` is not set.
+      - Specifier integration test: with cache present, /sdlc:design moves
+        Status correctly; with cache absent, falls back to label-only without
+        erroring.
+
+  - key: docs-quickstart-rewrite
+    title: "Docs: README Quickstart, WORKFLOW, plugin reference, changelog — install model + gate-modes + Status/link-project"
+    layer: L7
+    depends_on: [gh-project-link-command]
+    parallel_with: []
+    labels:
+      - "needs:language=typescript"
+      - "needs:quality=strict"
+      - "needs:task_management=linear"
+      - "docs-only"
+    description: |
+      Consolidates THREE narrative threads in a single docs pass:
+
+      1. Plugin install model: README Quickstart replaces the `cp -r` block
+         with `/plugin marketplace add <repo-url>` + `/plugin install sdlc` +
+         `/sdlc:setup`. Strike the inline "plugin distribution is in flight"
+         note. WORKFLOW.md scrubbed for any install / `cp -r` references.
+         `plugin/skills/claude-platform/reference/plugins.md`: update the
+         section (around lines 70–73) noting "this project's claude-platform
+         skill is not packaged as a plugin (yet)" — it now is. Add a short
+         "Plugin development" section explaining how dogfood symlinks work
+         for contributors.
+
+      2. Gate-modes opinion: strict vs auto, override layers
+         (`sdlc.yml.gate1_default` → `plan.yaml.auto_approve` → issue
+         `gate:*` label), "trust mode" framing in human prose only (per
+         locked naming decision; agents/YAML use `auto_approve`).
+
+      3. Status taxonomy + link-project: where the 9-option Status set comes
+         from (issue #20), how to customize, when to run
+         `/sdlc:link-project`. Cross-link from README Quickstart and
+         WORKFLOW.md.
+
+      v1 → v2 changelog table in README gains TWO rows:
+      - "Install": `cp -r` → `/plugin install`.
+      - "Gate 1 mode": always-strict → strict/auto with override layers.
+
+      Acceptance:
+      - No `cp -r .claude/` references remain in README, WORKFLOW.md, or
+        skill reference docs.
+      - Quickstart commands copy-paste to a successful install + setup in a
+        fresh project.
+      - All slash-command references use the namespaced `/sdlc:<cmd>` form
+        (un-prefixed `/plan` etc. do not resolve to plugin commands; this is
+        a property of plugin command namespacing, not a phrasing choice).
+      - Changelog rows for "Install" AND "Gate 1 mode" present and accurate.
+      - Gate-modes section explains override layers + names "trust mode" as
+        the human-facing framing.
+      - Status taxonomy section references issue #20 as source-of-truth and
+        explains when to run `/sdlc:link-project`.
+      - No code paths touched (docs-only PR).

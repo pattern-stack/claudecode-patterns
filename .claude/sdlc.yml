@@ -20,8 +20,11 @@
 language: typescript          # typescript | python | go
 quality_profile: strict       # strict | fast
 commit_style: conventional    # conventional | freeform
-task_management: linear       # linear | github | jira
-team_key: ABC                 # tracker team key — used in branch convention + sync filters
+task_management: github       # linear | github | jira
+repo: pattern-stack/claudecode-patterns  # GitHub repo for /sync-issues (when task_management: github)
+# project_number: <n>         # OPTIONAL: GitHub Project v2 number (when task_management: github + Project linking is set up via /sdlc:link-project)
+team_key: PSC                 # tracker team key — used in branch convention + sync filters (Linear-shaped; harmless under github)
+gate1_default: strict         # strict | auto — default Gate-1 mode. Override per-stack (plan.yaml.auto_approve) or per-issue (gate:auto / gate:human label). Dormant until PR 2 of sdlc-plugin-distribution stack lands.
 
 # === Topology A — /develop base roster ===
 # Per-issue extras come from `needs:*` labels on the issue (e.g. needs:browser-pilot).
