@@ -1,7 +1,9 @@
 {
   "$schema": "https://claude.ai/schemas/plugin-marketplace.json",
   "name": "claudecode-patterns",
-  "owner": "pattern-stack",
+  "owner": {
+    "name": "pattern-stack"
+  },
   "description": "Plan-first, gate-disciplined SDLC plugin for Claude Code teams.",
   "plugins": [
     {
