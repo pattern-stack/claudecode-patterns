@@ -1,0 +1,90 @@
+# sdlc.yml — central SDLC configuration.
+#
+# All SDLC agents (planner, specifier, implementer, validator, coordinator,
+# understander) and commands (/plan, /design, /develop, /orchestrate, /sync-issues)
+# read from this file. Don't hardcode tracker / language / quality specifics in
+# agents — declare them here.
+#
+# This file is also the canonical reference template for downstream projects
+# adopting the v2 SDLC: copy to your project's `.claude/sdlc.yml` and adjust
+# the primitives + team_key + topology values. The structural blocks (worktree,
+# artifact_paths, tool_groups, artifacts) are universal and rarely change.
+#
+# When agents land in PR 3, the empty `artifacts:` registry below populates as
+# canvases land in subsequent PRs (spec/envelope/plan in PR 6, session in PR 7).
+
+# === Primitives ===
+# Each value resolves to .claude/primitives/<category>/<value>.md, which agents
+# read on demand. To add a new value, drop a new file in the matching directory.
+
+language: typescript          # typescript | python | go
+quality_profile: strict       # strict | fast
+commit_style: conventional    # conventional | freeform
+task_management: linear       # linear | github | jira
+team_key: ABC                 # tracker team key — used in branch convention + sync filters
+
+# === Topology A — /develop base roster ===
+# Per-issue extras come from `needs:*` labels on the issue (e.g. needs:browser-pilot).
+develop_team:
+  - implementer
+  - validator
+
+# === Topology B — /orchestrate concurrency ===
+orchestrate_concurrency: 3
+
+# === Worktree isolation ===
+# When enabled, the spawning command (/develop or coordinator under /orchestrate)
+# passes `isolation: "worktree"` to the Agent tool when spawning implementer.
+# The worktree path is managed by Claude Code internally — cannot be overridden.
+worktree:
+  enabled: true
+
+# === Artifact paths — single source of truth ===
+# Stack-co-located is preferred for new work. Cross-cutting / legacy paths still valid.
+# Agents MUST read paths from this block — do NOT hardcode them in agent prompts.
+artifact_paths:
+  # Stack-co-located (preferred for new work):
+  stack_root:     .ai-docs/stacks/<slug>/
+  plan:           .ai-docs/stacks/<slug>/plan.yaml
+  stack_research: .ai-docs/stacks/<slug>/<topic>.md
+  stack_spec:     .ai-docs/stacks/<slug>/specs/<issue-key>.md
+
+  # Cross-cutting / legacy:
+  cross_cutting_research: .ai-docs/research/<topic>.md
+  legacy_spec:            .ai-docs/specs/<issue-key>.md
+
+# === Tool groups — canonical tool bundles ===
+# Claude Code's runtime does NOT substitute these names. Each agent enumerates
+# its actual tools in frontmatter; a `# tool_group: <name>` comment declares
+# which group expands. Verify with `bash scripts/verify-tool-groups.sh`.
+tool_groups:
+  # ALLOWLISTS — copy into `tools:` to restrict to exactly these (no MCP)
+  read_only:        [Read, Glob, Grep]
+  research:         [Read, Glob, Grep, WebFetch, WebSearch]
+  research_writer:  [Read, Write, Glob, Grep, WebFetch, WebSearch]
+  spec_writer:      [Read, Write, Edit, Glob, Grep]
+  code_writer:      [Read, Write, Edit, Bash, Glob, Grep]
+  validator:        [Read, Bash, Glob, Grep]
+
+  # DENYLISTS — copy into `disallowedTools:` to inherit-all-minus (KEEPS MCP)
+  # Use these for tracker-agnostic SDLC agents.
+  no_egress:        [WebFetch, WebSearch]
+  no_recursion:     [Agent]
+  no_writes:        [Write, Edit]
+  spec_writer_mcp:  [WebFetch, WebSearch, Bash, Agent]
+  code_writer_mcp:  [WebFetch, WebSearch, Agent]
+  validator_mcp:    [Write, Edit, WebFetch, WebSearch, Agent]
+
+# === Artifact registry — canvases (template + instructions + schema + README) ===
+# Each name maps to a directory under .claude/artifacts/. Producer and consumer
+# agents read template.md + instructions.yaml from the resolved path. Validate
+# every canvas's instructions.yaml against its schema with `just verify-artifacts`.
+#
+# Empty in PR 2 (substrate). Populated as canvases land:
+#   - PR 6: spec, envelope, plan
+#   - PR 7: session
+artifacts: {}
+  # spec:               .claude/artifacts/spec/
+  # envelope:           .claude/artifacts/envelope/
+  # plan:               .claude/artifacts/plan/
+  # session:            .claude/artifacts/session/
