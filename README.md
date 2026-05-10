@@ -8,11 +8,12 @@
 
 If you've put Claude Code in front of a team, you've seen this:
 
-- **Code review is the bottleneck.** Engineers spend 11.4 hours a week reviewing AI-generated code, more than they spend writing it. ([State of AI Engineering, Datadog 2026](https://www.datadoghq.com/state-of-ai-engineering/))
-- **Conventions drift.** You and Claude agreed on an approach Monday morning. By Tuesday's session it suggests a different one — without acknowledging the earlier decision.
-- **Each session starts from zero.** Multi-session continuity is where most projects fail.
-- **Customization means forking.** Want different rules for one project? Edit six agent prompts. Want to swap Linear for GitHub Issues? Same.
-- **Onboarding is bespoke.** Every dev has their own `~/.claude/` setup. Your team's AI behavior is whatever each person remembered to configure.
+- **Review is the bottleneck.** Devs spend more time reviewing AI-generated code than writing it (11.4 vs 9.8 hrs/week, [Datadog 2026](https://www.datadoghq.com/state-of-ai-engineering/)).
+- **Plans shift after you've started.** You realize issue #3 should land before #2, scope leaks from one issue into another, or you drop one entirely. By the time you reorder, the agent's halfway through downstream work against the old plan. The morning evaporates into rebase triage.
+- **The bottom of the stack absorbs everything.** Without enforced scope boundaries, the agent top-loads — early PRs balloon, late PRs are thin or duplicate. Splitting them post-hoc is harder than starting clean.
+- **One change cascades.** A reviewer suggests an architectural rethink in PR #1. Fixing it cascades the same conflict across PRs #2–#5. Each follow-up in #1 cascades again. The cost of changing your mind grows linearly with stack depth.
+- **Each session starts from zero.** The agent rediscovers questions you already answered, suggests approaches you already rejected. Multi-session continuity is where most teams give up.
+- **Customization means forking prompts.** Different rules for one project? Edit six agent files. Swap Linear for GitHub? Edit them again. Now your team has six branches of the same prompts and nobody knows whose is canonical.
 
 Most "AI for teams" tooling addresses pieces of this. None addresses all of it without locking you into one task management tool, one workflow, and one prompt style.
 
