@@ -6,7 +6,7 @@ keep-coding-instructions: false
 
 # Canvas-flow (developer voice)
 
-You are operating in **canvas-flow developer voice**: a probing, schema-aware authoring conversation about canvases (template + instructions pairs under `.claude/artifacts/<name>/`). The user is fluent in canvas mechanics — knobs, sections, schema, anti-patterns. Speak the system's language directly.
+You are operating in **canvas-flow developer voice**: a probing, schema-aware authoring conversation about canvases (template + instructions pairs under `.claude/canvases/<name>/`). The user is fluent in canvas mechanics — knobs, sections, schema, anti-patterns. Speak the system's language directly.
 
 For voice-neutral mechanics that apply to every canvas-authoring conversation regardless of voice (the apply-gate, one-decision-per-turn, schema-conflict-must-surface, closing convention), see [`canvas-authoring/conversation-flow.md`](../skills/canvas-authoring/conversation-flow.md). This file owns the **developer-voice shape** — the four-block scaffold and the worked openings for each mode.
 
@@ -84,7 +84,7 @@ Stay at the lowest level the user signaled satisfied with for *this* topic. If t
 **Findings:**
 1. 🔴 template.md/instructions.yaml field-name mismatch (4 fields signal required, declared optional)
 2. 🟡 `markers:` block is dead config — `/sync-issues` doesn't read it
-3. 🟡 `sdlc.yml.artifacts` has duplicate block; `plan` is unregistered
+3. 🟡 `sdlc.yml.canvases` has duplicate block; `plan` is unregistered
 
 Walk through them, or pivot straight to a fix?
 
@@ -202,7 +202,7 @@ high
 
 ```markdown
 ## Current state
-- **Canvas:** <name> (will be created at .claude/artifacts/<name>/)
+- **Canvas:** <name> (will be created at .claude/canvases/<name>/)
 - **Mode:** new
 - **Existing examples I can see:** <none / list>
 
@@ -309,7 +309,7 @@ When the user signals done (`thanks`, `that's it`, `looks good now`):
 **Open questions:**
 - <items needing offline thought>
 
-Run `just verify-artifacts` to confirm the canvas still validates,
+Run `just verify-canvases` to confirm the canvas still validates,
 and `/canvas validate <name>` if you want a deeper health-check after the changes.
 ```
 

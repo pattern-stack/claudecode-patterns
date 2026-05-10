@@ -28,7 +28,7 @@ Read project config from @.claude/sdlc.yml:
 - `task_management` — selects the active tracker adapter (pass-through to `/sync-issues`)
 
 References:
-- `.claude/artifacts/plan/` — the **plan canvas**: `template.md` (structural skeleton), `instructions.yaml` (tunable knobs), `instructions.schema.json` (schema). I read all three at the start of every turn and honor the knobs.
+- `.claude/canvases/plan/` — the **plan canvas**: `template.md` (structural skeleton), `instructions.yaml` (tunable knobs), `instructions.schema.json` (schema). I read all three at the start of every turn and honor the knobs.
 - `.claude/primitives/task-management/README.md` — port contract; drives label taxonomy and gate semantics across adapters.
 - `.claude/primitives/task-management/{task_management}.md` — adapter binding; informational only (I never call adapter operations directly).
 
@@ -43,15 +43,15 @@ References:
 
 | Canvas | Path | Schema |
 |---|---|---|
-| `plan` | `.ai-docs/stacks/<slug>/plan.yaml` | `.claude/artifacts/plan/instructions.schema.json` |
+| `plan` | `.ai-docs/stacks/<slug>/plan.yaml` | `.claude/canvases/plan/instructions.schema.json` |
 
 ## Instructions
 
 ### 1. Load the plan canvas
 
 Before any iteration:
-1. Read `.claude/artifacts/plan/template.md` — the structural skeleton.
-2. Read `.claude/artifacts/plan/instructions.yaml` — the knobs.
+1. Read `.claude/canvases/plan/template.md` — the structural skeleton.
+2. Read `.claude/canvases/plan/instructions.yaml` — the knobs.
 3. Note `instructions.yaml.version`; halt if I encounter an existing plan.yaml stamped with an unknown version.
 
 Knobs I honor every turn:
@@ -119,7 +119,7 @@ If a single issue pulls in more than ~3 packages, it's too big — split.
 
 ## Output Format
 
-The YAML I write at `.ai-docs/stacks/<slug>/plan.yaml` mirrors `.claude/artifacts/plan/template.md` exactly. Per the canvas's required-fields knobs:
+The YAML I write at `.ai-docs/stacks/<slug>/plan.yaml` mirrors `.claude/canvases/plan/template.md` exactly. Per the canvas's required-fields knobs:
 
 ```yaml
 plan:
@@ -174,7 +174,7 @@ Awaiting approval.
 
 ## Output envelope (always emit)
 
-After the YAML rewrite + terse diff in chat, emit the envelope per [`.claude/artifacts/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. On approval (final turn) only — not on mid-iteration turns where you're folding in feedback.
+After the YAML rewrite + terse diff in chat, emit the envelope per [`.claude/canvases/envelope/`](../artifacts/envelope/README.md) as the **final fenced YAML block** of your response. On approval (final turn) only — not on mid-iteration turns where you're folding in feedback.
 
 For this phase:
 - `phase: planner`
@@ -224,6 +224,6 @@ Validate per `instructions.yaml.required_per_phase.planner` and length budgets b
 - Do NOT advance past Gate 0 without an explicit approval keyword from the human.
 - Do NOT create issues larger than one PR. If you can't size one down, split it.
 - Do NOT silently rewrite scope between turns — every change must trace to feedback in this conversation.
-- Do NOT diverge from `.claude/artifacts/plan/template.md`. New plan-level or issue-level fields go through canvas authoring (`/canvas`), not into the planner directly.
+- Do NOT diverge from `.claude/canvases/plan/template.md`. New plan-level or issue-level fields go through canvas authoring (`/canvas`), not into the planner directly.
 - Do NOT skip canvas validation. If `instructions.yaml` doesn't validate against the schema, halt and report — produce no plan that turn.
 - Do NOT exceed `sizing.max_issues_per_stack` without explicit human override. If exceeded with override, log "exceeded sizing knob" in the envelope's `body`.

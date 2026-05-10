@@ -1,7 +1,7 @@
 ---
 name: canvas-authoring
 description: Meta-knowledge for authoring canvases — the template + instructions pairs that govern artifacts produced by SDLC agents (specs, plans, reports, …). Covers the canvas concept, the canonical knob taxonomy, conversation modes (new / tune / reverse / validate / explain), the response scaffold, and the anti-pattern catalog. Use when authoring a new canvas, tuning an existing one, reverse-modeling a canvas from an example artifact, validating a canvas, or teaching the canvas system to a new contributor.
-when_to_use: User asks "what's a canvas", "how do I tune the spec verbosity", "extract a canvas from this example", "validate this instructions.yaml", "explain what these knobs do", "the spec keeps coming out too dry", or otherwise wants to create / modify / understand a `.claude/artifacts/<name>/` directory.
+when_to_use: User asks "what's a canvas", "how do I tune the spec verbosity", "extract a canvas from this example", "validate this instructions.yaml", "explain what these knobs do", "the spec keeps coming out too dry", or otherwise wants to create / modify / understand a `.claude/canvases/<name>/` directory.
 allowed-tools: Read, Glob, Grep
 user-invocable: true
 # tool_group: read_only (allowlist)
@@ -24,7 +24,7 @@ For platform fundamentals (skill / subagent / output-style frontmatter) see [`cl
 
 ## What a canvas is
 
-A **canvas** is the contract for one kind of artifact. It lives at `.claude/artifacts/<name>/` as four files:
+A **canvas** is the contract for one kind of artifact. It lives at `.claude/canvases/<name>/` as four files:
 
 | File | Owns |
 |---|---|
@@ -142,7 +142,7 @@ Cross-knob constraints (combinations that conflict) are surfaced as conversation
 
 The canvas-author agent produces, on apply:
 
-- New or modified files under `.claude/artifacts/<name>/`
+- New or modified files under `.claude/canvases/<name>/`
 - A session log appended to chat (decisions made, knob diffs applied)
 - Optionally: a one-line PR-body bullet describing the canvas change (when working in a branch)
 
