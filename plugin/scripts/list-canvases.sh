@@ -11,9 +11,10 @@
 #         Run scripts/verify-canvases.sh for schema validation.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SDLC="$ROOT/.claude/sdlc.yml"
-CANVASES_DIR="$ROOT/.claude/canvases"
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+SDLC="$PROJECT_ROOT/.claude/sdlc.yml"
+CANVASES_DIR="$PLUGIN_ROOT/canvases"
 
 if ! command -v yq >/dev/null 2>&1; then
   echo "yq not installed (brew install yq) — can't read sdlc.yml" >&2
@@ -38,7 +39,7 @@ for dir in "$CANVASES_DIR"/*/; do
   else
     status="unregistered ⚠"
   fi
-  rows+=("$name|v$version|.claude/canvases/$name/|$status")
+  rows+=("$name|v$version|plugin/canvases/$name/|$status")
 done
 
 # Render. Use column if available for alignment; otherwise raw pipe-separated.

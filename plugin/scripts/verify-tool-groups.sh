@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Verify each agent's `# tool_group: <name>` comment matches its enumerated
-# tools/disallowedTools list against the canonical groups in .claude/sdlc.yml.
+# tools/disallowedTools list against the canonical groups in the project's
+# .claude/sdlc.yml.
 #
-# Usage:  bash scripts/verify-tool-groups.sh
+# Reads sdlc.yml from the project root (${CLAUDE_PROJECT_DIR} or cwd).
+# Reads agents from the plugin root (this script's parent dir).
+#
+# Usage:  just sdlc::verify-tool-groups   (or bash plugin/scripts/verify-tool-groups.sh)
 # Exit:   0 = all OK, 1 = mismatch(es), 2 = config error
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SDLC="$ROOT/.claude/sdlc.yml"
-AGENTS_DIR="$ROOT/.claude/agents"
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+SDLC="$PROJECT_ROOT/.claude/sdlc.yml"
+AGENTS_DIR="$PLUGIN_ROOT/agents"
 
 if [[ ! -f "$SDLC" ]]; then
   echo "❌ Missing $SDLC" >&2

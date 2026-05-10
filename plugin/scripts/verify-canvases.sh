@@ -1,19 +1,39 @@
 #!/usr/bin/env bash
-# Verify each .claude/canvases/<name>/instructions.yaml validates against its
-# sibling instructions.schema.json (JSON Schema, draft-07 / 2020-12).
+# Verify every canvas's instructions.yaml validates against its sibling
+# instructions.schema.json (JSON Schema, draft-07 / 2020-12).
 #
-# Usage:  bash scripts/verify-canvases.sh
+# Scans BOTH plugin canvases (the defaults) and project canvases (overrides).
+# Project canvases at ${CLAUDE_PROJECT_DIR}/.claude/canvases/<name>/ override
+# plugin canvases at ${CLAUDE_PLUGIN_DIR}/canvases/<name>/ via fork-on-edit.
+# Each canvas is validated independently — overrides are not merged.
+#
+# Usage:  just sdlc::verify-canvases   (or bash plugin/scripts/verify-canvases.sh)
 # Exit:   0 = all OK, 1 = validation failure(s), 2 = config / tooling error
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CANVASES_DIR="$ROOT/.claude/canvases"
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PLUGIN_CANVASES="$PLUGIN_ROOT/canvases"
+PROJECT_CANVASES="$PROJECT_ROOT/.claude/canvases"
 
-if [[ ! -d "$CANVASES_DIR" ]]; then
-  echo "ℹ️  No canvases directory at $CANVASES_DIR — nothing to verify"
+# Build the scan list. Skip project canvases dir if it's a symlink resolving to
+# the plugin's canvases (dogfood case — same files, no point scanning twice).
+SCAN_DIRS=()
+[[ -d "$PLUGIN_CANVASES" ]] && SCAN_DIRS+=("$PLUGIN_CANVASES")
+if [[ -d "$PROJECT_CANVASES" ]]; then
+  if [[ -L "$PROJECT_CANVASES" ]] && [[ "$(readlink -f "$PROJECT_CANVASES")" == "$(readlink -f "$PLUGIN_CANVASES")" ]]; then
+    : # symlink → plugin; already covered
+  else
+    SCAN_DIRS+=("$PROJECT_CANVASES")
+  fi
+fi
+
+if [[ ${#SCAN_DIRS[@]} -eq 0 ]]; then
+  echo "ℹ️  No canvases found at $PLUGIN_CANVASES or $PROJECT_CANVASES — nothing to verify"
   echo "Checked: 0  Skipped: 0  Errors: 0"
   exit 0
 fi
+
 if ! command -v yq >/dev/null 2>&1; then
   echo "❌ yq not installed (brew install yq)" >&2
   exit 2
@@ -54,9 +74,16 @@ errors=0
 checked=0
 skipped=0
 
-# Iterate every artifact directory that has an instructions.yaml.
+# Iterate every artifact directory that has an instructions.yaml across all
+# scanned canvas roots (plugin + project overrides).
 shopt -s nullglob
-for inst in "$CANVASES_DIR"/*/instructions.yaml; do
+INSTRUCTIONS=()
+for d in "${SCAN_DIRS[@]}"; do
+  for f in "$d"/*/instructions.yaml; do
+    INSTRUCTIONS+=("$f")
+  done
+done
+for inst in "${INSTRUCTIONS[@]}"; do
   dir="$(dirname "$inst")"
   name="$(basename "$dir")"
   schema="$dir/instructions.schema.json"

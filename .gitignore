@@ -15,12 +15,20 @@ Thumbs.db
 
 # Project-specific (excluded from template)
 application/
-specs/
 trees/
 .preserved-specs/
 .tp/
 issue-plan-*.yaml
 issue-plan-*.json
+
+# Legacy specs dirs (cross-cutting / v1) — stack-co-located specs at
+# .ai-docs/stacks/<slug>/specs/<key>.md ARE tracked.
+/specs/
+.ai-docs/specs/
+
+# Project-level GH project field-ID cache (per-project; should not be committed
+# unless team shares the same project).
+.claude/project.json
 
 # Build artifacts
 *.pyc

@@ -1,0 +1,99 @@
+name: plugin-drift-test
+
+on:
+  pull_request:
+    branches: [main, v2]
+  push:
+    branches: [main, v2]
+
+concurrency:
+  group: drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-smoke:
+    name: fresh-project install smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.36.0'
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Validate plugin manifest exists and parses
+        run: |
+          test -f plugin/.claude-plugin/plugin.json
+          test -f marketplace.json
+          jq empty plugin/.claude-plugin/plugin.json
+          jq empty marketplace.json
+          echo "✅ plugin.json + marketplace.json valid JSON"
+
+      - name: Validate plugin structure
+        run: |
+          set -e
+          for d in skills agents commands canvases primitives output-styles hooks scripts; do
+            test -d plugin/$d || { echo "❌ Missing plugin/$d"; exit 1; }
+          done
+          test -f plugin/sdlc.justfile
+          test -f plugin/sdlc.example.yml
+          echo "✅ Plugin structure complete"
+
+      - name: Validate plugin.json hooks all reference existing scripts
+        run: |
+          set -e
+          # Each hook command should be `node ${CLAUDE_PLUGIN_DIR}/hooks/<file>.mjs <event>`
+          # Extract the file part and check it exists at plugin/hooks/<file>.mjs
+          jq -r '.components.hooks | to_entries[] | .value[].hooks[].command' plugin/.claude-plugin/plugin.json \
+            | grep -oE '\${CLAUDE_PLUGIN_DIR}/hooks/[^ ]+' \
+            | sed 's|${CLAUDE_PLUGIN_DIR}/||' \
+            | sort -u \
+            | while read p; do
+                test -f "plugin/$p" || { echo "❌ Missing plugin/$p (referenced in plugin.json hooks)"; exit 1; }
+              done
+          echo "✅ All hook scripts present"
+
+      - name: Simulate fresh-project install (cp plugin → ~/.claude/plugins/sdlc)
+        run: |
+          set -e
+          mkdir -p ~/.claude/plugins/sdlc
+          cp -r plugin/. ~/.claude/plugins/sdlc/
+          # Simulate user-project minimal install
+          mkdir -p /tmp/fresh-project/.claude
+          cp plugin/sdlc.example.yml /tmp/fresh-project/.claude/sdlc.yml
+          # Replace placeholders with valid values
+          sed -i 's|repo: <owner>/<repo>|repo: pattern-stack/claudecode-patterns|' /tmp/fresh-project/.claude/sdlc.yml
+          # Symlink plugin location for the .claude/sdlc.justfile resolver
+          ln -sf ~/.claude/plugins/sdlc/sdlc.justfile /tmp/fresh-project/.claude/sdlc.justfile
+          # Simulate the project-level Justfile that /sdlc:setup would create
+          cat > /tmp/fresh-project/Justfile <<'JF'
+          default:
+              @just --list
+
+          mod sdlc '.claude/sdlc.justfile'
+          JF
+          echo "✅ Fresh-project layout assembled"
+
+      - name: Run sdlc::verify in fresh project (drift smoke)
+        working-directory: /tmp/fresh-project
+        env:
+          CLAUDE_PLUGIN_DIR: /home/runner/.claude/plugins/sdlc
+        run: |
+          # Verify the plugin's verifiers run correctly against a minimal project
+          # config. This catches broken paths in agent prompts AND in scripts after
+          # the plugin restructure.
+          just sdlc::verify
+          echo "✅ Fresh-project install passes verifiers"
