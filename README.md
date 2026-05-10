@@ -6,11 +6,20 @@
 
 ## TL;DR
 
-- A team-grade Claude Code distribution. Configure via `sdlc.yml` instead of forking prompts.
-- Plan → strategy → code → review, with hard gates between each. The implementer agent **refuses** to start without strategy approval.
-- `/orchestrate` runs whole epics in parallel — queue approved issues, wake up to validated PRs. Each issue runs through its own gates independently.
-- Swap task management tools (Linear ↔ GitHub Issues ↔ Jira) by changing one config value. Same agents, same commands.
-- Tune artifact shapes (specs, plans, session logs, anything you author) through dialog with the canvas-author agent. Schema-validated, versioned, no prompt edits.
+A team-grade Claude Code distribution. Configure via [`sdlc.yml`](.claude/sdlc.yml) instead of forking prompts.
+
+<h3 align="center">
+  <a href=".claude/agents/planner.md">Plan</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/specifier.md">Strategy</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/implementer.md">Code</a>&nbsp;&nbsp;→&nbsp;&nbsp;
+  <a href=".claude/agents/validator.md">Review</a>
+</h3>
+
+<p align="center"><em>Hard gates between each. The implementer agent <b>refuses</b> to start without strategy approval.</em></p>
+
+- **`/orchestrate` runs whole epics in parallel** — queue approved issues, wake up to validated PRs. Each issue runs through its own gates independently.
+- **Swap task management tools** (Linear ↔ GitHub Issues ↔ Jira) by changing one config value. Same agents, same commands.
+- **Tune artifact shapes** (specs, plans, session logs, anything you author) through dialog with the [canvas-author agent](.claude/agents/canvas-author.md). Schema-validated, versioned, no prompt edits.
 
 ## Quickstart
 
