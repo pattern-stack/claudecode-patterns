@@ -129,7 +129,7 @@ Per-issue overrides take precedence: if `issue.labels` already includes `gate:au
 The `gate:*` label is added alongside `needs:*` and any other extras during the `create-issue` call. On update of an existing issue (re-sync), do not strip `gate:*` if it was set manually by the user — only set it if it's missing AND `plan.auto_approve` resolves cleanly.
 
 If the `gate:auto` / `gate:human` labels aren't provisioned on the tracker, halt with one line:
-> Run `bash plugin/scripts/bootstrap-tracker.sh` to provision the SDLC label palette.
+> Run `bash plugin/primitives/task-management/bootstrap.sh` to provision the SDLC label palette.
 
 ### Step 6: Wire sub-issues (epic → leaves)
 

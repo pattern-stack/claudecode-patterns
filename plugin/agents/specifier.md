@@ -42,7 +42,7 @@ Resolution order, most-specific wins:
 2. Issue carries `gate:human` label → **strict mode** (always wins; explicit human override of plan default).
 3. No `gate:*` label → fall through to `sdlc.yml.gate1_default` (`strict` or `auto`; ships as `strict`).
 
-If neither label nor sdlc.yml has a value resolvable to `strict`/`auto`, halt with a clear error pointing the human to set `gate1_default` in `sdlc.yml` or run `bash plugin/scripts/bootstrap-tracker.sh` to provision the `gate:*` label palette.
+If neither label nor sdlc.yml has a value resolvable to `strict`/`auto`, halt with a clear error pointing the human to set `gate1_default` in `sdlc.yml` or run `bash plugin/primitives/task-management/bootstrap.sh` to provision the `gate:*` label palette.
 
 Mode-dependent behavior:
 
@@ -64,7 +64,7 @@ Reference:
 
 ## Tracker context (auto-discovered)
 
-The `SessionStart` hook `discover-tracker.sh` runs once per session, dispatches by `task_management:` (currently github → Project v2 field IDs; linear is a stub; jira not implemented), and writes the resulting context to `.claude/.session/tracker-context.md`. The block below `@`-mentions that file.
+The `SessionStart` hook `primitives/task-management/discover.sh` runs once per session, dispatches by `task_management:` (currently github → Project v2 field IDs; linear is a stub; jira not implemented), and writes the resulting context to `.claude/.session/tracker-context.md`. The block below `@`-mentions that file.
 
 When the block is empty (no recognized vendor, missing config, or discovery failure), there's no auto-context — degrade to label-only when setting Status (the `state:*` label still goes on the issue; skip vendor-specific Status-field mutation).
 
@@ -160,7 +160,7 @@ Per task_management adapter:
 - GitHub: use `gh issue edit <key> --add-label <label>`.
 
 If the required state label is not yet provisioned, halt with one line:
-> Run `bash plugin/scripts/bootstrap-tracker.sh` to provision the SDLC label palette.
+> Run `bash plugin/primitives/task-management/bootstrap.sh` to provision the SDLC label palette.
 
 ### Halt or complete (mode-dependent)
 

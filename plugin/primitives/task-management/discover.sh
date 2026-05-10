@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# discover-tracker.sh — discover task-management adapter context and emit a
-# markdown block agents `@`-mention from `.claude/.session/tracker-context.md`.
+# discover.sh — discover task-management adapter context and emit a markdown
+# block agents `@`-mention from `.claude/.session/tracker-context.md`.
+# Colocated with the task-management primitive (port + adapter docs).
 #
 # Pluggable dispatch by `task_management:` in `.claude/sdlc.yml`:
 #   github → GitHub Project v2 field IDs (project ID, Status field, option IDs
