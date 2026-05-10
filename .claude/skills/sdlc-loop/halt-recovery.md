@@ -31,10 +31,10 @@ Every halt message any phase agent emits, what it means, and the recovery move.
 **Recovery:** `/design <KEY>`.
 
 ### `spec is incomplete — <section> is empty`
-**Means:** specifier ran but a required section (per `.claude/artifacts/spec/instructions.yaml` `sections.required`) is empty or still contains a `{{token}}` placeholder.
+**Means:** specifier ran but a required section (per `.claude/canvases/spec/instructions.yaml` `sections.required`) is empty or still contains a `{{token}}` placeholder.
 **Recovery:** re-run `/design <KEY>` to overwrite. If repeated, the issue is in one of three places — check in order:
-1. `.claude/artifacts/spec/template.md` — placeholder token may not have been rendered.
-2. `.claude/artifacts/spec/instructions.yaml` — `sections.required` may list a section the template doesn't have.
+1. `.claude/canvases/spec/template.md` — placeholder token may not have been rendered.
+2. `.claude/canvases/spec/instructions.yaml` — `sections.required` may list a section the template doesn't have.
 3. Specifier prompt — section-render logic may be wrong.
 
 ### `quality gate failed: <gate>`

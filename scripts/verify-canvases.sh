@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Verify each .claude/artifacts/<name>/instructions.yaml validates against its
+# Verify each .claude/canvases/<name>/instructions.yaml validates against its
 # sibling instructions.schema.json (JSON Schema, draft-07 / 2020-12).
 #
-# Usage:  bash scripts/verify-artifacts.sh
+# Usage:  bash scripts/verify-canvases.sh
 # Exit:   0 = all OK, 1 = validation failure(s), 2 = config / tooling error
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ARTIFACTS_DIR="$ROOT/.claude/artifacts"
+CANVASES_DIR="$ROOT/.claude/canvases"
 
-if [[ ! -d "$ARTIFACTS_DIR" ]]; then
-  echo "ℹ️  No artifacts directory at $ARTIFACTS_DIR — nothing to verify"
+if [[ ! -d "$CANVASES_DIR" ]]; then
+  echo "ℹ️  No canvases directory at $CANVASES_DIR — nothing to verify"
   echo "Checked: 0  Skipped: 0  Errors: 0"
   exit 0
 fi
@@ -56,7 +56,7 @@ skipped=0
 
 # Iterate every artifact directory that has an instructions.yaml.
 shopt -s nullglob
-for inst in "$ARTIFACTS_DIR"/*/instructions.yaml; do
+for inst in "$CANVASES_DIR"/*/instructions.yaml; do
   dir="$(dirname "$inst")"
   name="$(basename "$dir")"
   schema="$dir/instructions.schema.json"

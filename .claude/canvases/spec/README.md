@@ -46,11 +46,11 @@ Per `.claude/sdlc.yml` `artifact_paths`:
 
 Edit `instructions.yaml` to tune behavior (verbosity, diagram tool, citation strictness, comment shape). Edit `template.md` to change structure (section names, ordering, frontmatter shape).
 
-When this project ships as a plugin, plugin defaults are overridden by project-local `.claude/artifacts/spec/` files via Claude Code's standard plugin overlay.
+When this project ships as a plugin, plugin defaults are overridden by project-local `.claude/canvases/spec/` files via Claude Code's standard plugin overlay.
 
 ## Validation
 
-Run `bash scripts/verify-artifacts.sh` (when implemented) — validates each `instructions.yaml` against its schema. Pre-commit / CI hook candidate.
+Run `bash scripts/verify-canvases.sh` (when implemented) — validates each `instructions.yaml` against its schema. Pre-commit / CI hook candidate.
 
 ## Versioning
 
