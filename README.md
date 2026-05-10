@@ -57,18 +57,27 @@ This is what makes onboarding a team trivial — clone the repo, adjust two valu
 
 > Today the install is `cp -r .claude/` into your project. A native Claude Code plugin distribution is in flight; when it lands, the same behavior moves to a single-line install with `extends:` overrides for project-specific tweaks.
 
-### 3. Build your own templates without writing prompts
+### 3. Versioned, tunable contracts for every artifact your AI produces
 
-The shape of every artifact your AI produces — specs, plans, session logs, validator reports — is governed by a **canvas**: a template + tunable knobs that you can adjust through dialog, not by editing agent code.
+Most tooling treats AI output as the side effect of a prompt. Want a different shape? Edit the prompt. Want a new kind of artifact? Write another prompt. Six PRs later, your team's "agreed format" has drifted into six variants and nobody knows whose is canonical.
+
+The canvas system inverts that. Every artifact your AI produces — [specs](.claude/canvases/spec/README.md), [plans](.claude/canvases/plan/README.md), [session logs](.claude/canvases/session/README.md), the [per-turn envelope every phase agent emits](.claude/canvases/envelope/README.md), the next thing you haven't built yet — is governed by a **canvas**: a typed contract with tunable knobs, schema-validated, versioned, and read by every consumer downstream (agents, validators, analytics, future render targets).
 
 ```bash
-just canvas-dev      # walks you through the developer-voice authoring flow
-just canvas-seller   # outcome-framed flow, hides system mechanics
+just canvas-dev      # knob-level dialog with the canvas-author agent (developer voice)
+just canvas-seller   # outcome-framed dialog — hides system mechanics, works from samples
 ```
 
-Want your specs shorter? Tune one knob. Want validator reports posted differently to GitHub? Tune another. Want a new canvas for daily standups, post-mortems, or PR summaries? The `canvas-author` agent reverse-engineers a canvas from an example you paste in.
+What this unlocks:
 
-This is the difference between "AI tooling that has prompts" and "AI tooling that has a configurable artifact contract." The second one survives team disagreements about format.
+- **Tune via knobs, not prompts.** Want shorter specs? Adjust verbosity. Want validator reports on a different surface? Tune distribution rules. The producing agent reads the canvas at runtime — no prompt edit required, no fork.
+- **Reverse-engineer from examples.** Hand the [`canvas-author` agent](.claude/agents/canvas-author.md) a daily brief, post-mortem, or PR summary you like. It extracts the structural shape, infers knob values with confidence ratings, and emits a reusable canvas you can tune from there. The "what does good look like" conversation becomes a contract.
+- **Two voices, one agent.** [Developer voice](.claude/output-styles/canvas-flow-developer.md) speaks knobs and schemas. [Seller voice](.claude/output-styles/canvas-flow-seller.md) speaks outcomes and samples — hides system mechanics entirely, lets non-technical users iterate via "shorter, drop the diagrams, add a TLDR." Same agent, different surface, one flag to swap.
+- **Progressive disclosure as a discipline.** Both voices default to terse headlines and ratchet up detail only when the user pulls. Replaces the "wall of options" that kills configurability for anyone who doesn't already know the system.
+- **Schema-enforced.** Each canvas validates against a JSON Schema in CI. No silent drift between what the agent produces and what downstream consumers expect.
+- **Open-ended.** Daily standups, RFC drafts, post-call summaries, weekly reports, runbooks — same system. The four-file canvas pattern (template + instructions + schema + README) carries any artifact type your team produces.
+
+This is structured artifact engineering, not prompt engineering. The difference shows up the third time you change the format — when "edit fifteen prompts and hope" becomes "tune two knobs and ship."
 
 ---
 
