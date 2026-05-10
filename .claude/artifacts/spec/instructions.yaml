@@ -1,0 +1,58 @@
+# Spec artifact — tunable knobs for the specifier producer and downstream consumers.
+# Schema: instructions.schema.json (validate with ajv-cli or any JSON Schema validator).
+# Section identifiers below MUST match the H2 headings in template.md verbatim.
+
+$schema: ./instructions.schema.json
+artifact: spec
+version: 1
+
+sections:
+  # Order matches template.md headings. Renaming a section means updating both files.
+  order:
+    - "Goal"
+    - "Approach"
+    - "File-level plan"
+    - "Interfaces"
+    - "Tests"
+    - "Out of scope"
+    - "Open questions"
+
+  # Required sections — implementer halts if any is empty or still contains a {{token}}.
+  required:
+    - "Goal"
+    - "Approach"
+    - "File-level plan"
+    - "Tests"
+
+  # Verbosity hints — producer adapts content depth per section.
+  # Allowed values: short | medium | long | code-only | bulleted
+  verbosity:
+    "Goal": short
+    "Approach": medium
+    "File-level plan": medium
+    "Interfaces": code-only
+    "Tests": medium
+    "Out of scope": short
+    "Open questions": bulleted
+
+# Diagrams — when to include them and which tool to render.
+diagrams:
+  tool: mermaid              # mermaid | excalidraw | none
+  in_sections: ["Approach"]  # sections eligible for diagrams; producer decides per case
+
+# Citations — file-path / line-number rigor for claims about existing code.
+citations:
+  file_paths: required       # required | optional | none
+  line_numbers: true
+
+# Code-block defaults inside the Interfaces section.
+code_blocks:
+  default_language: typescript
+
+# Tracker comment — condensed view posted to the issue tracker by the specifier.
+# Embedded in the spec artifact for v1; may split into its own artifact later.
+tracker_comment:
+  max_chars: 2000
+  include_sections: ["Goal", "Approach", "Tests", "Open questions"]
+  files_list_inline: true    # if true, include a flat "create / modify" block
+  signature: "— specifier agent"

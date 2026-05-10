@@ -1,0 +1,66 @@
+# Envelope artifact — tunable knobs for every phase agent that emits an envelope.
+# Schema: instructions.schema.json
+# Producers: every phase agent (understander, planner, specifier, implementer, validator, coordinator)
+# Consumers: CLI (always renders inline); future render skill (slack, tracker, pr, log surfaces)
+
+$schema: ./instructions.schema.json
+artifact: envelope
+version: 1
+
+# Required fields per phase. Producer halts if any required field is unset (null OR token-still-present).
+required_per_phase:
+  understander: [phase, status, artifact, headline, body, next]
+  planner:      [phase, status, artifact, gate_action, headline, body, next]
+  specifier:    [phase, issue, status, artifact, gate_action, headline, body]
+  implementer:  [phase, issue, status, artifact, gate_action, headline, body, next]
+  validator:    [phase, issue, status, artifact, headline, body, next]
+  coordinator:  [phase, issue, status, headline, body]
+
+# Default attention surfaces per phase. Each agent can override per-run as needed.
+default_attention:
+  understander: [chat, log]
+  planner:      [chat, log]
+  specifier:    [chat, tracker, log]
+  implementer:  [chat, log]
+  validator:    [chat, pr, log]
+  coordinator:  [chat, log]
+
+# Length budgets (characters).
+length:
+  headline_max: 120
+  body_max: 5000
+  next_reason_max: 200
+
+# Emission policy.
+emission:
+  always_emit: true             # emit envelope at end of every phase run (final response only, not mid-iteration)
+  format: yaml                  # yaml | json
+  fence: "```yaml ... ```"      # how to wrap in chat output
+  position: end_of_response     # only emission point per response — last block
+
+# Surface-specific render rules (consumed by future render skill).
+# Producer agents emit the envelope as-is; render skill projects per-surface.
+surfaces:
+  chat:
+    show: [headline, body, next]
+    truncate_body: 500          # chars before "(see envelope for full body)"
+  tracker:
+    show: [body, gate_action]
+    use_canvas: tracker-comment # forward-ref; falls back to inline body until canvas exists
+  slack:
+    show: [headline, body, next]
+    mentions_from: attention.dm
+    truncate_body: 800
+  log:
+    show: ["*"]
+    format: jsonl               # one envelope per line, full schema
+  pr:
+    show: [body, gate_action]
+    use_canvas: validator-report # forward-ref
+
+# Conformance check — producer agents validate against this before emitting.
+# (Implementer can shortcut: if all required_per_phase[<phase>] fields are set and not {{token}}, pass.)
+conformance:
+  reject_unset_required: true
+  reject_token_placeholders: true   # body containing literal {{body}} is a fail
+  reject_oversized: true            # length > length.<field>_max is a fail
