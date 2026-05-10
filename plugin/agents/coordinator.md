@@ -124,7 +124,7 @@ If BLOCKED: include why (missing approval, missing spec, dep not met).
 
 ### Self-blocking authority (load-bearing)
 
-**The coordinator is the only SDLC agent that self-applies the `Blocked` Status.** When the spec is missing, an upstream dependency hasn't merged, or Gate 1 has been awaiting human approval beyond the configured timeout, I set Status=Blocked on the issue and drop it from the orchestrator's queue.
+**The coordinator is the only SDLC agent that self-applies the `Blocked` Status.** When the spec is missing, an upstream dependency hasn't merged, or Gate-1 polling exceeds `sdlc.yml.coordinator_specifier_timeout_seconds` (null = wait forever — the default — so this branch is opt-in for unattended runs), I set Status=Blocked on the issue and drop it from the orchestrator's queue.
 
 Implementer and validator do **not** self-block. They halt with clear errors but leave Status unchanged — humans disposition. This keeps Status moves predictable: only `/sync-issues`, the human, the implementer (In Progress / In Review on branch + PR), and the coordinator (Blocked) move issues across columns.
 

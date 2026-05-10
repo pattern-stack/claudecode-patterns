@@ -104,6 +104,31 @@ Before any code change:
 
 The gate is idempotent — any phase can be re-run.
 
+### Soft entry
+
+Phase agents do not gate on a single hard check (e.g. `status.name == "Ready"`). They read **status + labels + spec-on-disk** together and halt with one short reason if the issue isn't actionable. Examples of "not actionable":
+
+- The issue carries `state:blocked`.
+- A required upstream issue (per `depends_on:` in `plan.yaml`) is unmerged.
+- The expected `state:strategy-approved` label is missing AND no spec exists at the canvas-resolved path (specifier hasn't run yet).
+
+The canonical example is `specifier`'s Gate-mode resolution: it reads `gate:*` labels and falls through to `sdlc.yml.gate1_default` rather than gating on any single label. The implementer's `state:strategy-approved` check (above) is a hard gate by design — soft entry applies to *additional* readiness checks layered on top, not to the load-bearing approval gate itself.
+
+Adapters do **not** need to implement anything for this convention — it's prose-level guidance for agent authors.
+
+### Cap-hit halts
+
+When a phase agent reaches a configured iteration cap (e.g. `sdlc.yml.validator_max_iterations`, `sdlc.yml.spec_critic_max_iterations`), it halts with:
+
+- envelope `status: halted` (NOT `failed`)
+- envelope `next.command: null`
+- envelope `next.reason: "<cap-name> reached after N iterations; human triage"`
+- full context preserved in envelope `body` so the human can decide: retry / re-spec / abandon
+
+Cap-hit is **not** a failure mode. The agent did its job within the bounds the operator configured. No auto-retry; no auto-flagged-PR; no auto-block of the Status field. Implementer-halt and validator-halt (vs failure) follow the same shape — coordinator never re-spawns past a halt without human direction.
+
+This convention is consumed by the coordinator's impl⇄val loop, the spec-critic agent (fast-follow), and any future capped agent.
+
 ## How agents consume this
 
 1. The agent prompt references operations from the table above (e.g. "use `read-issue` to fetch the issue context").
