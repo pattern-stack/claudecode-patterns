@@ -24,34 +24,47 @@ A team-grade Claude Code distribution. Configure via [`sdlc.yml`](.claude/sdlc.y
 ## Quickstart
 
 ```bash
-# 1. Clone and copy the .claude/ layer to your project
-git clone https://github.com/pattern-stack/claudecode-patterns
-cp -r claudecode-patterns/.claude  your-project/
-cp    claudecode-patterns/Justfile your-project/
-cp -r claudecode-patterns/scripts  your-project/
+# 1. Install the plugin (Claude Code marketplace)
+/plugin marketplace add pattern-stack/claudecode-patterns
+/plugin install sdlc
 
-# 2. Adjust the dial (one file)
-$EDITOR your-project/.claude/sdlc.yml
-#   language: typescript
-#   quality_profile: strict
-#   task_management: linear     ← or github
-#   team_key: ACME              ← your team's prefix in the task management tool
-
-# 3. Verify the config
+# 2. Scaffold this project's config (interactive — 4 questions)
 cd your-project
-just verify                     # invariants pass — config is valid
+/sdlc:setup
+#   language: typescript | python | go
+#   quality_profile: strict | fast
+#   task_management: github | linear | jira
+#   team_key: ACME             ← your tracker prefix
+# (also writes .claude/sdlc.justfile symlink + wires your Justfile via `mod sdlc`)
+
+# 3. (Optional, GitHub Projects users) Add `project_number: <n>` to .claude/sdlc.yml
+#    The discover-tracker SessionStart hook auto-loads Status field IDs every
+#    session. No extra command needed; specifier auto-moves Status when set.
 
 # 4. Run the loop
-/plan "Add Redis caching to the user service"
+/sdlc:plan "Add Redis caching to the user service"
 # (iterate, approve)
-/sync-issues
-/design ACME-101                # review in your task management tool, label state:strategy-approved
-/develop ACME-101               # or /orchestrate state:strategy-approved
+/sdlc:sync-issues .ai-docs/stacks/redis-caching/plan.yaml
+/sdlc:design ACME-101            # strict: review on tracker, apply state:strategy-approved
+                                 # auto:   specifier auto-approves (gate:auto label or plan auto_approve: true)
+/sdlc:develop ACME-101           # or /sdlc:orchestrate state:strategy-approved
 ```
 
-That's the whole flow. The hard part is the first 10 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
+That's the whole flow. **All commands are namespaced as `/sdlc:<cmd>`** to avoid collision with Claude Code built-ins (notably `/init`, which generates CLAUDE.md and is unrelated to `/sdlc:setup`).
 
-A native Claude Code plugin distribution is in flight; when it lands, the install collapses to a single-line command with `extends:` overrides for project-specific tweaks.
+The hard part is the first 5 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
+
+### Gate-1 mode (strict vs auto / "trust mode")
+
+By default, the specifier posts strategies and waits for human approval (strict mode). For mechanical work — RFC translation, vendor adapter wirings, YAML definitions — flip individual stacks or issues to **auto mode** ("trust mode") and the specifier self-approves. Three override layers, most-specific wins:
+
+```
+sdlc.yml.gate1_default: strict           ← global floor (default; safest)
+  └─ plan.yaml.auto_approve: true        ← stack-level (planning time)
+      └─ issue gate:auto / gate:human    ← per-issue (always wins)
+```
+
+Implementer's hard refusal-without-`state:strategy-approved` is preserved structurally; auto mode just satisfies the gate via the agent.
 
 ---
 
@@ -182,25 +195,32 @@ Two-tone observability: machine-indexable for analytics, human-skimmable for for
 
 ---
 
-## What's in `.claude/`
+## What's in `plugin/` (the installable bundle)
 
 ```
-.claude/
-├── sdlc.yml                      # the dial — primitives + topology + verifier config
+plugin/
+├── .claude-plugin/plugin.json    # manifest (components + 30 lifecycle hooks)
+├── sdlc.example.yml              # rendered by /sdlc:setup into your project's .claude/sdlc.yml
+├── sdlc.justfile                 # recipes (verify, canvases, canvas-dev, etc.) imported via `mod sdlc`
 ├── primitives/                   # vendor-specific implementations of each domain
 │   ├── language/                 #   typescript, python, ...
 │   ├── quality/                  #   strict, fast, ...
 │   ├── commit/                   #   conventional, ...
-│   └── task-management/          #   linear, github, ...
+│   ├── task-management/          #   linear, github, ...
+│   └── path-resolution.md        # project-first / plugin-fallback resolution rule
 ├── agents/                       # 6 SDLC phase agents + canvas-author + drift-check
-├── commands/                     # /plan /design /develop /orchestrate /sync-issues /canvas
+├── commands/                     # /sdlc:plan, /sdlc:design, /sdlc:develop, /sdlc:orchestrate,
+│                                 # /sdlc:sync-issues, /sdlc:canvas, /sdlc:setup
 ├── skills/                       # workflow knowledge (when to use what; how to recover)
 ├── output-styles/                # canvas-flow voices (developer, seller)
 ├── canvases/                     # spec, envelope, plan, session — artifact contracts
-└── hooks/                        # lifecycle event fan-out for observability
+├── hooks/                        # lifecycle event fan-out + check-config nag
+└── scripts/                      # bootstrap-tracker, verify-canvases, verify-tool-groups, list-canvases
 ```
 
 Each file is small. Each file is replaceable. Nothing is implicit.
+
+Your project's `.claude/sdlc.yml` is the only file you author by hand (and `/sdlc:setup` writes it for you). Override individual canvases or primitives by dropping a file at `.claude/canvases/<name>/` or `.claude/primitives/<cat>/<name>.md` — the agent-prompt resolution rule (project-first, plugin-fallback) is documented in [`primitives/path-resolution.md`](plugin/primitives/path-resolution.md).
 
 ---
 
@@ -221,8 +241,34 @@ A near-total architectural rewrite. The skeleton — decompose, spec, implement,
 | **Output styles** | (none) | Dual-voice canvas-flow (developer, seller) |
 | **Verifiers** | (none) | `verify-canvases.sh`, `verify-tool-groups.sh` |
 | **CI** | (none) | GitHub Actions — invariants on every PR |
+| **Install** | `cp -r .claude/` per project | `/plugin marketplace add` + `/plugin install sdlc` + `/sdlc:setup` |
+| **Gate 1 mode** | always-strict (human approves every spec) | strict / auto ("trust mode") with override layers (sdlc.yml → plan.yaml → issue label) |
 
 v1's `BOOTSTRAP-PLAN.md` is preserved at [`.claude/docs/archive/v1-bootstrap-plan.md`](.claude/docs/archive/v1-bootstrap-plan.md) for historical reference.
+
+## Plugin development
+
+This repo IS the plugin source — `plugin/` is the install target, dogfooded via symlinks.
+
+```
+repo/
+├── plugin/                    ← installable (marketplace source.path: "plugin")
+│   ├── .claude-plugin/plugin.json
+│   ├── agents/  canvases/  commands/  skills/  primitives/
+│   ├── hooks/  output-styles/  scripts/
+│   ├── sdlc.justfile          ← recipes (just sdlc::verify, etc.)
+│   └── sdlc.example.yml       ← rendered by /sdlc:setup
+├── marketplace.json           ← so `/plugin marketplace add` works
+├── .claude/                   ← THIS REPO's dogfood — symlinks to plugin/<dir>
+│   ├── sdlc.yml               ← dogfood project config
+│   ├── sdlc.justfile          → ../plugin/sdlc.justfile
+│   ├── agents → ../plugin/agents          (symlink)
+│   ├── canvases → ../plugin/canvases      (symlink)
+│   └── ...
+└── Justfile                   ← `mod sdlc '.claude/sdlc.justfile'`
+```
+
+Live edits to `plugin/agents/<name>.md` reflect immediately when running this repo's own loop, via the symlinks. To test fresh-install behavior, the CI drift-test job spins up a tmpdir, simulates a plugin install, and runs `just sdlc::verify`.
 
 ---
 

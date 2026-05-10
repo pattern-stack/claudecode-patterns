@@ -23,10 +23,11 @@ commit_style: conventional    # conventional | freeform
 task_management: github       # linear | github | jira
 
 # Adapter-specific config:
-#   github → set `repo:` (required) and optionally `project_number:` (run /sdlc:link-project to discover)
+#   github → set `repo:` (required) and optionally `project_number:` (the
+#            discover-tracker SessionStart hook auto-loads field IDs)
 #   linear → set `team_key:` (required)
 repo: <owner>/<repo>          # GitHub repo for /sync-issues (required when task_management: github)
-# project_number: <n>         # OPTIONAL: GitHub Project v2 number; run /sdlc:link-project <url> to discover field IDs
+# project_number: <n>         # OPTIONAL: GitHub Project v2 number; auto-discovered at SessionStart by plugin/scripts/discover-tracker.sh
 team_key: ABC                 # tracker team key (Linear; harmless under github)
 
 # === Gate-1 mode ===
