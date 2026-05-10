@@ -32,9 +32,9 @@ task_management: linear   # or github, or jira
 
 The agents don't change. The commands don't change. The same `/plan`, `/design`, `/develop`, `/orchestrate` workflow works against whichever task management tool you use today — or the one you migrate to next quarter.
 
-This works because every domain capability is modeled as a **primitive**: a small file declaring how that thing works for one specific vendor. Linear, GitHub Issues, Jira are interchangeable behind the same domain interface. When you need a task management tool we don't ship, drop a new file in `primitives/task-management/` — that's it.
+This works because every domain capability is modeled as a **primitive**: a small file declaring how one specific vendor maps to the same domain shape the agents already expect. Linear, GitHub Issues, Jira sit behind the same interface — `find issue by key`, `post comment`, `apply label`, `list children`. When you need a task management tool we don't ship, you author one new primitive: a single file that maps that vendor's API to the domain shape. The agents and commands don't change. The work is bounded — adapter logic lives in the primitive; nothing else needs to know about it.
 
-The same pattern extends to language conventions, quality profiles, commit styles. Want strict TypeScript with typecheck-on-save in one project and forgiving Python in another? Two values in `sdlc.yml`. Same agents work both.
+The same pattern extends to [language conventions](.claude/primitives/language/typescript.md), [quality profiles](.claude/primitives/quality/strict.md), [commit styles](.claude/primitives/commit/conventional.md), and [task management adapters](.claude/primitives/task-management/linear.md). Want strict TypeScript with typecheck-on-save in one project and forgiving Python in another? Two values in `sdlc.yml`. Same agents work both.
 
 ### 2. Customize without touching agents
 
