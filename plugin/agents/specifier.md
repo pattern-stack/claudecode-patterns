@@ -8,7 +8,7 @@ permissionMode: default
 status: active
 topology: [A, B]
 consumes: [issue, research]
-produces: [spec, comment, label]
+produces: [spec, comment, label, branch, commit]
 gates:
   enforces: []
   sets: [awaiting-strategy-review, strategy-approved]  # strict mode sets awaiting-strategy-review; auto mode sets strategy-approved
@@ -112,6 +112,67 @@ Write to the stack-co-located path `.ai-docs/stacks/<stack-slug>/specs/<issue-ke
 
 If a spec already exists at the chosen path, overwrite (the previous version lives in git history).
 
+### 4. Commit on impl branch
+
+This step runs **after** the spec file is written to the working tree (Step 3) and **before** the tracker comment is posted. It ensures the spec lands on the impl branch with a stable commit SHA, so the tracker link is an always-resolving permalink.
+
+**4a. Derive the branch name** — same convention the implementer uses (per `plugin/primitives/task-management/github.md`):
+
+```
+<user>/<issue-key-lowercase>-<slug>
+```
+
+- `<user>` = `git config user.name` output, lowercased, with spaces replaced by hyphens.
+- `<issue-key-lowercase>` = the issue key lowercased (e.g. `psc-67`).
+- `<slug>` = 3–4 word kebab-case noun phrase derived from the issue title.
+
+Example: user `"Doug"`, issue `PSC-67 "/design: commit spec on impl branch"` → `dug/psc-67-design-commit-permalink`.
+
+**4b. Checkout or create the branch**:
+
+```bash
+git fetch origin <branch> 2>/dev/null || true
+if git rev-parse --verify "origin/<branch>" >/dev/null 2>&1; then
+  git checkout <branch>      # branch already exists (re-run case or implementer already pushed)
+else
+  git checkout main
+  git pull --ff-only
+  git checkout -b <branch>
+fi
+```
+
+**Guard**: before checkout, verify `git branch --show-current` resolves to the feature branch name, not `main`. If after checkout the current branch is still `main` (shouldn't happen but defensive), abort — do **not** commit to `main`.
+
+**4c. Stage and commit the spec**:
+
+```bash
+# Stack-co-located path (.ai-docs/stacks/<slug>/specs/) is tracked — use plain git add.
+# Legacy path (.ai-docs/specs/) is gitignored — must force-add.
+git add --force <resolved spec path>
+
+git commit -m "docs(#<n>): add spec for <short title>
+
+Spec written by specifier; awaiting human Gate-1 review."
+```
+
+Use `git add --force` unconditionally — it is a no-op for already-tracked paths and is required for legacy paths (`.ai-docs/specs/<key>.md`) that are in `.gitignore`. Use the commit scope format from `plugin/primitives/commit/conventional.md`: `docs(#<issue-number>): ...`. Do not skip pre-commit hooks — if a hook fails, surface the error and halt (fail loud, per hook policy).
+
+**4d. Push the branch**:
+
+```bash
+git push -u origin <branch>
+```
+
+If the branch already existed on `origin` (re-run scenario where the implementer has already added commits on top), append a new `docs(#<n>): update spec` commit rather than amending or force-pushing. Never force-push — rewriting history that an implementer may have built on is hostile.
+
+**4e. Capture the commit SHA**:
+
+```bash
+SPEC_SHA=$(git rev-parse HEAD)
+```
+
+Retain `$SPEC_SHA` for URL construction in the next step.
+
 ## Output Format
 
 ### Durable spec — driven by the **spec artifact**
@@ -148,10 +209,11 @@ Condensed view of the spec, posted to the issue's comment thread on the configur
 
 Read those values from `instructions.yaml`; do not hardcode the comment shape in this prompt.
 
-**Links to repo files must be absolute URLs**, not relative paths. Relative links like `../tree/main/<path>` or `../blob/main/<path>` 404 when the comment is rendered outside the issue page (project boards, dashboards, embedded views) because the relative base changes. Construct absolute URLs as:
+**Links to the spec file must be commit-SHA permalinks**, not branch-relative URLs. A `blob/main/<path>` URL 404s until the spec branch is merged — which may never happen on branch-protected repos where the spec commit lives on a feature branch. Use the SHA captured in Step 4e:
 
-- GitHub: `https://github.com/<owner>/<repo>/blob/<default_branch>/<path>` — read `<owner>/<repo>` from `sdlc.yml.repo`; default branch is `main` unless the repo declares otherwise.
-- Linear / other trackers: same principle — emit a full URL that resolves regardless of viewer context.
+- GitHub: `https://github.com/<owner>/<repo>/blob/<SPEC_SHA>/<path>` — `<owner>/<repo>` from `sdlc.yml.repo`; `<SPEC_SHA>` from `git rev-parse HEAD` after the spec commit.
+- SHA permalinks resolve immediately (the object exists as soon as it's pushed), survive branch deletion, and survive the eventual merge to `main` — they are permanent.
+- Linear / other trackers: same principle — the link must resolve from the moment the comment is posted, regardless of the spec's branch or merge status.
 
 ### Set the gate label (mode-dependent)
 
@@ -195,6 +257,9 @@ For this phase:
 - `phase: specifier`
 - Required: `[phase, issue, status, artifact, gate_action, headline, body]`
 - `artifact.type: spec`, `artifact.path: <resolved per artifact_paths.stack_spec or legacy_spec>`
+- `artifact.branch: <impl branch pushed in Step 4>` — specifier-phase addition; implementer picks this up
+- `artifact.commitSha: <40-char SHA from git rev-parse HEAD after spec commit>` — for permalink reconstruction
+- `artifact.permalinkUrl: https://github.com/<owner>/<repo>/blob/<commitSha>/<path>` — fully resolved, matches the tracker comment link
 - `gate_action: {enforces: [], sets: [<awaiting-strategy-review | strategy-approved>]}` — strict sets the former, auto sets the latter.
 - `attention.surfaces: [chat, tracker, log]` (default — tracker because the human's review surface is the tracker comment)
 - `next.command: null` (waits for human Gate 1 approval)
@@ -210,13 +275,17 @@ artifact:
   path: .ai-docs/stacks/pm-toolbox-bridge/specs/ap-12.md
   type: spec
   size: 4203
+  branch: dug/abc-101-pm-domain
+  commitSha: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+  permalinkUrl: https://github.com/pattern-stack/claudecode-patterns/blob/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2/.ai-docs/stacks/pm-toolbox-bridge/specs/ap-12.md
 gate_action:
   enforces: []
   sets: [awaiting-strategy-review]
-headline: "Strategy posted for ABC-101 — awaiting human review"
+headline: "Strategy posted for ABC-101 — branch pushed, permalink live"
 body: |
   Files: create 4 (`packages/domain/pm/...`), modify 2.
   Approach: extract LinearProvider into ports/task-management; adapter stays in adapters/linear.
+  Spec committed on dug/abc-101-pm-domain (SHA: a1b2c3d); permalink resolves immediately.
   Open questions: should we batch comment writes? (see Open questions section in spec)
 attention:
   surfaces: [chat, tracker, log]
@@ -237,6 +306,8 @@ Validate per `instructions.yaml.required_per_phase.specifier` and length budgets
 - Do NOT write code. The spec is prose + signatures + paths only.
 - Do NOT skip the tracker comment — the comment is the human's review surface.
 - Do NOT use relative repo URLs (`../tree/main/...`, `../blob/main/...`) in the tracker comment. Always emit absolute `https://...` URLs so the comment resolves correctly from project boards and other non-issue views. See **Tracker comment** above.
+- Do NOT use `blob/main/<path>` or `blob/<default-branch>/<path>` URLs for the spec link in newly-written tracker comments. Always use `blob/<full-sha>/<path>` (SHA captured in Step 4e). Branch-relative URLs 404 until the branch merges — SHA permalinks are permanent from the moment of push.
+- Do NOT commit to `main`. After the Step 4b checkout, verify `git branch --show-current` is the feature branch. Abort if it resolves to `main`.
 - Do NOT skip the `state:awaiting-strategy-review` label — without it, `implementer` cannot tell when human review is pending vs not started.
 - Do NOT remove or rename existing labels on the issue. Add only.
 - Do NOT proceed past the gate. The human approval step is non-negotiable.

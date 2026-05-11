@@ -14,6 +14,10 @@ artifact:
   path: {{artifact_path}}                 # relative path on disk OR url (PR / dashboard)
   type: {{artifact_type}}                 # research | plan | spec | branch+pr | report | status
   size: {{artifact_size}}                 # chars or LOC; null if not applicable
+  # specifier-phase only (omit or null for other phases):
+  branch: {{artifact_branch}}             # impl branch pushed by specifier (e.g. dug/psc-67-design-permalink)
+  commitSha: {{artifact_commit_sha}}      # 40-char SHA from git rev-parse HEAD after spec commit
+  permalinkUrl: {{artifact_permalink}}    # https://github.com/<owner>/<repo>/blob/<sha>/<path>
 gate_action:
   enforces: {{gate_enforces}}             # gate labels this halts on (list)
   sets: {{gate_sets}}                     # gate labels this sets (list)
