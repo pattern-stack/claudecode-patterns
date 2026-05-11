@@ -248,7 +248,7 @@ v1's `BOOTSTRAP-PLAN.md` is preserved at [`.claude/docs/archive/v1-bootstrap-pla
 
 ## Plugin development
 
-This repo IS the plugin source — `plugin/` is the install target, dogfooded via symlinks.
+This repo IS the plugin source — `plugin/` is the install target, dogfooded via Claude Code's `--plugin-dir` flag (no symlinks, no install step).
 
 ```
 repo/
@@ -259,16 +259,23 @@ repo/
 │   ├── sdlc.justfile          ← recipes (just sdlc::verify, etc.)
 │   └── sdlc.example.yml       ← rendered by /sdlc:setup
 ├── .claude-plugin/marketplace.json   ← so `/plugin marketplace add` works
-├── .claude/                   ← THIS REPO's dogfood — symlinks to plugin/<dir>
+├── .claude/                   ← THIS REPO's project config (real files, no symlinks to plugin/)
 │   ├── sdlc.yml               ← dogfood project config
-│   ├── sdlc.justfile          → ../plugin/sdlc.justfile
-│   ├── agents → ../plugin/agents          (symlink)
-│   ├── canvases → ../plugin/canvases      (symlink)
-│   └── ...
-└── Justfile                   ← `mod sdlc '.claude/sdlc.justfile'`
+│   ├── sdlc.justfile          → ../plugin/sdlc.justfile  (only intentional symlink — matches `/sdlc:setup` install pattern)
+│   ├── settings.json          ← project settings (mostly empty; hooks live in plugin.json)
+│   └── .session/              ← gitignored runtime state (tracker-context.md, etc.)
+└── Justfile                   ← `mod sdlc '.claude/sdlc.justfile'` + `just dev` recipe
 ```
 
-Live edits to `plugin/agents/<name>.md` reflect immediately when running this repo's own loop, via the symlinks. To test fresh-install behavior, the CI drift-test job spins up a tmpdir, simulates a plugin install, and runs `just sdlc::verify`.
+**Dev workflow:**
+
+```bash
+just dev                        # launches: claude --plugin-dir ./plugin
+# inside the session, after editing plugin/<anything>:
+/reload-plugins                 # picks up changes — no restart needed
+```
+
+`--plugin-dir` loads the plugin directly from the working tree and overrides any same-name marketplace install for the session, so dogfooding here doesn't conflict with users who installed `sdlc` via `/plugin install`. To test fresh-install behavior, the CI drift-test job (`.github/workflows/plugin-drift-test.yml`) spins up a tmpdir, simulates a plugin install, and runs `just sdlc::verify`.
 
 ---
 
