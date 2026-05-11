@@ -81,17 +81,30 @@ If any required section is empty or contains a `{{...}}` token, halt with the mi
 
 ### 4. Set up the branch
 
-Per `.claude/primitives/task-management/linear.md`:
+Per `.claude/primitives/task-management/github.md`:
 - Branch name: `<owner>/<issue-key-lowercase>-<short-slug>`
 - Slug derived from the issue title (3-4 words, kebab-case)
 
+**Remote-aware branch setup** — the specifier now pushes the branch with the spec commit before the implementer runs. Always check for the remote branch first:
+
 ```bash
-git checkout main
-git pull --ff-only
-git checkout -b <owner>/<issue-key>-<slug>
+git fetch origin <branch> 2>/dev/null || true
+
+if git rev-parse --verify "origin/<branch>" >/dev/null 2>&1; then
+  # Branch already exists on origin (specifier pushed it, or re-run case).
+  # Pick it up — this brings the spec commit with it.
+  git checkout <branch>
+  git pull --ff-only origin <branch>
+else
+  # Specifier did not push the branch (fallback: old specifier, or spec is missing).
+  # Create fresh from main.
+  git checkout main
+  git pull --ff-only
+  git checkout -b <branch>
+fi
 ```
 
-If the branch already exists, switch to it (re-run case).
+If the branch already exists locally (re-run case), switch to it and sync from origin.
 
 ### 5. Implement the spec
 
@@ -99,6 +112,8 @@ Work through the spec's File-level plan in order:
 1. Create new files first (so modifications can import them).
 2. Modify existing files per the spec.
 3. Add tests per the Tests section.
+
+**Spec commit on branch** — when the specifier ran with the new permalink behavior, the spec file is already committed on the branch (the first commit). Build on top of that commit; do **not** re-write or amend it. The PR diff will include the spec commit followed by the implementation commits — this is expected and correct.
 
 Follow the language primitive — code shape, imports, naming. Do not introduce patterns not in the primitive without flagging.
 

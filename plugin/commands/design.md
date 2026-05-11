@@ -9,7 +9,7 @@ primitives:
 status: active
 topology: none
 consumes: [issue, research]
-produces: [spec, comment, label]
+produces: [spec, comment, label, branch, commit]
 gates:
   enforces: []
   sets: [awaiting-strategy-review, strategy-approved]  # strict / auto
@@ -65,11 +65,11 @@ Read `.claude/sdlc.yml` for `language`, `task_management`, `team_key`. No decisi
 **Delegate to**: `specifier` agent
 
 **Mission**:
-- **Objective**: Produce per-issue implementation strategy and post for human review
+- **Objective**: Produce per-issue implementation strategy, commit it on the impl branch, and post a permalink-linked tracker comment for human review
 - **Input**: `$1` (issue key) + any existing `.ai-docs/research/<slug>.md` for context
 - **Context**: `.claude/sdlc.yml` + `.claude/primitives/{language,task-management}/...`
 - **Constraints**: No code; no implementation; sets `state:awaiting-strategy-review` and halts
-- **Output**: `.ai-docs/specs/<key>.md` + tracker comment + label set
+- **Output**: spec file + impl branch (pushed) + commit SHA + tracker comment with SHA permalink + gate label set
 
 ## Human Gates
 
@@ -80,9 +80,11 @@ Read `.claude/sdlc.yml` for `language`, `task_management`, `team_key`. No decisi
 ## Output
 
 ```
-Spec: .ai-docs/specs/<key>.md
-Tracker: comment posted on <ISSUE-KEY>
-Gate: state:awaiting-strategy-review
+Spec:      .ai-docs/specs/<key>.md   (or stack-co-located path)
+Branch:    <user>/<key-lowercase>-<slug>   (pushed to origin with spec commit)
+Permalink: https://github.com/<owner>/<repo>/blob/<full-sha>/<spec-path>
+Tracker:   comment posted on <ISSUE-KEY> with permalink link
+Gate:      state:awaiting-strategy-review
 
 Next: human review in the tracker → add state:strategy-approved → /develop or /implement
 ```
