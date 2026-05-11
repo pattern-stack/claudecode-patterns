@@ -54,6 +54,19 @@ That's the whole flow. **All commands are namespaced as `/sdlc:<cmd>`** to avoid
 
 The hard part is the first 5 minutes deciding what your `sdlc.yml` should say. After that, the system runs.
 
+### Optional: live telemetry dashboard (`ap`)
+
+The plugin emits Claude Code lifecycle events (`SessionStart`, `PreToolUse`, `Stop`, …) to a local dashboard if one is running. The dashboard is the separate [`@agentic-patterns/cli`](https://github.com/pattern-stack/agentic-patterns-ts) package on a deliberately decoupled install path — sdlc works without it; telemetry hooks silently no-op when `ap` is absent.
+
+```bash
+npm i -g @agentic-patterns/cli
+# Then start a fresh Claude Code session in your project — the
+# SessionStart hook auto-launches `ap playground` in the background
+# at http://localhost:3456 if it isn't already running.
+```
+
+`/sdlc:setup` probes for `ap` and prints the status so you don't have to remember.
+
 ### Gate-1 mode (strict vs auto / "trust mode")
 
 By default, the specifier posts strategies and waits for human approval (strict mode). For mechanical work — RFC translation, vendor adapter wirings, YAML definitions — flip individual stacks or issues to **auto mode** ("trust mode") and the specifier self-approves. Three override layers, most-specific wins:
