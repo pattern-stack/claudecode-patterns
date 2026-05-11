@@ -12,7 +12,7 @@
 # version, eating our own setup.
 
 default:
-    @just --list
+    @just --list --list-submodules
 
 # Launch Claude Code with this repo's plugin
 # loaded directly from the working tree (no
