@@ -80,14 +80,19 @@ Patterns:
 
 ### Hook events
 
+Full canonical list (29 events). Source: https://code.claude.com/docs/en/hooks.
+
 | Event | Fires |
 |---|---|
 | `SessionStart` | New session created |
+| `Setup` | `--init-only`, or `--init` / `--maintenance` in `-p` mode |
 | `InstructionsLoaded` | CLAUDE.md / rules loaded |
 | `UserPromptSubmit` | User submits a prompt |
+| `UserPromptExpansion` | Slash-command expands into a prompt |
 | `PreToolUse` | Before any tool call |
 | `PostToolUse` | After successful tool call |
 | `PostToolUseFailure` | After failed tool call |
+| `PostToolBatch` | After a full parallel tool-call batch resolves |
 | `PermissionRequest` | Permission prompt shown |
 | `PermissionDenied` | Permission denied |
 | `Notification` | UI notification |
@@ -99,10 +104,11 @@ Patterns:
 | `ConfigChange` | Settings reloaded |
 | `CwdChanged` | Working dir changed |
 | `FileChanged` | Tracked file changed |
+| `WorktreeCreate` | Worktree created (used to copy `.worktreeinclude` patterns) |
+| `WorktreeRemove` | Worktree being removed |
 | `PreCompact` / `PostCompact` | Around auto-compaction |
 | `Elicitation` / `ElicitationResult` | Around `AskUserQuestion` |
 | `SessionEnd` | Session ended |
-| `WorktreeCreate` | Worktree created (used to copy `.worktreeinclude` patterns) |
 
 ### Hook input
 
