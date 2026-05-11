@@ -125,7 +125,60 @@ If `just` not installed: print "⚠️  `just` not found — install via your pa
 
 If verifiers fail: surface the output but don't undo the setup. The user can fix the config.
 
-### Step 9: Print next-steps
+### Step 9: Telemetry check (advisory)
+
+The plugin's hooks emit lifecycle events to a local dashboard if one is running. The dashboard ships as a separate binary (`ap`, from `@agentic-patterns/cli`) on a deliberately decoupled install path — sdlc works without it; telemetry hooks silently no-op when `ap` is absent.
+
+Probe for the binary and the dashboard, print one of the three states:
+
+```bash
+AP_BIN="$(command -v ap || true)"
+AP_VERSION=""
+if [ -n "$AP_BIN" ]; then
+  AP_VERSION="$("$AP_BIN" --version 2>/dev/null | head -1 || true)"
+fi
+
+DASHBOARD_PORT="${AP_DASHBOARD_PORT:-3456}"
+DASHBOARD_UP="no"
+if curl -sS -m 0.5 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1; then
+  DASHBOARD_UP="yes"
+fi
+```
+
+State A — binary present, dashboard responding:
+```
+Telemetry (optional):
+  ❯ ap binary       <path>  <version>          ✓
+  ❯ dashboard       http://localhost:<port>    ✓
+```
+
+State B — binary present, dashboard not responding:
+```
+Telemetry (optional):
+  ❯ ap binary       <path>  <version>          ✓
+  ❯ dashboard       (not running)              ⚠
+
+The plugin's SessionStart hook will auto-start it on your next
+Claude Code session via `ensure-playground.sh`. To launch it
+manually right now:  ap playground
+```
+
+State C — binary absent:
+```
+Telemetry (optional, not installed):
+  ⚠  `ap` not on PATH — telemetry hooks will silently no-op.
+
+To enable a live dashboard at http://localhost:<port>:
+  npm i -g @agentic-patterns/cli
+
+Then a fresh Claude Code session will auto-launch the dashboard.
+Skip if you don't want telemetry — the SDLC workflow works fine
+without it.
+```
+
+This step is advisory only. Do not halt setup on any of these outcomes. The plugin works in all three states; only the dashboard surface is affected.
+
+### Step 10: Print next-steps
 
 Three lines, always:
 
@@ -161,6 +214,7 @@ Otherwise specifier degrades to label-only.
 - Reconfigure path on existing sdlc.yml is non-destructive by default (default-quit; reconfigure writes backup before overwrite).
 - Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
+- Telemetry check (Step 9) runs in all three states without halting: ap present + dashboard up, ap present + dashboard down, ap absent. Setup is never blocked by the telemetry stack.
 
 ## Out of scope
 
