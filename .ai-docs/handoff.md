@@ -1,66 +1,98 @@
-# Handoff — 2026-05-10
+# Handoff — 2026-05-11
 
-## What just shipped
+**Branch:** `main` (clean after this commit). Doug also has WIP `dug/plugin-auto-launch-playground` with commits `71e1b04` (auto-launch ap playground SessionStart hook) + `d377c3e` (hooks.json migration); `experimental/teammate-fanout/` is also Doug's WIP. Both independent of the SDLC loop work.
+**Last action:** Long architecture conversation collapsed the remote-control stack scope. Corrected a multi-turn misconception about `TeamCreate` (skills CAN compose teammates from within a session — `TeamCreate` is in /develop and /orchestrate's allowed-tools). Re-scoped remaining issues; plan below.
+**Next action:** Restart with `just dev`, close obsolete tracker issues, file new ones per the corrected design, ship `/implement` skill (~120 lines) + envelope halt extension.
+**Obstacles:**
+- GraphQL rate limit recovered earlier; if exhausted again use REST endpoints (`gh api repos/.../issues` etc.)
+- Doug enabled `/remote-control` on the prior session at end-of-conversation; if iPhone/web connections are active they may inherit.
 
-**Stack `sdlc-plugin-distribution` (epic #22, all 6 PRs merged):** the repo is now an installable Claude Code plugin named `sdlc`.
+## What shipped THIS session (already merged to main)
 
-| PR | Issue | What |
+- **Wave A of remote-control:** #43 (sdlc.yml iteration-cap knobs + port-level soft-entry & cap-hit conventions) via PRs #54 + #55 + #56 + #57
+- **Plugin marketplace cleanup train (parallel, mostly Doug):** #58, #59, #60, #61
+- **#62 → #63:** Drop `.claude/{agents,commands,skills,primitives,canvases,hooks,output-styles}` dogfood symlinks; switch dev workflow to `--plugin-dir` + `/reload-plugins` via `just dev` recipe
+- **#64:** Justfile 50-col comment wrap (Doug)
+- **#65 → #66:** Gitignore `.claude/worktrees/` + `just clean-worktrees` recipe
+- **Beyond my work** (parallel Doug PRs): #68 (justfile submodule recipes expanded), #69 (spec commits on impl branch + SHA permalink), #70 (specifier defaults to REST + accepts inline body)
+
+## Corrected architectural understanding (load-bearing for next session)
+
+The harness exposes **`TeamCreate`** as a first-class tool that slash commands can call. See `plugin/commands/{develop,orchestrate}.md` `allowed-tools` lists — both include `TeamCreate, SendMessage`. This means:
+
+- **Main session CAN compose teammates** — via `TeamCreate` from any skill that lists it
+- **Teammates CANNOT compose more teammates** — that's the actual constraint; `TeamCreate` doesn't nest. This is why `/orchestrate`'s coordinator-teammates fall back to subagents for phase work.
+
+The asymmetry produces three patterns:
+
+| Command | Main session role | Phase workers | Loop driver |
+|---|---|---|---|
+| `/develop` | skill orchestrator (no autoloop) | teammates via `TeamCreate` | human via `SendMessage` |
+| `/implement` (new) | **skill IS the coordinator** (autoloop in skill prompt) | teammates via `TeamCreate` | skill prompt via `SendMessage` |
+| `/orchestrate` | skill spawning N coordinator teammates | subagents *inside each coordinator* (forced) | each coordinator's prompt |
+
+**Critical insight:** `/implement` for single-issue work does **NOT** need to spawn a coordinator teammate. The skill itself IS the coordinator. The coordinator agent (skeleton today) is ONLY needed for `/orchestrate`'s multi-issue case where nesting forces subagent fallback.
+
+## Revised stack scope
+
+| # | Status | New scope |
 |---|---|---|
-| #35 | #28 | Vendor `.claude/<dir>/` → `plugin/<dir>/`; manifest + marketplace.json; dogfood symlinks; install-smoke drift-test CI |
-| #48 | #23 | Gate-mode mechanism (strict / auto / "trust mode") + 9-option Status taxonomy. `/sync-issues` stamps `gate:auto`/`gate:human` at issue-creation; specifier reads labels only at runtime |
-| #49 | #24 | `/sdlc:setup` AskUserQuestion-driven onboarding (renamed from `init` to avoid collision with native `/init`) |
-| #50 | #25 | UserPromptSubmit nag hook surfacing `/sdlc:setup` when sdlc.yml is missing |
-| #51 | #26 | Tracker-discovery as SessionStart hook + dispatcher (replaces the originally-planned `/sdlc:link-project` after review pushback). Colocated under `plugin/primitives/task-management/` (sets precedent for domain-modular plugin architecture) |
-| #52 | #27 | README Quickstart rewrite (`/plugin install` + `/sdlc:setup`); changelog rows for Install + Gate-1 mode; plugin-development section; branch-naming convention codified in `linear.md` / `github.md` primitives |
+| #43 | ✓ merged | done |
+| #44 | obsolete-as-scoped | **Defer entirely** (until you actually want /orchestrate batch). OR re-scope to "promote coordinator for /orchestrate-only use." Single-issue /implement does NOT need it. |
+| #45 | re-scoped | `/implement <ISSUE>` skill: main-as-coordinator + teammates via `TeamCreate` + autoloop via `SendMessage` + cap-hit halt per #43. **~120 lines of skill prompt.** No new agent file. |
+| #46 | keep | Envelope `status: halted` extension. ~5-10 lines canvas update. Useful for /implement halts + later coordinator. |
+| #47 | obsolete | Close. Docs collapse to inline in /implement. |
+| NEW | file | **Spawn primitive adapters** (`bash-nohup`, `tmux-detached`, `iterm-window`) — orthogonal to /implement; for use cases TeamCreate can't reach (externally-triggered runs, survival-after-session-crash, different auth/config). Fast-follow. |
 
-Plus bootstrap PR #21 (switched dogfood to `task_management: github`, added github primitive + port README, landed the plan + issue-20-source snapshot).
+**Minimal viable shipping order: #45 + #46 first.** Two PRs gets single-issue walk-away working. #44 and spawn-adapter deferred until needed.
 
-## Open follow-ups
+## Concrete `/implement` skeleton (drop straight into the spec)
 
-- **#41** — Add Node + tooling dep checks for plugin runtime. Surfaced from PR #38's review (Node availability concern). Includes proposed `/sdlc:setup` early-check + a future `/sdlc:doctor` command.
-- **Pre-existing issues** (untouched this session): #18 (typed `consumes`/`produces` registry), #19 (`AskUserQuestion+preview` ecosystem-wide), #12 (full canvas-aware audit + validator-report canvas).
-- **Pre-existing unmerged stack** (not ours): #42–#47 — "remote control / `/implement` command" work. Different stack; ignore for our scope.
-
-## Architectural decisions that matter for future sessions
-
-1. **Plugin is at `plugin/`**, repo root has `marketplace.json` + dogfood `.claude/` (symlinks to `plugin/<dir>/`). Live edits to plugin contents flow through symlinks; fresh-install behavior tested via CI drift-test (`.github/workflows/plugin-drift-test.yml`).
-
-2. **`sdlc.yml` lives at project root** (`.claude/sdlc.yml`); `gate1_default: strict` ships there as the global Gate-1 default. Override chain: `sdlc.yml.gate1_default` → `plan.yaml.auto_approve` → issue `gate:auto`/`gate:human` (most-specific wins). `/sync-issues` translates plan-level intent to per-issue labels at creation time; specifier reads only labels at runtime.
-
-3. **Tracker context is auto-discovered**, not hand-configured. `SessionStart` hook runs `plugin/primitives/task-management/discover.sh` → writes `.claude/.session/tracker-context.md` → specifier `@`-mentions it. Pluggable per `task_management:` (github active; linear stub for v2; jira not implemented). Empty file → agents degrade to label-only.
-
-4. **Scripts colocate with primitives.** `plugin/primitives/task-management/{discover.sh, bootstrap.sh}` (not `plugin/scripts/`). Sets precedent: domain-specific scripts live under `primitives/<domain>/`; `plugin/scripts/` is for cross-cutting (verify-canvases, verify-tool-groups, list-canvases). Headed toward v2 domain-modules architecture but not refactored yet.
-
-5. **Branch-naming convention.** Codified in `plugin/primitives/task-management/{github,linear}.md`:
-   - Standalone: `<user>/<n>-<slug>` (e.g. `dugshub/23-gate-modes`)
-   - Stacked: `<user>/<stack>/<N>-<slug>` (e.g. `dugshub/plugin-layout/2-gate-modes`)
-   - Slug rules: max 3 words, kebab-case, noun phrases, no `pr-N-` / `issue-NN` prefixes (issue + PR carry that already)
-
-## Operational footguns observed this session
-
-- **`st branch rename` deletes the old remote branch** → GitHub auto-closes the PR. Recovery: snapshot bodies, run `gh pr create` manually, patch `~/.claude/stacks/<repo>.json` to update PR-number mapping. The `--no-pr-update` flag only skips PR-title sync, not the remote-branch-rename. **Use `st rename` only on un-pushed branches or accept PR-renumber.**
-
-- **st state lives at `~/.claude/stacks/<repo>.json`** (found via `st --ai`). Direct JSON editing is fine when recovering from misalignment.
-
-- **`gh pr create` bypasses st's local registry** — PRs created this way aren't tracked by `st status`. Always use `st submit` for stack-aware tracking from the start.
-
-- **`Closes #N` only auto-links when the PR's base is the default branch.** Stacked PRs targeting an upstream branch leave `closingIssuesReferences` empty; the link activates retroactively as upstream PRs merge (rebase cascade). For immediate visual association, manually link via the "Development" sidebar widget on github.com (UI only; no API for this).
-
-## What's next (suggested)
-
-- **#41** is the natural next pickup if continuing this thread. Smallest scope: add `which node` check to `/sdlc:setup`; document Node + gh + yq + just deps in README "Prerequisites." Bigger scope: `/sdlc:doctor` command.
-- **Linear primitive Status mapping** (the working hypothesis from #51's spec) — exists but never validated against a real Linear project. Pick up when someone runs the loop with `task_management: linear`.
-- **The "remote control" stack (#42–#47)** is separate work; defer.
-
-## Working tree
-
-Clean on `main`. Local branches for the merged stack deleted. No lingering uncommitted changes.
-
-## Commands you'd want to know
-
-```bash
-git checkout main && git pull       # already done; main at 182e040
-gh issue list --state open          # 4 of our own (#41, #19, #18, #12) + 6 unrelated (#42-#47, #20)
-st status                           # "No tracked stacks" (plugin-layout cleaned up)
-just sdlc::verify                   # green — 4 canvases + 7 agents
 ```
+1. Resolve sdlc.yml: validator_max_iterations, gate1_default, develop_team, etc.
+2. Resolve issue via tracker MCP. Capture labels (state:*, needs:*, gate:*).
+3. Enforce Gate 1: if state:strategy-approved missing → halt
+   (Auto-mode handling: if gate:auto AND no spec → first spawn specifier teammate
+    which sets state:strategy-approved itself, then proceed.)
+4. Resolve spec path. If missing → halt or spawn specifier first.
+5. Compose roster: develop_team ∪ (needs:* labels → agent names).
+6. TeamCreate the roster. Capture team handle.
+7. Loop:
+   a. SendMessage to implementer: "implement per <spec>; signal when ready for validation"
+   b. Wait for implementer's envelope (status: complete | failed | halted)
+   c. If failed/halted: halt with envelope citing implementer's error
+   d. SendMessage to validator: "validate; emit envelope with findings"
+   e. Wait for validator envelope
+   f. If pass: break loop
+   g. If fail AND iter < validator_max_iterations: SendMessage to implementer with findings; iter++; goto (a)
+   h. If fail AND iter == cap: halt with envelope status:halted, next.reason: "cap-hit after N iterations"
+8. On pass: open PR via Bash (st submit / gh pr create). Emit envelope status:complete with PR URL.
+9. On halt: emit envelope status:halted with full context.
+```
+
+## Opening moves for next session
+
+1. **`/prime`** to re-load context (this handoff lands first)
+2. **Tracker cleanup** (REST API if GraphQL flaky):
+   - Close #47 with comment pointing here
+   - Close-or-defer #44 (your call — close clean and re-file later, or retitle in place to "deferred until /orchestrate batch")
+   - Re-title #45: "Add /implement skill — single-issue autonomous loop (main-as-coordinator, teammates via TeamCreate)"
+   - #46 keep as-is
+   - File new issue: "Spawn primitive adapters (bash-nohup / tmux / iterm)"
+3. **Ship #45**: `/design 45` → review spec → `/develop 45` (or just hand-code — the skeleton above is half the spec already)
+4. **Ship #46**: tiny canvas update; one-shot `/develop 46` or hand-coded
+5. **(Later)** spawn adapters + #44 promotion when you want /orchestrate batch
+
+## Memory landed this session
+
+- `feedback_teamcreate_asymmetry.md` — the no-nested-teammates constraint that shapes the topologies. Load-bearing for future skill/agent design decisions.
+- `feedback_agent_tool_surface_adapter_alignment.md` (earlier) — cross-check agent denylist vs adapter operation table; lesson behind #56.
+- `project_remote_control_stack.md` refreshed with corrected design.
+
+## Notes for next-session-you
+
+- The `just dev` recipe + `/reload-plugins` workflow is the supported dev pattern post-#63. `.claude/` no longer has agent/skill/primitive symlinks — use `--plugin-dir ./plugin` (via `just dev`).
+- `just clean-worktrees` exists for stale agent worktrees; run periodically.
+- Doug has WIP `dug/plugin-auto-launch-playground` + `experimental/teammate-fanout/` — DON'T conflate with SDLC loop work.
+- Specifier got REST default in #70 (Doug-authored fast-follow to my #56/57). Test it on next `/design <N>` run.
+- Cosmetic carryover: `plugin/primitives/task-management/github.md` line 151 still hard-codes "Gate-1 timeout" prose — same pattern as the fix in #55 coordinator.md §125-129. Batch into #45's PR if convenient.
