@@ -83,7 +83,13 @@ For github projects with `project_number:` set, the file contains the Project no
 
 ### 1. Resolve the issue, the stack, and prior context
 
-Input: a tracker issue key (e.g. `ABC-101`). Read it via the configured tracker's get-issue MCP (per `task-management/{value}.md`; for Linear that's `mcp__plugin_linear_linear__get_issue`). Capture title, description, and any pre-existing labels (especially `needs:*` and existing `state:*`).
+Input: a tracker issue key (e.g. `ABC-101`).
+
+**If the prompt includes the issue body inline** — a clearly marked `## Issue body`, `Issue context:`, or `Issue (inline):` block from the spawning conductor — use it directly. **Do NOT re-fetch.** This is a GraphQL-budget saver when the conductor batch-fetched N issues upfront before briefing N parallel specifiers.
+
+**Otherwise**, read it via the configured tracker's get-issue MCP (per `task-management/{value}.md`; for Linear that's `mcp__plugin_linear_linear__get_issue`; for GitHub that's `gh issue view <n> --json title,body,labels`).
+
+Capture title, description, and any pre-existing labels (especially `needs:*` and existing `state:*`).
 
 **Discover the stack slug** by globbing `.ai-docs/stacks/*/plan.yaml` and finding the issue key inside `issues[]`. The matching stack folder is where the spec lands and where stack-scoped research already lives. If no plan contains this issue (legacy issue predating the stack convention), use the legacy path `.ai-docs/specs/<issue-key>.md`.
 
@@ -215,6 +221,14 @@ Read those values from `instructions.yaml`; do not hardcode the comment shape in
 - SHA permalinks resolve immediately (the object exists as soon as it's pushed), survive branch deletion, and survive the eventual merge to `main` — they are permanent.
 - Linear / other trackers: same principle — the link must resolve from the moment the comment is posted, regardless of the spec's branch or merge status.
 
+**Post via REST on GitHub** — don't use `gh issue comment`, which hits the GraphQL pool. Use:
+
+```bash
+gh api repos/<owner>/<repo>/issues/<n>/comments -X POST -f body='<comment-body>'
+```
+
+See **GitHub API efficiency** below for the rationale.
+
 ### Set the gate label (mode-dependent)
 
 After both writes succeed, resolve gate mode per the **Gate-mode resolution** section above and apply the corresponding label:
@@ -224,7 +238,7 @@ After both writes succeed, resolve gate mode per the **Gate-mode resolution** se
 
 Per task_management adapter:
 - Linear: use `mcp__plugin_linear_linear__save_issue` (resolve label IDs via `mcp__plugin_linear_linear__list_issue_labels` filtered by `team_key`).
-- GitHub: use `gh issue edit <key> --add-label <label>`.
+- GitHub: use REST — `gh api repos/<owner>/<repo>/issues/<n>/labels -X POST -f 'labels[]=<label>'`. Read `<owner>/<repo>` from `sdlc.yml.repo`. The `gh issue edit <key> --add-label <label>` command works too but hits GraphQL, which is the constrained pool. See **GitHub API efficiency** below.
 
 If the required state label is not yet provisioned, halt with one line:
 > Run `bash plugin/primitives/task-management/bootstrap.sh` to provision the SDLC label palette.
@@ -301,6 +315,22 @@ metadata:
 
 Validate per `instructions.yaml.required_per_phase.specifier` and length budgets before emitting. Halt on conformance failure rather than emit a malformed envelope.
 
+## GitHub API efficiency
+
+GitHub maintains **separate 5000/hr rate-limit pools** for GraphQL and REST. Most `gh` subcommands (`gh issue view`, `gh issue comment`, `gh issue edit`, `gh pr create`) hit GraphQL. Parallel specifier batches drain that pool fast.
+
+1. **Prefer REST for writes.** Comments, labels, and PRs all have REST endpoints under `gh api repos/...` — they use the core pool, which usually has headroom. Endpoints used by this agent:
+   - Comment: `gh api repos/<o>/<r>/issues/<n>/comments -X POST -f body='...'`
+   - Label: `gh api repos/<o>/<r>/issues/<n>/labels -X POST -f 'labels[]=<label>'`
+
+2. **Accept inline issue body.** If the spawning conductor included the issue body in your prompt, use it. Skip the get-issue MCP. Saves one GraphQL call per specifier in a parallel batch.
+
+3. **Avoid `gh issue list` / `gh pr list` mid-run.** They auto-paginate via GraphQL.
+
+4. **Check the pool before retrying.** If a `gh` command fails with rate-limit, run `gh api rate_limit --jq '.resources'`. REST may have plenty while GraphQL is exhausted — switch sides instead of scheduling a retry-wakeup.
+
+5. **Log cost on your own `gh api graphql` calls.** Always include `rateLimit { cost remaining resetAt }` in the query so a 50+ point query is obvious before it drains the pool. Projects MAY ship a `scripts/gh-gql.sh` wrapper that surfaces this on stderr.
+
 ## Constraints
 
 - Do NOT write code. The spec is prose + signatures + paths only.
@@ -311,3 +341,4 @@ Validate per `instructions.yaml.required_per_phase.specifier` and length budgets
 - Do NOT skip the `state:awaiting-strategy-review` label — without it, `implementer` cannot tell when human review is pending vs not started.
 - Do NOT remove or rename existing labels on the issue. Add only.
 - Do NOT proceed past the gate. The human approval step is non-negotiable.
+- On GitHub, do NOT use `gh issue comment` / `gh issue edit --add-label` for the tracker writes — they consume GraphQL budget. Use the REST endpoints listed under **GitHub API efficiency**.
