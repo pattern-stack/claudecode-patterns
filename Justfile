@@ -27,6 +27,33 @@ default:
 dev:
     claude --plugin-dir ./plugin
 
+# Remove stale Claude Code agent worktrees under
+# .claude/worktrees/. Refuses to remove worktrees
+# with uncommitted changes (use `git worktree
+# remove --force <path>` manually for those, after
+# inspecting). Runs `git worktree prune` at the
+# end to drop registry entries for already-deleted
+# dirs.
+clean-worktrees:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    paths=$(git worktree list --porcelain | awk '/^worktree.*\.claude\/worktrees\// {print $2}')
+    if [[ -z "$paths" ]]; then
+      echo "No worktrees under .claude/worktrees/ to clean."
+      git worktree prune
+      exit 0
+    fi
+    while IFS= read -r path; do
+      echo "→ $path"
+      if git -C "$path" diff --quiet && git -C "$path" diff --cached --quiet && [[ -z $(git -C "$path" status --porcelain) ]]; then
+        git worktree remove "$path" && echo "  removed"
+      else
+        echo "  SKIPPED — has uncommitted changes (run \`git worktree remove --force '$path'\` to force)"
+      fi
+    done <<< "$paths"
+    git worktree prune
+    echo "done."
+
 # Plugin-supplied recipes — namespaced under
 # `sdlc::`. `.claude/sdlc.justfile` is a
 # symlink → `${CLAUDE_PLUGIN_DIR}/sdlc.justfile`

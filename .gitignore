@@ -34,6 +34,12 @@ issue-plan-*.json
 # hook. Regenerated on every session start; never committed.
 .claude/.session/
 
+# Claude Code agent worktrees (created automatically when Agent tool spawns
+# with isolation: "worktree"; path managed by Claude Code, not configurable).
+# Auto-cleanup is incomplete — sessions ending dirty leave stale worktrees.
+# Run `just clean-worktrees` to remove the clean ones; --force the dirty ones.
+.claude/worktrees/
+
 # Build artifacts
 *.pyc
 __pycache__/
