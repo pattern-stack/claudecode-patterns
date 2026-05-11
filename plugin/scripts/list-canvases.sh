@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Reconcile .claude/canvases/*/ on disk against .claude/sdlc.yml's canvases:
-# block, and emit a compact one-line-per-canvas table. Designed to be safe
-# inside `!`-injected pre-rendered context blocks at agent launch.
+# Reconcile plugin/canvases/*/ on disk against project .claude/sdlc.yml's
+# canvases: block, and emit a compact one-line-per-canvas table. Designed to
+# be safe inside `!`-injected pre-rendered context blocks at agent launch.
 #
 # Output columns: NAME  VERSION  PATH  STATUS
 #   STATUS = "registered" | "unregistered ⚠"
