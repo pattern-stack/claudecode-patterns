@@ -29,7 +29,13 @@ No arguments. The flow is conversational.
 
 ## Resolution prerequisites
 
-- `${CLAUDE_PLUGIN_DIR}` env var: set by Claude Code when running plugin code. Resolves to `~/.claude/plugins/sdlc` (or wherever the marketplace installer placed the plugin). If absent, halt with: "Run /sdlc:setup from inside Claude Code (the env var ${CLAUDE_PLUGIN_DIR} must be set)."
+- **Plugin install path (`$PLUGIN_ROOT`)** — resolve at runtime from `~/.claude/plugins/installed_plugins.json` rather than relying on env-var substitution. Neither `${CLAUDE_PLUGIN_DIR}` nor `${CLAUDE_PLUGIN_ROOT}` is reliably exposed to skill-body shell calls: `${CLAUDE_PLUGIN_DIR}` is not a Claude Code token at all, and `${CLAUDE_PLUGIN_ROOT}` is only substituted into plugin-manifest files (e.g. `hooks/hooks.json`) at config-parse time — not into slash-command markdown bodies executed by the model. Resolve with:
+
+  ```bash
+  PLUGIN_ROOT="$(node -e 'const j=require(require("os").homedir()+"/.claude/plugins/installed_plugins.json");const e=j.plugins["sdlc@claudecode-patterns"];process.stdout.write(e&&e[0]&&e[0].installPath||"")' 2>/dev/null)"
+  ```
+
+  If `$PLUGIN_ROOT` is empty or `"$PLUGIN_ROOT/sdlc.example.yml"` doesn't exist, halt with: "sdlc plugin install not found at ~/.claude/plugins/installed_plugins.json (key `sdlc@claudecode-patterns`). Install via `/plugin install sdlc@claudecode-patterns` and retry."
 - A project (`pwd`) — git repo not required, but warn if absent (worktree feature won't work).
 - `just`: optional. Warn + skip the verify step if missing.
 
@@ -72,7 +78,7 @@ If `task_management: github`, `team_key` is informational (used in branch naming
 
 ### Step 4: Render `.claude/sdlc.yml`
 
-Read `${CLAUDE_PLUGIN_DIR}/sdlc.example.yml` as the template. Substitute placeholders with answers:
+Read `$PLUGIN_ROOT/sdlc.example.yml` as the template. Substitute placeholders with answers:
 - `language: <answer>`
 - `quality_profile: <answer>`
 - `task_management: <answer>`
@@ -85,10 +91,10 @@ Write to `.claude/sdlc.yml` (create `.claude/` if missing). On reconfigure path,
 ### Step 5: Create `.claude/sdlc.justfile` symlink
 
 ```bash
-ln -s "${CLAUDE_PLUGIN_DIR}/sdlc.justfile" .claude/sdlc.justfile
+ln -s "$PLUGIN_ROOT/sdlc.justfile" .claude/sdlc.justfile
 ```
 
-If `${CLAUDE_PLUGIN_DIR}` is empty, halt with the resolution error from prerequisites.
+If `$PLUGIN_ROOT` is empty, halt with the resolution error from prerequisites.
 
 If `.claude/sdlc.justfile` already exists (re-run case):
 - If it's a symlink to the same target → no-op.
@@ -110,7 +116,7 @@ For the `import` collision check: parse existing recipe names from the Justfile 
 
 If `task_management: github`:
 ```bash
-bash "${CLAUDE_PLUGIN_DIR}/primitives/task-management/bootstrap.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/primitives/task-management/bootstrap.sh"
+bash "$PLUGIN_ROOT/primitives/task-management/bootstrap.sh" || echo "⚠️  Label provisioning failed — run manually later: bash plugin/primitives/task-management/bootstrap.sh"
 ```
 
 Best-effort. Don't halt setup on failure.
@@ -202,9 +208,9 @@ Otherwise specifier degrades to label-only.
 
 ## Halt and error handling
 
-- `${CLAUDE_PLUGIN_DIR}` unset → halt before Step 4 with clear instruction.
+- `$PLUGIN_ROOT` unresolvable (missing entry in `installed_plugins.json`, or resolved path doesn't contain `sdlc.example.yml`) → halt before Step 4 with the resolution error from prerequisites.
 - AskUserQuestion canceled mid-flow → print "Setup canceled — no files written" and exit. (Reconfigure backups stay; reverting them is on the user.)
-- Symlink target missing (`${CLAUDE_PLUGIN_DIR}/sdlc.justfile` doesn't exist) → halt: "Plugin install appears broken — sdlc.justfile not found at ${CLAUDE_PLUGIN_DIR}. Reinstall via `/plugin install sdlc`."
+- Symlink target missing (`$PLUGIN_ROOT/sdlc.justfile` doesn't exist) → halt: "Plugin install appears broken — sdlc.justfile not found at $PLUGIN_ROOT. Reinstall via `/plugin install sdlc@claudecode-patterns`."
 - File write fails (permissions, disk full) → halt with the exact OS error and the path attempted.
 
 ## Acceptance
