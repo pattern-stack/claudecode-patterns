@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# dashboard-status.sh — status-line component for the ap playground.
+# dashboard-status.sh — status-line component for the bundled cc-viewer.
 #
 # Outputs a single OSC 8 hyperlink wrapping a colored dot + "dashboard" label,
-# pointing at http://localhost:${AP_DASHBOARD_PORT:-3456}. Green = the
+# pointing at http://localhost:${CC_VIEWER_PORT:-3993}. Green = the
 # dashboard's /health endpoint responds within 200ms; red = no response.
 #
 # Designed to be embedded in ~/.claude/settings.json `statusLine.command`.
@@ -16,8 +16,11 @@
 #
 # Glob picks the latest installed sdlc version automatically; survives
 # `/plugin update sdlc` without manual rewiring.
+#
+# Backwards compat: honors AP_DASHBOARD_PORT for users mid-upgrade who
+# pointed an external override at the old default 3456.
 
-PORT="${AP_DASHBOARD_PORT:-3456}"
+PORT="${CC_VIEWER_PORT:-${AP_DASHBOARD_PORT:-3993}}"
 URL="http://localhost:${PORT}"
 
 if curl -fs -m 0.2 "${URL}/health" -o /dev/null 2>/dev/null; then
@@ -29,6 +32,5 @@ RESET='\033[0m'
 
 # OSC 8 hyperlink format:  ESC ]8;;URL ESC \  TEXT  ESC ]8;; ESC \
 # iTerm2 and other modern terminals make TEXT clickable. Terminals without
-# OSC 8 support degrade to printing TEXT plus the bracketing escapes (visible
-# as garbage in legacy terms — Doug uses iTerm2 so this is fine).
+# OSC 8 support degrade to printing TEXT plus the bracketing escapes.
 printf '\033]8;;%s\033\\%b●%b dashboard\033]8;;\033\\' "$URL" "$COLOR" "$RESET"

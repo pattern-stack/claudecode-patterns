@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
-# emit.sh — zero-dependency hook shim. POSTs stdin to the local ap dashboard.
+# emit.sh — zero-dependency hook shim. POSTs stdin to the local cc-viewer.
 #
 # Replaces emit.mjs so the plugin works on machines without node installed
 # (Python / Go / Rust projects, asdf/mise/nvm pinning to a missing version).
 #
-# Fallback port 3456 mirrors DEFAULT_DASHBOARD_PORT in
-# packages/agent-cli/src/constants.ts. Keep in sync.
+# Default port 3993 mirrors `port_default` for `cc-viewer` in
+# plugin/lib/tools.json. Override via CC_VIEWER_URL (full base URL) or
+# CC_VIEWER_PORT (port only, localhost assumed).
+#
+# Backwards compat: also honors $AP_DASHBOARD_URL for users mid-upgrade
+# (existing sessions started before 0.1.10 still emitting to the ap port).
 #
 # Always exits 0 — hooks must never block the session. Dashboard-absent is
 # the silent no-op path: curl fails, we log to stderr, move on.
 
 EVENT="${1:-Unknown}"
-BASE="${AP_DASHBOARD_URL:-http://localhost:3456}"
+
+# Pick the base URL — explicit > legacy > computed-from-port > default.
+if [ -n "${CC_VIEWER_URL:-}" ]; then
+  BASE="$CC_VIEWER_URL"
+elif [ -n "${AP_DASHBOARD_URL:-}" ]; then
+  BASE="$AP_DASHBOARD_URL"
+elif [ -n "${CC_VIEWER_PORT:-}" ]; then
+  BASE="http://localhost:${CC_VIEWER_PORT}"
+else
+  BASE="http://localhost:3993"
+fi
 
 BODY="$(cat)"
 [ -z "$BODY" ] && BODY='{}'
@@ -22,6 +36,6 @@ if [ -n "${AP_RUNNER_CORRELATION_ID:-}" ]; then
 fi
 
 ERR="$(curl "${CURL_ARGS[@]}" "${BASE}/hooks/${EVENT}" 2>&1 >/dev/null)" || \
-  echo "[ap-hook] ${EVENT}: ${ERR:-request failed}" >&2
+  echo "[cc-viewer-hook] ${EVENT}: ${ERR:-request failed}" >&2
 
 exit 0

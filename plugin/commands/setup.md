@@ -143,62 +143,75 @@ If `just` not installed: print "⚠️  `just` not found — install via your pa
 
 If verifiers fail: surface the output but don't undo the setup. The user can fix the config.
 
-### Step 9: Telemetry check (advisory)
+### Step 9: cc-viewer dashboard (offer install)
 
-The plugin's hooks emit lifecycle events to a local dashboard if one is running. The dashboard ships as a separate binary (`ap`, from `@agentic-patterns/cli`) on a deliberately decoupled install path — sdlc works without it; telemetry hooks silently no-op when `ap` is absent.
+The plugin's hooks emit lifecycle events to a local dashboard — `cc-viewer`, a self-contained binary that ships *with* this plugin (one tarball per platform attached to each GH release). The runtime install primitive at `${PLUGIN_ROOT}/lib/tools.sh` handles downloading + caching under `~/.local/state/cc-viewer/bin/cc-viewer-v<plugin-version>-<platform>`. Telemetry hooks silently no-op when the binary is absent, so this step is genuinely optional — but offering it conversationally is way better UX than letting users discover later that the dashboard exists.
 
-Probe for the binary and the dashboard, print one of the three states:
+Probe the cache and the running dashboard. Use `tool_binary_path` from `tools.sh` to compute the expected path without triggering a download:
 
 ```bash
-AP_BIN="$(command -v ap || true)"
-AP_VERSION=""
-if [ -n "$AP_BIN" ]; then
-  AP_VERSION="$("$AP_BIN" --version 2>/dev/null | head -1 || true)"
-fi
+export PLUGIN_ROOT="$PLUGIN_ROOT"
+source "${PLUGIN_ROOT}/lib/tools.sh"
+EXPECTED_BIN="$(tool_binary_path cc-viewer)"
+INSTALLED="no"; [[ -x "$EXPECTED_BIN" ]] && INSTALLED="yes"
 
-DASHBOARD_PORT="${AP_DASHBOARD_PORT:-3456}"
+PORT="${CC_VIEWER_PORT:-3993}"
 DASHBOARD_UP="no"
-if curl -sS -m 0.5 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1; then
+if curl -sS -m 0.5 "http://localhost:${PORT}/health" >/dev/null 2>&1; then
   DASHBOARD_UP="yes"
 fi
 ```
 
-State A — binary present, dashboard responding:
-```
-Telemetry (optional):
-  ❯ ap binary       <path>  <version>          ✓
-  ❯ dashboard       http://localhost:<port>    ✓
-```
+Three outcomes:
 
-State B — binary present, dashboard not responding:
+**A — installed + running.** Print, do nothing else:
 ```
-Telemetry (optional):
-  ❯ ap binary       <path>  <version>          ✓
-  ❯ dashboard       (not running)              ⚠
-
-The plugin's SessionStart hook will auto-start it on your next
-Claude Code session via `ensure-playground.sh`. To launch it
-manually right now:  ap playground
+Dashboard:
+  ❯ binary       <EXPECTED_BIN>              ✓
+  ❯ running      http://localhost:<PORT>     ✓
 ```
 
-State C — binary absent:
+**B — installed but not running.** Print and move on. The SessionStart hook will spawn it on next Claude Code session:
 ```
-Telemetry (optional, not installed):
-  ⚠  `ap` not on PATH — telemetry hooks will silently no-op.
+Dashboard:
+  ❯ binary       <EXPECTED_BIN>              ✓
+  ❯ running      (not yet)                   ⚠
 
-To enable a live dashboard at http://localhost:<port>:
-  npm i -g @agentic-patterns/cli
-
-Then a fresh Claude Code session will auto-launch the dashboard.
-Skip if you don't want telemetry — the SDLC workflow works fine
-without it.
+Will auto-start on your next Claude Code session via
+ensure-cc-viewer.sh. Or to launch right now:
+  "$EXPECTED_BIN" &
 ```
 
-This step is advisory only. Do not halt setup on any of these outcomes. The plugin works in all three states; only the dashboard surface is affected.
+**C — not installed.** AskUserQuestion: "Install the cc-viewer dashboard? Downloads ~25MB from the plugin's GitHub release. The plugin works fine without it — telemetry hooks silently no-op." Options: `Install (recommended)`, `Skip`.
+
+On `Install`, call `ensure_tool` (the same code path the SessionStart hook uses), then surface the outcome:
+```bash
+BIN="$(ensure_tool cc-viewer)"
+if [[ -n "$BIN" && -x "$BIN" ]]; then
+  echo "Dashboard installed → $BIN"
+  echo "Launch on your next session, or right now: $BIN &"
+else
+  cat <<EOF
+Install did not complete. Common causes:
+
+  - No matching tarball for $(uname -sm) at v<plugin-version>
+  - Network unreachable / corporate proxy
+  - GitHub rate limit (try again in a few minutes)
+
+The plugin still works — telemetry hooks will silently no-op.
+Inspect ~/.local/state/cc-viewer/install.log for the curl error,
+or re-run /sdlc:setup later.
+EOF
+fi
+```
+
+On `Skip`, print "Dashboard skipped — re-run /sdlc:setup later if you change your mind."
+
+This step is advisory in all three branches. **Never halt setup on a failed install** — the sdlc workflow is complete without telemetry.
 
 ### Step 10: Offer to wire the dashboard status line
 
-The plugin ships `plugin/scripts/dashboard-status.sh` — a status-line component that renders a clickable colored dot pointing at the local `ap` dashboard (green when `/health` responds within 200ms, red otherwise). Status lines are session-wide UI, so the right home for the wiring is `~/.claude/settings.json` (user scope) rather than `.claude/settings.json` (this project only). Plugin-bundled `settings.json` cannot ship a top-level `statusLine` either — the plugin loader only honors `agent` and `subagentStatusLine` keys there — so user-scope is the only path that makes this apply to every session everywhere.
+The plugin ships `plugin/scripts/dashboard-status.sh` — a status-line component that renders a clickable colored dot pointing at the local cc-viewer dashboard (green when `/health` responds within 200ms, red otherwise). Status lines are session-wide UI, so the right home for the wiring is `~/.claude/settings.json` (user scope) rather than `.claude/settings.json` (this project only). Plugin-bundled `settings.json` cannot ship a top-level `statusLine` either — the plugin loader only honors `agent` and `subagentStatusLine` keys there — so user-scope is the only path that makes this apply to every session everywhere.
 
 Read `~/.claude/settings.json` (treat a missing file as `{}`). Inspect its `statusLine` field:
 
@@ -259,7 +272,7 @@ Otherwise specifier degrades to label-only.
 - Reconfigure path on existing sdlc.yml is non-destructive by default (default-quit; reconfigure writes backup before overwrite).
 - Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
-- Telemetry check (Step 9) runs in all three states without halting: ap present + dashboard up, ap present + dashboard down, ap absent. Setup is never blocked by the telemetry stack.
+- Dashboard offer (Step 9) runs in all three states without halting: installed + running, installed + idle, not installed. On `Install`, a failed download (no tarball / no network) prints the diagnostic without aborting setup. Setup is never blocked by the dashboard install.
 - Status-line wiring (Step 10) is idempotent — re-run on a machine that already has the dashboard status line in `~/.claude/settings.json` is a no-op print. Other user-scope settings keys are preserved across the write. Skip path leaves the file untouched. Failure to write `~/.claude/settings.json` does not halt setup.
 - `$PLUGIN_ROOT` resolver works without `node` installed (Python / Go / Rust projects pass through the `jq` / `python3` / pure-shell branches).
 

@@ -5,6 +5,22 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.10] — 2026-05-12
+
+### Changed
+
+- **Dashboard is now `cc-viewer`, bundled with the plugin.** Replaced the external `ap playground` (from `@agentic-patterns/cli`) with the in-monorepo `tools/cc-viewer/` binary. End users no longer need to `npm i -g` anything — the SessionStart hook lazily downloads a single ~25MB binary from the plugin's GH release on first session, caches it under `~/.local/state/cc-viewer/bin/cc-viewer-v<plugin-version>-<platform>`, then spawns it detached.
+- **`plugin/lib/tools.sh` — runtime install primitive.** Exposes `ensure_tool <name>` and `tool_binary_path <name>`. Reads `plugin/lib/tools.json` for the platform list, the plugin's own `plugin.json` for the version, and the `homepage` field to derive the GH owner/repo. Verifies SHA256 from the release's `SHA256SUMS` when available. Silent no-op on missing curl / unsupported platform / network failure — telemetry never blocks a Claude Code session.
+- **`plugin/hooks/ensure-cc-viewer.sh`** replaces `ensure-playground.sh`. Same payload-capture + health-poll + SessionStart-replay logic, now driven by `ensure_tool cc-viewer` instead of `command -v ap`.
+- **`plugin/hooks/emit.sh`** retargeted from `AP_DASHBOARD_URL` / `:3456` to `CC_VIEWER_URL` / `:3993`. Backward-compatible: still honors `AP_DASHBOARD_URL` for users mid-upgrade.
+- **`plugin/scripts/dashboard-status.sh`** + **`statusline.sh`** probe `:3993` by default (was `:3456`); `AP_DASHBOARD_PORT` still respected for transition.
+- **`/sdlc:setup` Step 9** rewritten as a conversational install offer. Probes the cache via `tool_binary_path`; if absent, AskUserQuestion to download via `ensure_tool` (same code path the hook uses); explains failures (no tarball / no network / proxy) without halting setup.
+
+### Migration notes
+
+- Users on 0.1.8 with `ap` running will continue to see telemetry POST against `:3456` via the legacy env var until they restart Claude Code. After restart, the SessionStart hook downloads cc-viewer and the new port (`:3993`) takes over.
+- The `ensure-playground.sh` file is deleted. Hook manifests outside this plugin that referenced it directly will need to switch to `ensure-cc-viewer.sh`.
+
 ## [0.1.9] — 2026-05-12
 
 ### Added

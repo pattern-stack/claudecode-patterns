@@ -169,9 +169,9 @@ if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have gh
   fi
 fi
 
-# Optional ap-playground dashboard pill. Reuses dashboard-status.sh which
+# Optional cc-viewer dashboard pill. Reuses dashboard-status.sh which
 # emits an OSC 8 hyperlink. Composed here so users get the segment "free"
-# when ap is installed and running.
+# whenever the bundled cc-viewer is running on :3993.
 dashboard=""
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -x "$script_dir/dashboard-status.sh" ]] && have curl; then
