@@ -5,6 +5,20 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.9] — 2026-05-12
+
+### Added
+
+- **`tools/` workspace + cc-viewer dashboard inlined into the monorepo.** `tools/cc-viewer/` brings the self-contained Claude Code session viewer (Hono + bun:sqlite + embedded React SPA) into this repo so the plugin's version drives the viewer's version. `bun build --compile` produces a single ~60MB binary per platform with the SPA embedded via Bun's `with { type: "file" }` imports — no runtime dependency on `node` or `bun` for end users.
+- **`plugin/lib/tools.json` — tool registry.** Declarative manifest of which binaries ship with the plugin and on which platforms. Single source of truth for both the release workflow's build matrix and the runtime install primitive (next release).
+- **`.github/workflows/release.yml` — tag-triggered binary release.** On `v*` tags, derives a (tool × platform) matrix from `tools.json`, builds each cell on a native-arch runner, packages tarballs + SHA256SUMS, attaches to the GH Release. Asserts the tag matches `plugin.json` version so the runtime install path can key by plugin version directly.
+- **`tools-typecheck` job in `verify.yml`.** Cheap PR feedback for every tool under `tools/` — loops over `tools.json` source_dirs and runs `bun run typecheck` on each. New tools picked up automatically.
+- **`just viewer::*` recipes** (`build`, `dev`, `typecheck`, `clean`) for local dev against `tools/cc-viewer/`.
+
+### Note
+
+This release ships the build/release infrastructure but does NOT yet retarget the plugin's SessionStart hook from `ap playground` to the bundled cc-viewer binary. That swap (plus `plugin/lib/tools.sh` install primitive) lands in 0.1.10.
+
 ## [0.1.8] — 2026-05-13
 
 ### Changed

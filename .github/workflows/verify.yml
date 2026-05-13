@@ -58,3 +58,28 @@ jobs:
 
       - name: Verify version bump
         run: bash plugin/scripts/verify-version-bump.sh
+
+  tools-typecheck:
+    name: tools/* typecheck
+    runs-on: ubuntu-latest
+    # Cheap PR feedback — doesn't compile binaries (that's release.yml on tags).
+    # Discovers tools from plugin/lib/tools.json so adding a tool requires
+    # zero workflow edits.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Typecheck each tool source_dir
+        run: |
+          set -e
+          for dir in $(jq -r '.tools[] | .source_dir' plugin/lib/tools.json); do
+            echo "::group::typecheck $dir"
+            (cd "$dir" && bun install --frozen-lockfile && bun run typecheck)
+            echo "::endgroup::"
+          done

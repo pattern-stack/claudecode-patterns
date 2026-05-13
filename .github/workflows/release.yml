@@ -1,0 +1,152 @@
+name: release
+
+# Tag-triggered. On `v*` tags, builds one binary per (tool × platform)
+# declared in plugin/lib/tools.json and uploads the tarballs + a SHA256SUMS
+# file to the GitHub Release for that tag.
+#
+# The runtime install path on the user's machine (plugin/lib/tools.sh)
+# downloads from these tarballs, keyed by the plugin's own version in
+# plugin/.claude-plugin/plugin.json. The tag MUST match that version
+# (e.g. plugin.json v0.1.9 -> git tag v0.1.9), so the workflow asserts
+# that invariant before building anything.
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  matrix:
+    name: derive tool × platform matrix
+    runs-on: ubuntu-latest
+    outputs:
+      cells: ${{ steps.derive.outputs.cells }}
+      plugin_version: ${{ steps.derive.outputs.plugin_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert tag matches plugin.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PLUGIN_VERSION="$(jq -r .version plugin/.claude-plugin/plugin.json)"
+          if [[ "$TAG" != "$PLUGIN_VERSION" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match plugin.json version $PLUGIN_VERSION"
+            exit 1
+          fi
+          echo "ok: tag $GITHUB_REF_NAME matches plugin.json v$PLUGIN_VERSION"
+
+      - name: Derive (tool, platform, runner) cells from tools.json
+        id: derive
+        run: |
+          # Map each (tool × platform) into a JSON cell. Pick the runner image
+          # per platform — bun cross-compiles fine, but native arch runners
+          # avoid emulation cost and let us verify the binary executes.
+          CELLS=$(jq -c '
+            .tools
+            | to_entries
+            | map(
+                . as $tool
+                | .value.platforms[]
+                | {
+                    tool: $tool.key,
+                    source_dir: $tool.value.source_dir,
+                    build_script: $tool.value.build_script,
+                    binary_name: $tool.value.binary_name,
+                    platform: .,
+                    runner: (
+                      if . == "darwin-arm64" then "macos-latest"
+                      elif . == "darwin-x64" then "macos-13"
+                      elif . == "linux-x64" then "ubuntu-latest"
+                      elif . == "linux-arm64" then "ubuntu-24.04-arm"
+                      else "ubuntu-latest"
+                      end
+                    )
+                  }
+              )
+          ' plugin/lib/tools.json)
+          echo "cells=$CELLS" >> "$GITHUB_OUTPUT"
+          echo "plugin_version=$(jq -r .version plugin/.claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
+          echo "Matrix:"
+          echo "$CELLS" | jq .
+
+  build:
+    name: build ${{ matrix.cell.tool }} (${{ matrix.cell.platform }})
+    needs: matrix
+    runs-on: ${{ matrix.cell.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cell: ${{ fromJson(needs.matrix.outputs.cells) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install workspace deps
+        working-directory: ${{ matrix.cell.source_dir }}
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        working-directory: ${{ matrix.cell.source_dir }}
+        run: bash ${{ matrix.cell.build_script }} ${{ matrix.cell.platform }}
+
+      - name: Package tarball
+        working-directory: ${{ matrix.cell.source_dir }}/build
+        run: |
+          BIN="${{ matrix.cell.binary_name }}-${{ matrix.cell.platform }}"
+          # Rename into the canonical bare name inside the tarball so the
+          # install primitive can `tar -xz <tool>` without knowing platform.
+          cp "$BIN" "${{ matrix.cell.binary_name }}"
+          chmod +x "${{ matrix.cell.binary_name }}"
+          tar -czf "$BIN.tar.gz" "${{ matrix.cell.binary_name }}"
+          shasum -a 256 "$BIN.tar.gz" > "$BIN.tar.gz.sha256"
+          ls -lh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.cell.binary_name }}-${{ matrix.cell.platform }}
+          path: |
+            ${{ matrix.cell.source_dir }}/build/*.tar.gz
+            ${{ matrix.cell.source_dir }}/build/*.tar.gz.sha256
+          retention-days: 7
+
+  release:
+    name: publish GH Release
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Combine per-tarball checksums into SHA256SUMS
+        working-directory: dist
+        run: |
+          ls -lh
+          cat *.sha256 > SHA256SUMS
+          rm -f *.sha256
+          echo "---"
+          cat SHA256SUMS
+
+      - name: Create / update GH Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true
