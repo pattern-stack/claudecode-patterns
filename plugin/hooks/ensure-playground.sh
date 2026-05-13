@@ -16,12 +16,12 @@
 # Bootstrap-event replay:
 #   When this script HAS to spawn the dashboard (i.e. it was down), the
 #   SessionStart event that's currently firing has already raced against an
-#   unstarted server — the parallel emit.mjs hook POSTed before the server
+#   unstarted server — the parallel emit.sh hook POSTed before the server
 #   bound the port and got connection-refused. To prevent the bootstrap
 #   session from being invisible on the dashboard, we capture the SessionStart
 #   payload from stdin, detach a small subshell that polls /health until the
 #   dashboard is up, then re-POSTs the payload to /hooks/SessionStart. When
-#   the dashboard is already up at probe time we skip this entirely (emit.mjs
+#   the dashboard is already up at probe time we skip this entirely (emit.sh
 #   in the parallel hook handles it normally and we'd cause a duplicate).
 #
 # Always exits 0 — a failure to start telemetry should never break the user's

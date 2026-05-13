@@ -138,7 +138,7 @@ JSON output on stdout (alternative to exit codes) can override behavior more gra
 }
 ```
 
-`async: true` means the hook fires-and-forgets; this project uses async on all `emit.mjs` hooks for the dashboard observability shim.
+`async: true` means the hook fires-and-forgets; this project uses async on all `emit.sh` hooks for the dashboard observability shim.
 
 ## statusLine
 
@@ -155,4 +155,4 @@ Other types: `prompt` (LLM-driven), `static`.
 
 ## Example: this project's settings.json (excerpted)
 
-The project ships a fan-out hook setup that POSTs every lifecycle event to a local dashboard via `.claude/hooks/emit.mjs`. See `.claude/settings.json` for the full list — every event has an async command-type hook with a 10s timeout. This is a representative pattern for observability without affecting Claude's main loop (zero context cost).
+The project ships a fan-out hook setup that POSTs every lifecycle event to a local dashboard via `plugin/hooks/emit.sh` (a zero-dependency bash + curl shim; no node runtime required). See `plugin/hooks/hooks.json` for the full list — every event has an async command-type hook with a 10s timeout. This is a representative pattern for observability without affecting Claude's main loop (zero context cost).

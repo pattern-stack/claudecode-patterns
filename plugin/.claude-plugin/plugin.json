@@ -1,6 +1,6 @@
 {
   "name": "sdlc",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Plan-first, gate-disciplined SDLC for Claude Code teams. Agents, canvases, primitives, commands.",
   "author": {
     "name": "pattern-stack"
