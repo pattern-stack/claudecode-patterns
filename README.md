@@ -86,6 +86,31 @@ The `*` glob auto-resolves to the newest installed version, so `/plugin update s
 
 > **Why user scope, not the plugin manifest?** Claude Code's plugin loader only honors `agent` and `subagentStatusLine` from a plugin's bundled `settings.json` — top-level `statusLine` is ignored. User scope (`~/.claude/settings.json`) is the only path that makes a plugin-shipped script apply to every session.
 
+### Optional: full SDLC status line
+
+For a richer line that surfaces the active ticket + branch + stack + PR + CI rollup alongside the dashboard pill, swap the command above for `statusline.sh`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/statusline.sh",
+    "padding": 1,
+    "refreshInterval": 5
+  }
+}
+```
+
+Renders a centered, ANSI-dim line. Each segment auto-detects its source and drops out silently when absent:
+
+- **Ticket** — parsed from the branch using `team_key` from `.claude/sdlc.yml` (e.g. `AP-16`, `PSC-42`).
+- **Branch** — current branch name (suppressed on `main` / `master`).
+- **Stack** — first line of `st status` when [graphite-cli `st`](https://graphite.dev) reports a tracked stack.
+- **PR / CI** — `gh pr view` for the current branch, cached 20s. CI collapses to `CI 2 failing` / `CI 1 running` / `CI 4 ✓`.
+- **Dashboard** — composes `dashboard-status.sh` as the last segment when `ap` is installed.
+
+Slow probes (`st`, `gh`) are cached on disk under `$XDG_CACHE_HOME/ccp-statusline/` so the UI never blocks. Works without `node` — bash + `git` + optional `jq` / `yq` / `gh` / `st` / `curl`.
+
 ### Gate-1 mode (strict vs auto / "trust mode")
 
 By default, the specifier posts strategies and waits for human approval (strict mode). For mechanical work — RFC translation, vendor adapter wirings, YAML definitions — flip individual stacks or issues to **auto mode** ("trust mode") and the specifier self-approves. Three override layers, most-specific wins:
