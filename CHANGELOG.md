@@ -5,6 +5,12 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.8] — 2026-05-13
+
+### Changed
+
+- **PR segment is a clickable hyperlink + CI segment is semantically colored.** The PR segment now renders bold (breaking out of the global dim wrap so it pops as the focal item) and wraps an OSC 8 hyperlink to `https://github.com/<owner>/<repo>/pull/<n>` — clickable in iTerm2 / Kitty / WezTerm. The CI segment is colored by state: red for `CI N failing`, yellow for `CI N running`, green for `CI N ✓`. Both segments re-enter the dim wrap immediately after their own escapes close, so the rest of the line stays uniformly muted. Built with `printf -v` to keep the OSC 8 byte sequence intact across bash versions (ANSI-C quote concatenated with double-quoted `${var}` was producing literal `\033` strings in some shells).
+
 ## [0.1.7] — 2026-05-13
 
 ### Changed

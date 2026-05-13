@@ -121,31 +121,51 @@ if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have st
 fi
 
 # PR state + CI rollup via gh. Single call, cached 20s.
+# Output segments are pre-styled (OSC 8 link on PR, semantic color on CI)
+# so they break out of the global dim wrap applied to other segments.
 pr=""
 ci=""
 if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have gh && have jq; then
+  repo_slug="$(git -C "$cwd" remote get-url origin 2>/dev/null \
+                 | sed -E 's#.*github\.com[:/]##; s/\.git$//')"
   gh_raw="$(cached_run 20 "gh-pr-${branch//\//_}" \
-    gh -R "$(git -C "$cwd" remote get-url origin 2>/dev/null \
-              | sed -E 's#.*github\.com[:/]##; s/\.git$//')" \
-    pr view "$branch" --json number,state,statusCheckRollup)"
+    gh -R "$repo_slug" pr view "$branch" --json number,state,statusCheckRollup)"
   if [[ -n "$gh_raw" ]]; then
     pr_num="$(jq -r '.number // empty' <<<"$gh_raw" 2>/dev/null)"
     pr_state="$(jq -r '.state // empty' <<<"$gh_raw" 2>/dev/null)"
     if [[ -n "$pr_num" ]]; then
-      pr="PR #${pr_num}"
-      [[ -n "$pr_state" && "$pr_state" != "OPEN" ]] && pr="${pr} ${pr_state,,}"
+      pr_label="PR #${pr_num}"
+      if [[ -n "$pr_state" && "$pr_state" != "OPEN" ]]; then
+        pr_state_lc="$(printf '%s' "$pr_state" | tr '[:upper:]' '[:lower:]')"
+        pr_label="${pr_label} ${pr_state_lc}"
+      fi
+      pr_url="https://github.com/${repo_slug}/pull/${pr_num}"
+      # OSC 8 hyperlink + bold (no dim) so the PR pops out of the dim line.
+      # Reset → bold → OSC8 open → label → OSC8 close → reset → dim (resume).
+      printf -v pr '\033[0m\033[1m\033]8;;%s\033\\%s\033]8;;\033\\\033[0m\033[2m' \
+        "$pr_url" "$pr_label"
     fi
-    ci_summary="$(jq -r '
+    ci_kind="$(jq -r '
       [.statusCheckRollup[]? | (.conclusion // .status // "")] as $c
       | {pass: ($c | map(select(. == "SUCCESS")) | length),
          fail: ($c | map(select(. == "FAILURE" or . == "TIMED_OUT" or . == "CANCELLED")) | length),
          run:  ($c | map(select(. == "IN_PROGRESS" or . == "QUEUED" or . == "PENDING" or . == "")) | length)}
-      | if (.fail > 0) then "CI \(.fail) failing"
-        elif (.run > 0) then "CI \(.run) running"
-        elif (.pass > 0) then "CI \(.pass) ✓"
+      | if (.fail > 0) then "fail \(.fail)"
+        elif (.run > 0) then "run \(.run)"
+        elif (.pass > 0) then "pass \(.pass)"
         else empty end
     ' <<<"$gh_raw" 2>/dev/null)"
-    [[ -n "$ci_summary" ]] && ci="$ci_summary"
+    if [[ -n "$ci_kind" ]]; then
+      kind="${ci_kind%% *}"
+      count="${ci_kind##* }"
+      case "$kind" in
+        fail) ci_text="CI ${count} failing";  ci_color=$'\033[31m' ;;  # red
+        run)  ci_text="CI ${count} running";  ci_color=$'\033[33m' ;;  # yellow
+        pass) ci_text="CI ${count} ✓";        ci_color=$'\033[32m' ;;  # green
+      esac
+      # Break out of dim, apply color, then resume dim for the trailing separator.
+      ci=$'\033[0m'"${ci_color}${ci_text}"$'\033[0m\033[2m'
+    fi
   fi
 fi
 
