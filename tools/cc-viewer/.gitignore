@@ -8,3 +8,6 @@ dist/
 *.db-journal
 *.db-shm
 *.db-wal
+build/
+server/src/static-bundle.ts
+

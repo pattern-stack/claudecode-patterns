@@ -14,6 +14,4 @@ export interface ServerConfig {
   readonly eventStore?: EventStore;
   readonly broadcaster: SSEBroadcaster;
   readonly cors?: CORSConfig;
-  /** Absolute path to the built viewer SPA, mounted as static last. */
-  readonly staticDir?: string;
 }

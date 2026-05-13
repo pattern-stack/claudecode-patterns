@@ -2,16 +2,18 @@
  * cc-viewer entry point.
  *
  * - Resolves a SQLite path under XDG_STATE_HOME / ~/.local/state/cc-viewer/
- * - Builds the Hono app, mounts the built viewer SPA from ../viewer/dist
- * - Serves on PORT (default 3993) via Bun.serve
+ * - Builds the Hono app — SPA assets are embedded at compile time via
+ *   `scripts/codegen-static.ts` + `bun build --compile`.
+ * - Serves on PORT (default 3993) via Bun.serve.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createServer } from "./app.js";
 import { EventStore } from "./event-store.js";
 import { SSEBroadcaster } from "./sse-broadcaster.js";
+import { STATIC_BUNDLE } from "./static-bundle.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3993", 10);
 
@@ -38,26 +40,23 @@ function resolveDbPath(): string {
   return path.join(stateHome, "cc-viewer", "events.db");
 }
 
-function resolveStaticDir(): string | undefined {
-  const dir = path.resolve(import.meta.dir, "../../viewer/dist");
-  return existsSync(dir) ? dir : undefined;
-}
-
 const persistence = resolveEventStore();
 const broadcaster = new SSEBroadcaster();
-const staticDir = resolveStaticDir();
 
 const app = createServer({
   eventStore: persistence.store,
   broadcaster,
-  staticDir,
 });
+
+const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
 
 console.log("");
 console.log("  cc-viewer");
 console.log(`  url      http://localhost:${PORT}`);
 console.log(`  storage  ${persistence.banner}`);
-console.log(`  spa      ${staticDir ?? "not built — run `bun run build` from repo root"}`);
+console.log(
+  `  spa      ${spaAssetCount > 0 ? `${spaAssetCount} embedded asset(s)` : "not bundled — run vite dev separately"}`,
+);
 console.log("");
 
 export default {

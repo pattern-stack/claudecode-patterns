@@ -5,11 +5,15 @@
   "type": "module",
   "workspaces": ["server", "viewer"],
   "scripts": {
-    "build": "cd viewer && bun run build",
+    "prepare": "bash scripts/write-stub-bundle.sh",
+    "build:spa": "cd viewer && bun run build",
+    "build:bundle": "bun scripts/codegen-static.ts",
+    "build:binary": "bash scripts/build-binary.sh",
+    "build": "bun run build:spa && bun run build:bundle",
     "start": "cd server && bun src/index.ts",
     "dev": "bun run build && bun run start",
     "dev:viewer": "cd viewer && bun run dev",
     "dev:server": "cd server && bun --watch src/index.ts",
-    "typecheck": "cd server && bun run typecheck && cd ../viewer && bun run typecheck"
+    "typecheck": "bun run prepare && cd server && bun run typecheck && cd ../viewer && bun run typecheck"
   }
 }
