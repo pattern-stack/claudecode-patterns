@@ -44,9 +44,11 @@ jobs:
       - name: Derive (tool, platform, runner) cells from tools.json
         id: derive
         run: |
-          # Map each (tool × platform) into a JSON cell. Pick the runner image
-          # per platform — bun cross-compiles fine, but native arch runners
-          # avoid emulation cost and let us verify the binary executes.
+          # Map each (tool × platform) into a JSON cell. macos-latest (Apple
+          # silicon) builds BOTH darwin-arm64 and darwin-x64 via bun's
+          # cross-compile — macos-13 (Intel) runners queue for 30+ minutes on
+          # weekends, so we eat the small cross-compile cost and stay on a
+          # well-served runner pool. Linux uses native-arch runners.
           CELLS=$(jq -c '
             .tools
             | to_entries
@@ -61,7 +63,7 @@ jobs:
                     platform: .,
                     runner: (
                       if . == "darwin-arm64" then "macos-latest"
-                      elif . == "darwin-x64" then "macos-13"
+                      elif . == "darwin-x64" then "macos-latest"
                       elif . == "linux-x64" then "ubuntu-latest"
                       elif . == "linux-arm64" then "ubuntu-24.04-arm"
                       else "ubuntu-latest"
