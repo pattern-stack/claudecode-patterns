@@ -67,49 +67,32 @@ npm i -g @agentic-patterns/cli
 
 `/sdlc:setup` probes for `ap` and prints the status so you don't have to remember.
 
-### Optional: dashboard status line
+### Status line (installed automatically)
 
-The plugin ships a status-line component (`plugin/scripts/dashboard-status.sh`) that renders a clickable colored dot in your Claude Code status bar — green when the `ap` dashboard's `/health` endpoint responds, red otherwise, linking to `http://localhost:3456`. It is wired into `~/.claude/settings.json` (user scope) so it applies to **every** Claude Code session, not just this project.
-
-`/sdlc:setup` offers to wire it for you. To do it manually, add to `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/dashboard-status.sh 2>/dev/null"
-  }
-}
-```
-
-The `*` glob auto-resolves to the newest installed version, so `/plugin update sdlc` won't break the wiring.
-
-> **Why user scope, not the plugin manifest?** Claude Code's plugin loader only honors `agent` and `subagentStatusLine` from a plugin's bundled `settings.json` — top-level `statusLine` is ignored. User scope (`~/.claude/settings.json`) is the only path that makes a plugin-shipped script apply to every session.
-
-### Optional: full SDLC status line
-
-For a richer line that surfaces the active ticket + branch + stack + PR + CI rollup alongside the dashboard pill, swap the command above for `statusline.sh`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/statusline.sh",
-    "padding": 1,
-    "refreshInterval": 5
-  }
-}
-```
-
-Renders a centered, ANSI-dim line. Each segment auto-detects its source and drops out silently when absent:
+The plugin ships `plugin/scripts/statusline.sh` — a centered, ANSI-dim line surfacing the active ticket + branch + stack + PR + CI rollup + dashboard pill. Each segment auto-detects its source and drops out silently when absent:
 
 - **Ticket** — parsed from the branch using `team_key` from `.claude/sdlc.yml` (e.g. `AP-16`, `PSC-42`).
 - **Branch** — current branch name (suppressed on `main` / `master`).
 - **Stack** — first line of `st status` when [graphite-cli `st`](https://graphite.dev) reports a tracked stack.
 - **PR / CI** — `gh pr view` for the current branch, cached 20s. CI collapses to `CI 2 failing` / `CI 1 running` / `CI 4 ✓`.
-- **Dashboard** — composes `dashboard-status.sh` as the last segment when `ap` is installed.
+- **Dashboard** — clickable colored dot pointing at the local cc-viewer (green when `/health` responds, red otherwise).
 
-Slow probes (`st`, `gh`) are cached on disk under `$XDG_CACHE_HOME/ccp-statusline/` so the UI never blocks. Works without `node` — bash + `git` + optional `jq` / `yq` / `gh` / `st` / `curl`.
+Wiring is **opt-out**: on the first session start after `/plugin install sdlc`, the `SessionStart` hook `plugin/hooks/ensure-statusline.sh` writes the wiring to `~/.claude/settings.json` and drops a marker at `~/.cache/claudecode-patterns/statusline-installed`. To disable, delete the `statusLine` block from `~/.claude/settings.json` — the marker ensures the hook won't re-install it. The hook only touches wiring under `claudecode-patterns/sdlc/`; third-party / user-custom `statusLine` values are left alone.
+
+The wiring it writes:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash $HOME/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/statusline.sh 2>/dev/null"
+  }
+}
+```
+
+The `*` glob auto-resolves to the newest installed version, so `/plugin update sdlc` won't break the wiring. Slow probes (`st`, `gh`) are cached on disk under `$XDG_CACHE_HOME/ccp-statusline/` so the UI never blocks. Works without `node` — bash + `git` + optional `jq` / `yq` / `gh` / `st` / `curl`.
+
+> **Why user scope, not the plugin manifest?** Claude Code's plugin loader only honors `agent` and `subagentStatusLine` from a plugin's bundled `settings.json` — top-level `statusLine` is ignored. User scope (`~/.claude/settings.json`) is the only path that makes a plugin-shipped script apply to every session.
 
 ### Gate-1 mode (strict vs auto / "trust mode")
 
