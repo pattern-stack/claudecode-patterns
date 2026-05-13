@@ -33,6 +33,24 @@
       "health_path": "/health",
       "autostart": true,
       "autostart_event": "SessionStart"
+    },
+    "cc-bridge": {
+      "description": "Local daemon that tails CC session JSONL transcripts and forwards new lines to cc-viewer as TranscriptDelta events.",
+      "source_dir": "tools/cc-bridge",
+      "build_script": "scripts/build-binary.sh",
+      "build_output": "build/cc-bridge-{platform}",
+      "platforms": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "binary_name": "cc-bridge",
+      "port_env": "CC_BRIDGE_PORT",
+      "port_default": 3994,
+      "health_path": "/health",
+      "autostart": true,
+      "autostart_event": "SessionStart"
     }
   }
 }

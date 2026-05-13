@@ -61,6 +61,12 @@ STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/cc-viewer"
 mkdir -p "$STATE_DIR"
 LOG_FILE="${STATE_DIR}/server.log"
 
+# Drop a warmup marker so the dashboard-status.sh statusline component can
+# render yellow ("starting") during the bind window instead of red. The
+# marker is cleared by dashboard-status.sh once /health responds, and
+# treated as stale after WARMUP_SECONDS (see dashboard-status.sh).
+date +%s > "${STATE_DIR}/warming-up" 2>/dev/null || true
+
 # Race condition note: two CC sessions starting within milliseconds can
 # both pass the /health probe and both spawn. The second will fail to
 # bind PORT and exit; the first owns the dashboard. Harmless but visible

@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { eventRoutes } from "./routes/events.js";
 import { healthRoutes } from "./routes/health.js";
 import { hookRoutes } from "./routes/hooks.js";
+import { transcriptRoutes } from "./routes/transcripts.js";
 import { SPA_FALLBACK, STATIC_BUNDLE } from "./static-bundle.js";
 
 export function createServer(config: ServerConfig): Hono {
@@ -13,8 +14,12 @@ export function createServer(config: ServerConfig): Hono {
   app.use("*", corsMiddleware(config.cors));
   app.onError(errorHandler);
 
-  // API first (so they beat the SPA fallback)
+  // API first (so they beat the SPA fallback).
+  // transcriptRoutes registers the static `/hooks/TranscriptDelta` path —
+  // mount it BEFORE hookRoutes (which holds the parameterized `/hooks/:eventType`)
+  // so the static match wins regardless of router specificity rules.
   app.route("/", healthRoutes());
+  app.route("/", transcriptRoutes(config.broadcaster, config.eventStore));
   app.route("/", hookRoutes(config.broadcaster, config.eventStore));
   app.route("/", eventRoutes(config.eventStore, config.broadcaster));
 

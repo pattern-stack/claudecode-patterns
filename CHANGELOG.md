@@ -5,6 +5,23 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.12] — 2026-05-14
+
+### Added
+
+- **Real-time chat view alongside the existing trace viewer.** The cc-viewer dashboard now has two pages: `/logs` (the existing hook-event trace viewer, renamed from `ClaudeCodePage`) and `/chat` (a session list + per-session chat thread). `/chat/:sessionId` renders the actual Claude Code conversation — user prompts, assistant text and thinking, tool calls and results, model + token usage — live as the session progresses. Root path redirects to `/chat`.
+- **`tools/cc-bridge/` — new local daemon, sibling to cc-viewer.** Watches per-session JSONL transcripts under `~/.claude/projects/` and forwards new lines to cc-viewer as `TranscriptDelta` events. Polling-based with optional `fs.watch` for sub-second reaction, per-session position cursor persistence at `~/.local/state/cc-bridge/positions/<id>.pos`, idle-timeout reaper for crashed-CC sessions. Single-binary build via `bun build --compile`, shipped via the same release pipeline as cc-viewer (entry added to `plugin/lib/tools.json`). HTTP control surface on `localhost:3994` (`/health`, `/sessions/register`, `/sessions/deregister`, `/admin/state`).
+- **`/hooks/TranscriptDelta` ingest endpoint on cc-viewer.** Accepts one POST per JSONL line from cc-bridge. Dedupes on `(session_id, line_uuid)` via UNIQUE constraint on the new `transcript_entries` SQLite table. Broadcasts to SSE clients on the `claude_code.transcript_delta` channel. `GET /admin/claude-code/sessions/:id/transcript` returns the full ordered transcript for cold-load on chat page open.
+- **`plugin/hooks/ensure-cc-bridge.sh`** spawns + registers the active session at SessionStart (sibling of `ensure-cc-viewer.sh`). **`plugin/hooks/deregister-cc-bridge-session.sh`** on SessionEnd. Both fail silently — telemetry never blocks the user.
+- **`react-router-dom` + sidebar `AppShell`** in the viewer SPA (`Logs` / `Chat` nav). Proper atomic layout: `atoms/Cursor`, `molecules/{Avatar,Markdown,MessageFooter,WaitingIndicator}`, `organisms/{ChatPanel,MessageRow,parts/{TextPart,ThinkingPart,ToolCallPart,ErrorPart}}`, `templates/AppShell`.
+- **Yellow "warming up" state on the statusline dashboard dot.** `ensure-cc-viewer.sh` drops a `~/.local/state/cc-viewer/warming-up` marker on spawn; the dashboard pill in `statusline.sh` renders yellow (`\033[33m`) instead of red while the marker is fresh (`< 15s`) and `/health` hasn't bound yet. Cleared automatically once `/health` answers; falls back to red once the warmup window expires.
+
+### Fixed
+
+- **SSE reconnection loop.** `Bun.serve`'s default `idleTimeout: 10` was closing `/admin/events/stream` every 10s, putting the dashboard's connection badge into permanent "reconnecting…". Now `idleTimeout: 0` plus a 15s `:keepalive` comment frame pushed by `SSEBroadcaster`.
+- **EventSource `onopen` could lag up to 15s** on a freshly-loaded page because the broadcaster sent no initial bytes. `SSEBroadcaster.connect()` now emits an immediate `:keepalive` frame so the browser transitions out of `CONNECTING` state instantly.
+- **`fs.watch` ENOENT at SessionStart.** cc-bridge previously gave up watching a transcript that didn't exist yet when register fired (CC hadn't written the JSONL). Replaced with a periodic poll-flush (every 1.5s) that opportunistically (re-)attaches `fs.watch` once the file exists.
+
 ## [0.1.11] — 2026-05-13
 
 ### Changed

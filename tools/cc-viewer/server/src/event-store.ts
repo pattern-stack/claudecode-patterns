@@ -33,6 +33,24 @@ export interface SessionSummary {
   readonly eventCount: number;
 }
 
+export interface PersistedTranscriptEntry {
+  readonly sessionId: string;
+  readonly lineUuid: string;
+  readonly lineIndex: number;
+  readonly timestamp: string;
+  readonly transcriptPath: string | null;
+  readonly entry: Record<string, unknown>;
+}
+
+export interface TranscriptEntryInput {
+  readonly sessionId: string;
+  readonly lineUuid: string;
+  readonly lineIndex: number;
+  readonly timestamp: Date | string;
+  readonly transcriptPath?: string;
+  readonly entry: Record<string, unknown>;
+}
+
 export interface EventStoreOptions {
   /** Path to the SQLite file. `:memory:` is supported for tests. */
   readonly path: string;
@@ -62,7 +80,22 @@ CREATE INDEX IF NOT EXISTS idx_events_cc_session ON events(cc_session_id, timest
 CREATE INDEX IF NOT EXISTS idx_events_trace ON events(trace_id, timestamp) WHERE trace_id IS NOT NULL;
 `;
 
-const TARGET_SCHEMA_VERSION = 1;
+const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS transcript_entries (
+  session_id      TEXT    NOT NULL,
+  line_uuid       TEXT    NOT NULL,
+  line_index      INTEGER NOT NULL,
+  timestamp       TEXT    NOT NULL,
+  transcript_path TEXT,
+  entry           TEXT    NOT NULL,
+  PRIMARY KEY (session_id, line_uuid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcript_session_index
+  ON transcript_entries(session_id, line_index);
+`;
+
+const TARGET_SCHEMA_VERSION = 2;
 
 export class EventStore {
   private readonly _db: Database;
@@ -72,6 +105,8 @@ export class EventStore {
   private readonly _sessionListStmt: Statement;
   private readonly _deleteByDateStmt: Statement;
   private readonly _deleteByCapStmt: Statement;
+  private readonly _appendTranscriptStmt: Statement;
+  private readonly _transcriptForSessionStmt: Statement;
 
   constructor(opts: EventStoreOptions) {
     this._db = new Database(opts.path);
@@ -120,6 +155,19 @@ export class EventStore {
     this._deleteByCapStmt = this._db.prepare(`
       DELETE FROM events
       WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)
+    `);
+
+    // INSERT OR IGNORE makes re-POST of the same line a no-op — the
+    // primary key (session_id, line_uuid) is the dedupe key.
+    this._appendTranscriptStmt = this._db.prepare(`
+      INSERT OR IGNORE INTO transcript_entries (
+        session_id, line_uuid, line_index, timestamp, transcript_path, entry
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    this._transcriptForSessionStmt = this._db.prepare(`
+      SELECT * FROM transcript_entries
+      WHERE session_id = ?
+      ORDER BY line_index ASC
     `);
 
     if (opts.retentionDays !== undefined) this.purgeOlderThanDays(opts.retentionDays);
@@ -190,6 +238,27 @@ export class EventStore {
     return row.n;
   }
 
+  /**
+   * Append one transcript entry. Returns true if a new row was inserted,
+   * false if it was a duplicate (same session_id + line_uuid).
+   */
+  appendTranscriptEntry(input: TranscriptEntryInput): boolean {
+    const info = this._appendTranscriptStmt.run(
+      input.sessionId,
+      input.lineUuid,
+      input.lineIndex,
+      timestampToIso(input.timestamp),
+      input.transcriptPath ?? null,
+      JSON.stringify(input.entry, jsonReplacer),
+    );
+    return Number(info.changes) > 0;
+  }
+
+  transcriptForSession(sessionId: string): PersistedTranscriptEntry[] {
+    const rows = this._transcriptForSessionStmt.all(sessionId) as RawTranscriptRow[];
+    return rows.map(rowToTranscriptEntry);
+  }
+
   close(): void {
     this._db.close();
   }
@@ -203,6 +272,10 @@ export class EventStore {
     if (version < 1) {
       this._db.exec(SCHEMA_V1);
       version = 1;
+    }
+    if (version < 2) {
+      this._db.exec(SCHEMA_V2);
+      version = 2;
     }
 
     if (version !== TARGET_SCHEMA_VERSION) {
@@ -225,6 +298,32 @@ interface RawRow {
   cc_hook_name: string | null;
   cc_cwd: string | null;
   data: string;
+}
+
+interface RawTranscriptRow {
+  session_id: string;
+  line_uuid: string;
+  line_index: number;
+  timestamp: string;
+  transcript_path: string | null;
+  entry: string;
+}
+
+function rowToTranscriptEntry(r: RawTranscriptRow): PersistedTranscriptEntry {
+  let entry: Record<string, unknown>;
+  try {
+    entry = JSON.parse(r.entry) as Record<string, unknown>;
+  } catch {
+    entry = { _parseError: true, _raw: r.entry };
+  }
+  return {
+    sessionId: r.session_id,
+    lineUuid: r.line_uuid,
+    lineIndex: r.line_index,
+    timestamp: r.timestamp,
+    transcriptPath: r.transcript_path,
+    entry,
+  };
 }
 
 function rowToPersisted(r: RawRow): PersistedEvent {
