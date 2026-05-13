@@ -44,3 +44,17 @@ jobs:
 
       - name: List canvases (informational)
         run: just sdlc::canvases
+
+  version-bump:
+    name: plugin/ changes require version bump
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify version bump
+        run: bash plugin/scripts/verify-version-bump.sh
