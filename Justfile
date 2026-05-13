@@ -54,6 +54,12 @@ clean-worktrees:
     git worktree prune
     echo "done."
 
+# cc-viewer dashboard (lives in tools/cc-viewer/).
+# `just viewer::dev`   — vite + bun --watch dev loop
+# `just viewer::build` — produce a native single-file binary under
+#                        tools/cc-viewer/build/
+mod viewer 'tools/cc-viewer/viewer.justfile'
+
 # Plugin-supplied recipes — namespaced under
 # `sdlc::`. `.claude/sdlc.justfile` is a
 # symlink → `${CLAUDE_PLUGIN_DIR}/sdlc.justfile`
