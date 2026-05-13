@@ -9,9 +9,10 @@ Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plug
 
 ### Changed
 
-- **`statusline.sh` UX polish.** Two fixes after dogfooding on `main`:
+- **`statusline.sh` UX polish.** Three fixes after dogfooding on `main`:
   1. **Actual visual centering.** Previous version padded with regular spaces; Claude Code's UI trims leading whitespace and left-aligned the result. Now pads with U+00A0 (non-breaking spaces) which survive the trim and render the same width — the line is now centered as designed.
   2. **Always show branch + project when no ticket.** Previously, on `main`/`master`, every segment except the dashboard pill gated out, leaving a single-element line (`● dashboard`) with no context about which repo or branch you were on. New rules: always show branch (drop the main/master suppression for that segment); show the cwd basename as a "project" segment when no ticket was parsed. Result: `agent-patterns · main · ● dashboard` on main, `AP-16 · dugmcfarlane/ap-16-foo · ● dashboard` on a feature branch — both informative.
+  3. **PR + CI segments break out of the global dim wrap.** The PR segment is now bold and wraps an OSC 8 hyperlink to `https://github.com/<owner>/<repo>/pull/<n>` (clickable in iTerm2 / Kitty / WezTerm). The CI segment is semantically colored: red for failing, yellow for running, green for passing. Both segments re-enter the dim wrap immediately after their own escapes close, so the rest of the line stays uniformly muted. Built with `printf -v` to keep the OSC 8 byte sequence intact (ANSI-C quote + double-quote concatenation was producing literal `\033` strings in some shells).
 
 ## [0.1.6] — 2026-05-13
 
