@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "Tool registry for binaries shipped alongside the sdlc plugin.",
+    "Single source of truth for both the GH Actions release workflow (matrix",
+    "derived via jq) and the plugin-side install primitive (plugin/lib/tools.sh).",
+    "",
+    "Versioning is coupled to the plugin: every release tag attaches one tarball",
+    "per (tool × platform) cell, named `<tool>-<platform>.tar.gz`. The version",
+    "downloaded at runtime is whatever is set in plugin/.claude-plugin/plugin.json.",
+    "",
+    "To add a tool:",
+    "  1. Drop its source under tools/<name>/.",
+    "  2. Expose a `scripts/build-binary.sh <platform>` that produces",
+    "     `tools/<name>/build/<name>-<platform>`.",
+    "  3. Append an entry under .tools below.",
+    "Release workflow + plugin-side install pick it up automatically."
+  ],
+  "tools": {
+    "cc-viewer": {
+      "description": "Self-contained Claude Code session viewer (Hono + bun:sqlite + embedded React SPA).",
+      "source_dir": "tools/cc-viewer",
+      "build_script": "scripts/build-binary.sh",
+      "build_output": "build/cc-viewer-{platform}",
+      "platforms": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-x64",
+        "linux-arm64"
+      ],
+      "binary_name": "cc-viewer",
+      "port_env": "CC_VIEWER_PORT",
+      "port_default": 3993,
+      "health_path": "/health",
+      "autostart": true,
+      "autostart_event": "SessionStart"
+    }
+  }
+}
