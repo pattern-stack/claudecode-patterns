@@ -19,7 +19,7 @@ Per-phase required fields and default attention surfaces are encoded in `instruc
 | Consumer | What it reads | Status |
 |---|---|---|
 | **CLI (human reader)** | `headline`, `body`, `next.command` | Always rendered inline by the agent's response itself |
-| **Dashboard log** | Full envelope as JSONL via `emit.mjs` `Stop`/`SubagentStop` hooks | Available now (envelope visible in transcript) |
+| **Dashboard log** | Full envelope as JSONL via `emit.sh` `Stop`/`SubagentStop` hooks | Available now (envelope visible in transcript) |
 | **Render skill** (planned) | Full envelope — projects to slack / tracker / pr surfaces | Planned post-v1 |
 | **Other agents** | `next.command`, `gate_action`, `attention.dm` | When chained (e.g. coordinator reads child envelopes) |
 

@@ -67,6 +67,25 @@ npm i -g @agentic-patterns/cli
 
 `/sdlc:setup` probes for `ap` and prints the status so you don't have to remember.
 
+### Optional: dashboard status line
+
+The plugin ships a status-line component (`plugin/scripts/dashboard-status.sh`) that renders a clickable colored dot in your Claude Code status bar — green when the `ap` dashboard's `/health` endpoint responds, red otherwise, linking to `http://localhost:3456`. It is wired into `~/.claude/settings.json` (user scope) so it applies to **every** Claude Code session, not just this project.
+
+`/sdlc:setup` offers to wire it for you. To do it manually, add to `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/dashboard-status.sh 2>/dev/null"
+  }
+}
+```
+
+The `*` glob auto-resolves to the newest installed version, so `/plugin update sdlc` won't break the wiring.
+
+> **Why user scope, not the plugin manifest?** Claude Code's plugin loader only honors `agent` and `subagentStatusLine` from a plugin's bundled `settings.json` — top-level `statusLine` is ignored. User scope (`~/.claude/settings.json`) is the only path that makes a plugin-shipped script apply to every session.
+
 ### Gate-1 mode (strict vs auto / "trust mode")
 
 By default, the specifier posts strategies and waits for human approval (strict mode). For mechanical work — RFC translation, vendor adapter wirings, YAML definitions — flip individual stacks or issues to **auto mode** ("trust mode") and the specifier self-approves. Three override layers, most-specific wins:

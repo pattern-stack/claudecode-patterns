@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs SessionStart",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh SessionStart",
             "async": true,
             "timeout": 10
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs InstructionsLoaded",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh InstructionsLoaded",
             "async": true,
             "timeout": 10
           }
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs UserPromptSubmit",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh UserPromptSubmit",
             "async": true,
             "timeout": 10
           }
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/check-config.mjs",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/check-config.sh",
             "async": false,
             "timeout": 3
           }
@@ -79,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PreToolUse",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PreToolUse",
             "async": true,
             "timeout": 10
           }
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PermissionRequest",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PermissionRequest",
             "async": true,
             "timeout": 10
           }
@@ -105,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PermissionDenied",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PermissionDenied",
             "async": true,
             "timeout": 10
           }
@@ -118,7 +118,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PostToolUse",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PostToolUse",
             "async": true,
             "timeout": 10
           }
@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PostToolUseFailure",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PostToolUseFailure",
             "async": true,
             "timeout": 10
           }
@@ -144,7 +144,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs Notification",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh Notification",
             "async": true,
             "timeout": 10
           }
@@ -157,7 +157,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs SubagentStart",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh SubagentStart",
             "async": true,
             "timeout": 10
           }
@@ -170,7 +170,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs SubagentStop",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh SubagentStop",
             "async": true,
             "timeout": 10
           }
@@ -183,7 +183,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs TaskCreated",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh TaskCreated",
             "async": true,
             "timeout": 10
           }
@@ -196,7 +196,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs TaskCompleted",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh TaskCompleted",
             "async": true,
             "timeout": 10
           }
@@ -209,7 +209,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs Stop",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh Stop",
             "async": true,
             "timeout": 10
           }
@@ -222,7 +222,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs StopFailure",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh StopFailure",
             "async": true,
             "timeout": 10
           }
@@ -235,7 +235,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs TeammateIdle",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh TeammateIdle",
             "async": true,
             "timeout": 10
           }
@@ -248,7 +248,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs ConfigChange",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh ConfigChange",
             "async": true,
             "timeout": 10
           }
@@ -261,7 +261,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs CwdChanged",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh CwdChanged",
             "async": true,
             "timeout": 10
           }
@@ -274,7 +274,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs FileChanged",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh FileChanged",
             "async": true,
             "timeout": 10
           }
@@ -287,7 +287,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PreCompact",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PreCompact",
             "async": true,
             "timeout": 10
           }
@@ -300,7 +300,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PostCompact",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PostCompact",
             "async": true,
             "timeout": 10
           }
@@ -313,7 +313,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs Elicitation",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh Elicitation",
             "async": true,
             "timeout": 10
           }
@@ -326,7 +326,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs ElicitationResult",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh ElicitationResult",
             "async": true,
             "timeout": 10
           }
@@ -339,7 +339,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs Setup",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh Setup",
             "async": true,
             "timeout": 10
           }
@@ -352,7 +352,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs UserPromptExpansion",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh UserPromptExpansion",
             "async": true,
             "timeout": 10
           }
@@ -365,7 +365,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs PostToolBatch",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh PostToolBatch",
             "async": true,
             "timeout": 10
           }
@@ -378,7 +378,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs WorktreeRemove",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh WorktreeRemove",
             "async": true,
             "timeout": 10
           }
@@ -391,7 +391,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs WorktreeCreate",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh WorktreeCreate",
             "async": true,
             "timeout": 10
           }
@@ -404,7 +404,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/emit.mjs SessionEnd",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh SessionEnd",
             "async": true,
             "timeout": 10
           }

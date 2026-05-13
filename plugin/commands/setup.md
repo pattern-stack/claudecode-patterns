@@ -29,10 +29,22 @@ No arguments. The flow is conversational.
 
 ## Resolution prerequisites
 
-- **Plugin install path (`$PLUGIN_ROOT`)** — resolve at runtime from `~/.claude/plugins/installed_plugins.json` rather than relying on env-var substitution. Neither `${CLAUDE_PLUGIN_DIR}` nor `${CLAUDE_PLUGIN_ROOT}` is reliably exposed to skill-body shell calls: `${CLAUDE_PLUGIN_DIR}` is not a Claude Code token at all, and `${CLAUDE_PLUGIN_ROOT}` is only substituted into plugin-manifest files (e.g. `hooks/hooks.json`) at config-parse time — not into slash-command markdown bodies executed by the model. Resolve with:
+- **Plugin install path (`$PLUGIN_ROOT`)** — resolve at runtime from `~/.claude/plugins/installed_plugins.json` rather than relying on env-var substitution. Neither `${CLAUDE_PLUGIN_DIR}` nor `${CLAUDE_PLUGIN_ROOT}` is reliably exposed to skill-body shell calls: `${CLAUDE_PLUGIN_DIR}` is not a Claude Code token at all, and `${CLAUDE_PLUGIN_ROOT}` is only substituted into plugin-manifest files (e.g. `hooks/hooks.json`) at config-parse time — not into slash-command markdown bodies executed by the model.
+
+  Resolve with a portable fallback chain — try `jq`, then `python3`, then `node`, then pure-shell grep/sed. The last branch has zero external deps, so the resolver works on Python / Go / Rust / etc. projects where `node` may not be installed or may be pinned to an unavailable version by a tool-version manager (asdf, mise, nvm):
 
   ```bash
-  PLUGIN_ROOT="$(node -e 'const j=require(require("os").homedir()+"/.claude/plugins/installed_plugins.json");const e=j.plugins["sdlc@claudecode-patterns"];process.stdout.write(e&&e[0]&&e[0].installPath||"")' 2>/dev/null)"
+  PLUGINS_FILE="$HOME/.claude/plugins/installed_plugins.json"
+  PLUGIN_ROOT=""
+  if command -v jq >/dev/null 2>&1; then
+    PLUGIN_ROOT="$(jq -r '.plugins["sdlc@claudecode-patterns"][0].installPath // ""' "$PLUGINS_FILE" 2>/dev/null)"
+  elif command -v python3 >/dev/null 2>&1; then
+    PLUGIN_ROOT="$(python3 -c "import json; j=json.load(open('$PLUGINS_FILE')); e=j['plugins'].get('sdlc@claudecode-patterns',[{}]); print((e[0] if e else {}).get('installPath',''))" 2>/dev/null)"
+  elif command -v node >/dev/null 2>&1; then
+    PLUGIN_ROOT="$(node -e 'const j=require(require("os").homedir()+"/.claude/plugins/installed_plugins.json");const e=j.plugins["sdlc@claudecode-patterns"];process.stdout.write(e&&e[0]&&e[0].installPath||"")' 2>/dev/null)"
+  else
+    PLUGIN_ROOT="$(grep -A 5 '"sdlc@claudecode-patterns"' "$PLUGINS_FILE" 2>/dev/null | grep -m1 '"installPath"' | sed 's/.*"installPath"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  fi
   ```
 
   If `$PLUGIN_ROOT` is empty or `"$PLUGIN_ROOT/sdlc.example.yml"` doesn't exist, halt with: "sdlc plugin install not found at ~/.claude/plugins/installed_plugins.json (key `sdlc@claudecode-patterns`). Install via `/plugin install sdlc@claudecode-patterns` and retry."
@@ -184,7 +196,34 @@ without it.
 
 This step is advisory only. Do not halt setup on any of these outcomes. The plugin works in all three states; only the dashboard surface is affected.
 
-### Step 10: Print next-steps
+### Step 10: Offer to wire the dashboard status line
+
+The plugin ships `plugin/scripts/dashboard-status.sh` — a status-line component that renders a clickable colored dot pointing at the local `ap` dashboard (green when `/health` responds within 200ms, red otherwise). Status lines are session-wide UI, so the right home for the wiring is `~/.claude/settings.json` (user scope) rather than `.claude/settings.json` (this project only). Plugin-bundled `settings.json` cannot ship a top-level `statusLine` either — the plugin loader only honors `agent` and `subagentStatusLine` keys there — so user-scope is the only path that makes this apply to every session everywhere.
+
+Read `~/.claude/settings.json` (treat a missing file as `{}`). Inspect its `statusLine` field:
+
+| Current state | Action |
+|---|---|
+| **No `statusLine`** | AskUserQuestion: "Wire the SDLC dashboard status line into `~/.claude/settings.json`? Applies to every Claude Code session." Options: `Add (recommended)`, `Skip`. |
+| **`statusLine` already references `dashboard-status.sh`** (substring match on `dashboard-status.sh`) | No-op. Print "Status line already wired." |
+| **`statusLine` is set to something else** | AskUserQuestion: "Existing `statusLine` in `~/.claude/settings.json` does not point at the SDLC dashboard. Replace it?" Show the current command in the question body. Options: `Replace`, `Keep existing (skip)`. |
+
+On `Add` or `Replace`, write:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/dashboard-status.sh 2>/dev/null"
+  }
+}
+```
+
+Merge into the existing JSON object — preserve all other keys. The glob (`sdlc/*/scripts/...`) auto-resolves to the latest installed version so `/plugin update sdlc` does not break the wiring. Do not write the literal `$PLUGIN_ROOT` path: that path includes the current version and would silently stop pointing at the latest after an update.
+
+If the write fails (permissions, disk full), surface the OS error but do not halt setup — status line is optional polish.
+
+### Step 11: Print next-steps
 
 Three lines, always:
 
@@ -221,6 +260,8 @@ Otherwise specifier degrades to label-only.
 - Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
 - Telemetry check (Step 9) runs in all three states without halting: ap present + dashboard up, ap present + dashboard down, ap absent. Setup is never blocked by the telemetry stack.
+- Status-line wiring (Step 10) is idempotent — re-run on a machine that already has the dashboard status line in `~/.claude/settings.json` is a no-op print. Other user-scope settings keys are preserved across the write. Skip path leaves the file untouched. Failure to write `~/.claude/settings.json` does not halt setup.
+- `$PLUGIN_ROOT` resolver works without `node` installed (Python / Go / Rust projects pass through the `jq` / `python3` / pure-shell branches).
 
 ## Out of scope
 

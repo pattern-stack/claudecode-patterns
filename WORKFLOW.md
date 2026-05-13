@@ -187,7 +187,7 @@ Canvases govern these artifacts' shape. Tune them via `just canvas-dev` (knob-le
 
 ## Observability
 
-Every Claude Code lifecycle event (26 of them — SessionStart, PreToolUse, SubagentStart, …) gets POSTed to your dashboard via `.claude/hooks/emit.mjs`. The session canvas accumulates per-turn envelope JSONL into a session directory at `agent-logs/<session-id>/`.
+Every Claude Code lifecycle event (26 of them — SessionStart, PreToolUse, SubagentStart, …) gets POSTed to your dashboard via `plugin/hooks/emit.sh` (a zero-dependency bash + curl shim — no node runtime required). The session canvas accumulates per-turn envelope JSONL into a session directory at `agent-logs/<session-id>/`.
 
 Run `just canvases` to reconcile canvases on disk against the registry in `sdlc.yml.canvases`.
 
