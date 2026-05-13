@@ -169,13 +169,26 @@ if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have gh
   fi
 fi
 
-# Optional cc-viewer dashboard pill. Reuses dashboard-status.sh which
-# emits an OSC 8 hyperlink. Composed here so users get the segment "free"
-# whenever the bundled cc-viewer is running on :3993.
+# Optional cc-viewer dashboard pill. OSC 8 hyperlink wrapping a colored dot
+# pointing at http://localhost:${CC_VIEWER_PORT:-3993}. Green = /health
+# responded within 200ms; red = no response. Drops out silently if curl is
+# missing (terminal degrades to plain "● dashboard" with no link in that case
+# would still require curl for the probe, so we just omit the segment).
+#
+# Honors CC_VIEWER_PORT, then AP_DASHBOARD_PORT (legacy), then defaults to 3993.
 dashboard=""
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -x "$script_dir/dashboard-status.sh" ]] && have curl; then
-  dashboard="$("$script_dir/dashboard-status.sh" 2>/dev/null || true)"
+if have curl; then
+  _port="${CC_VIEWER_PORT:-${AP_DASHBOARD_PORT:-3993}}"
+  _url="http://localhost:${_port}"
+  if curl -fs -m 0.2 "${_url}/health" -o /dev/null 2>/dev/null; then
+    _color=$'\033[32m'  # green
+  else
+    _color=$'\033[31m'  # red
+  fi
+  _reset=$'\033[0m'
+  # OSC 8 hyperlink: ESC]8;;URL ESC\ TEXT ESC]8;; ESC\ — clickable in iTerm2
+  # and other modern terminals; degrades to plain text + escape bytes elsewhere.
+  dashboard=$(printf '\033]8;;%s\033\\%s●%s dashboard\033]8;;\033\\' "$_url" "$_color" "$_reset")
 fi
 
 # ----------------------------------------------------------------------------

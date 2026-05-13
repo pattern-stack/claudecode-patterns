@@ -1,7 +1,3 @@
 {
-  "_comment": "Hooks now declared in plugin/.claude-plugin/plugin.json (components.hooks). Project-level overrides go here when needed.",
-  "statusLine": {
-    "type": "command",
-    "command": "bash ${CLAUDE_PROJECT_DIR}/plugin/scripts/dashboard-status.sh 2>/dev/null"
-  }
+  "_comment": "Hooks now declared in plugin/.claude-plugin/plugin.json (components.hooks). Project-level overrides go here when needed."
 }

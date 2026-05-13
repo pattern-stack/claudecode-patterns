@@ -5,6 +5,18 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.11] — 2026-05-13
+
+### Changed
+
+- **Statusline is now installed opt-out, automatically.** New `SessionStart` hook `plugin/hooks/ensure-statusline.sh` writes the SDLC statusline wiring into `~/.claude/settings.json` on first session after `/plugin install sdlc`. Drops a marker at `~/.cache/claudecode-patterns/statusline-installed`; if the user later removes the `statusLine` block, the marker ensures the hook never re-installs (opt-out is non-recidivist). Only touches wiring whose path is under `claudecode-patterns/sdlc/` — third-party / user-custom `statusLine` values are left alone. Malformed `settings.json` is never clobbered.
+- **Legacy `dashboard-status.sh` auto-upgrades to `statusline.sh`.** The same hook detects any `statusLine.command` still pointing at the old `dashboard-status.sh` script and rewrites it in place to `statusline.sh`. Other settings keys are preserved. One-line stderr log on the upgrade boot, silent thereafter.
+- **`/sdlc:setup` Step 10 is now a reporter, not an installer.** The SessionStart hook owns install + upgrade. Setup only prompts on the third-party-`statusLine` branch where automatic action would be inappropriate.
+
+### Removed
+
+- **`plugin/scripts/dashboard-status.sh`** — the dashboard pill is now inlined directly into `statusline.sh`. The single-segment dot-only experience is no longer a separate wiring target. Existing wirings pointing at `dashboard-status.sh` are auto-upgraded by the SessionStart hook above; no manual action required.
+
 ## [0.1.10] — 2026-05-12
 
 ### Changed

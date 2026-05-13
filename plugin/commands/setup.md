@@ -209,25 +209,29 @@ On `Skip`, print "Dashboard skipped — re-run /sdlc:setup later if you change y
 
 This step is advisory in all three branches. **Never halt setup on a failed install** — the sdlc workflow is complete without telemetry.
 
-### Step 10: Offer to wire the dashboard status line
+### Step 10: Confirm the statusline wiring
 
-The plugin ships `plugin/scripts/dashboard-status.sh` — a status-line component that renders a clickable colored dot pointing at the local cc-viewer dashboard (green when `/health` responds within 200ms, red otherwise). Status lines are session-wide UI, so the right home for the wiring is `~/.claude/settings.json` (user scope) rather than `.claude/settings.json` (this project only). Plugin-bundled `settings.json` cannot ship a top-level `statusLine` either — the plugin loader only honors `agent` and `subagentStatusLine` keys there — so user-scope is the only path that makes this apply to every session everywhere.
+The plugin ships `plugin/scripts/statusline.sh` — a centered, multi-segment statusline that renders ticket · branch · stack · PR · CI · dashboard pill, each segment dropping out silently when its source is absent. Status lines are session-wide UI, so the wiring lives in `~/.claude/settings.json` (user scope); plugin-bundled `settings.json` cannot ship a top-level `statusLine` (the loader only honors `agent` and `subagentStatusLine` there).
 
-Read `~/.claude/settings.json` (treat a missing file as `{}`). Inspect its `statusLine` field:
+**Wiring is normally automatic.** The `SessionStart` hook `plugin/hooks/ensure-statusline.sh` performs opt-out installation on first session after `/plugin install sdlc`: if `~/.claude/settings.json` has no `statusLine`, it writes the SDLC wiring + a marker file at `~/.cache/claudecode-patterns/statusline-installed` (the marker is what makes opt-out non-recidivist — once a user removes the wiring, we never re-install). The hook also auto-upgrades any wiring still pointing at the legacy `dashboard-status.sh` (removed in this plugin version) to the current `statusline.sh`. Third-party / user-custom `statusLine` values are left untouched.
+
+This setup step therefore only acts as a **reporter + reconfigure path**. Read `~/.claude/settings.json` (treat a missing file as `{}`). Inspect its `statusLine` field:
 
 | Current state | Action |
 |---|---|
-| **No `statusLine`** | AskUserQuestion: "Wire the SDLC dashboard status line into `~/.claude/settings.json`? Applies to every Claude Code session." Options: `Add (recommended)`, `Skip`. |
-| **`statusLine` already references `dashboard-status.sh`** (substring match on `dashboard-status.sh`) | No-op. Print "Status line already wired." |
-| **`statusLine` is set to something else** | AskUserQuestion: "Existing `statusLine` in `~/.claude/settings.json` does not point at the SDLC dashboard. Replace it?" Show the current command in the question body. Options: `Replace`, `Keep existing (skip)`. |
+| **No `statusLine`, marker present** | User previously removed the SDLC wiring. Print "Statusline disabled (marker at `~/.cache/claudecode-patterns/statusline-installed`). Re-enable? Delete the marker, then restart Claude Code — the SessionStart hook will reinstall." Do not write. |
+| **No `statusLine`, no marker** | The SessionStart hook will install on next start. Print "SDLC statusline will install automatically on next session start." Do not write here. |
+| **`statusLine` already references `statusline.sh` under `claudecode-patterns/sdlc/`** | No-op. Print "Statusline already wired." |
+| **`statusLine` references the legacy `dashboard-status.sh`** | Print "Legacy `dashboard-status.sh` wiring detected — the SessionStart hook will upgrade it to `statusline.sh` on next session start." Do not write here either; let the hook handle it so the upgrade path is the same code path for everyone. |
+| **`statusLine` set to something else (third-party / user-custom)** | AskUserQuestion: "Existing `statusLine` in `~/.claude/settings.json` is not the SDLC statusline. Replace it?" Show the current command in the question body. Options: `Replace`, `Keep existing (skip)`. On `Replace`, write the wiring below + touch the marker. |
 
-On `Add` or `Replace`, write:
+Wiring shape (for the `Replace` branch above, or for hand-rolled installs):
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/dashboard-status.sh 2>/dev/null"
+    "command": "bash ~/.claude/plugins/cache/claudecode-patterns/sdlc/*/scripts/statusline.sh 2>/dev/null"
   }
 }
 ```
@@ -273,7 +277,7 @@ Otherwise specifier degrades to label-only.
 - Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
 - Dashboard offer (Step 9) runs in all three states without halting: installed + running, installed + idle, not installed. On `Install`, a failed download (no tarball / no network) prints the diagnostic without aborting setup. Setup is never blocked by the dashboard install.
-- Status-line wiring (Step 10) is idempotent — re-run on a machine that already has the dashboard status line in `~/.claude/settings.json` is a no-op print. Other user-scope settings keys are preserved across the write. Skip path leaves the file untouched. Failure to write `~/.claude/settings.json` does not halt setup.
+- Status-line wiring (Step 10) is idempotent — re-run on a machine that already has the SDLC statusline in `~/.claude/settings.json` is a no-op print. The `SessionStart` `ensure-statusline.sh` hook is the canonical install/upgrade path; setup itself only writes on the explicit `Replace` branch (third-party `statusLine` present). Other user-scope settings keys are preserved across the write. Failure to write `~/.claude/settings.json` does not halt setup.
 - `$PLUGIN_ROOT` resolver works without `node` installed (Python / Go / Rust projects pass through the `jq` / `python3` / pure-shell branches).
 
 ## Out of scope
