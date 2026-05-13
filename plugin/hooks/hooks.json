@@ -1,5 +1,5 @@
 {
-  "description": "Emit Claude Code lifecycle events to the AP dashboard (defaults to http://localhost:3456; override via AP_DASHBOARD_URL).",
+  "description": "Emit Claude Code lifecycle events to the bundled cc-viewer dashboard (defaults to http://localhost:3993; override via CC_VIEWER_URL or CC_VIEWER_PORT). The dashboard binary is installed lazily by the SessionStart `ensure-cc-viewer.sh` hook.",
   "hooks": {
     "SessionStart": [
       {
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/ensure-playground.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/ensure-cc-viewer.sh",
             "async": true,
             "timeout": 5
           }
