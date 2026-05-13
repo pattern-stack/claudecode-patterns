@@ -108,6 +108,8 @@ if [[ -n "$branch" && -n "$team_key" ]]; then
     | tr '[:lower:]' '[:upper:]' || true)"
 fi
 
+project="$(basename "$cwd")"
+
 # `st` stack info. Skip on main/master and when no tracked stack.
 stack=""
 if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have st; then
@@ -161,19 +163,14 @@ fi
 # ----------------------------------------------------------------------------
 
 segments=()
+# Show project name when there's no ticket — otherwise the ticket implies repo context.
+[[ -z "$ticket" && -n "$project" ]] && segments+=("$project")
 [[ -n "$ticket"    ]] && segments+=("$ticket")
-[[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && segments+=("$branch")
+[[ -n "$branch"    ]] && segments+=("$branch")
 [[ -n "$stack"     ]] && segments+=("$stack")
 [[ -n "$pr"        ]] && segments+=("$pr")
 [[ -n "$ci"        ]] && segments+=("$ci")
 [[ -n "$dashboard" ]] && segments+=("$dashboard")
-
-# Fallback: project name + branch so the line is never empty.
-if (( ${#segments[@]} == 0 )); then
-  fallback="$(basename "$cwd")"
-  [[ -n "$branch" ]] && fallback="$fallback (${branch})"
-  segments+=("$fallback")
-fi
 
 joined=""
 for i in "${!segments[@]}"; do
@@ -203,5 +200,12 @@ fi
 pad=$(( (cols - visible_width) / 2 ))
 (( pad < 0 )) && pad=0
 
-printf '%*s%s' "$pad" "" "$line"
+# Pad with non-breaking spaces (U+00A0) — Claude Code's UI trims leading
+# regular whitespace, which left-aligns the line. NBSPs render the same
+# width but survive the trim, giving us actual visual centering.
+NBSP=$'\xc2\xa0'
+padding=""
+for ((i=0; i<pad; i++)); do padding+="$NBSP"; done
+
+printf '%s%s' "$padding" "$line"
 exit 0

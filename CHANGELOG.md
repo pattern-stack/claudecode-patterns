@@ -5,6 +5,14 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.7] — 2026-05-13
+
+### Changed
+
+- **`statusline.sh` UX polish.** Two fixes after dogfooding on `main`:
+  1. **Actual visual centering.** Previous version padded with regular spaces; Claude Code's UI trims leading whitespace and left-aligned the result. Now pads with U+00A0 (non-breaking spaces) which survive the trim and render the same width — the line is now centered as designed.
+  2. **Always show branch + project when no ticket.** Previously, on `main`/`master`, every segment except the dashboard pill gated out, leaving a single-element line (`● dashboard`) with no context about which repo or branch you were on. New rules: always show branch (drop the main/master suppression for that segment); show the cwd basename as a "project" segment when no ticket was parsed. Result: `agent-patterns · main · ● dashboard` on main, `AP-16 · dugmcfarlane/ap-16-foo · ● dashboard` on a feature branch — both informative.
+
 ## [0.1.6] — 2026-05-13
 
 ### Added
