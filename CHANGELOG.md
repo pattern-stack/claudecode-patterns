@@ -5,6 +5,12 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [Unreleased]
+
+### Added
+
+- **Full SDLC status line (`plugin/scripts/statusline.sh`).** Companion to `dashboard-status.sh` — renders a centered, ANSI-dim line composed of independent segments: active ticket (parsed from branch using `team_key` from `.claude/sdlc.yml`), current branch, `st` stack name, PR number + state, CI rollup summary, and the dashboard pill (composed by calling `dashboard-status.sh`). Each segment auto-detects its source and drops out silently when absent — works on `main`, on non-AP branches, without `gh`, without `st`, without `jq`, etc. Slow probes are cached under `$XDG_CACHE_HOME/ccp-statusline/` (5s for `st`, 20s for `gh`) so the UI never blocks. Pure bash 3.2 compatible; no `node` required. Wired into `~/.claude/settings.json` by users who want more than the dashboard pill — README documents the snippet. Same plugin-distribution caveat as `dashboard-status.sh` (top-level `statusLine` only valid in user scope, not plugin manifest).
+
 ## [0.1.5] — 2026-05-12
 
 ### Added
