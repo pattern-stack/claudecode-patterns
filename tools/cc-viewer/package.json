@@ -1,0 +1,15 @@
+{
+  "name": "cc-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["server", "viewer"],
+  "scripts": {
+    "build": "cd viewer && bun run build",
+    "start": "cd server && bun src/index.ts",
+    "dev": "bun run build && bun run start",
+    "dev:viewer": "cd viewer && bun run dev",
+    "dev:server": "cd server && bun --watch src/index.ts",
+    "typecheck": "cd server && bun run typecheck && cd ../viewer && bun run typecheck"
+  }
+}
