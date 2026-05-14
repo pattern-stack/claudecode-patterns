@@ -57,7 +57,7 @@ export function useEventStream(
         retryDelayRef.current = INITIAL_RETRY_MS;
       };
 
-      const NAMED_EVENTS = ["claude_code.hook"];
+      const NAMED_EVENTS = ["claude_code.hook", "claude_code.transcript_delta"];
 
       const ingest = (type: string, data: string) => {
         try {

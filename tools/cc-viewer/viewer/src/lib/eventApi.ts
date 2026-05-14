@@ -59,3 +59,34 @@ export async function fetchRecentEvents(opts: FetchRecentOptions = {}): Promise<
     timestamp: row.timestamp,
   }));
 }
+
+/** One row from GET /admin/claude-code/sessions/:id/transcript. */
+export interface TranscriptEntry {
+  line_uuid: string;
+  line_index: number;
+  timestamp: string;
+  transcript_path?: string;
+  entry: Record<string, unknown>;
+}
+
+interface TranscriptResponse {
+  session_id: string;
+  entries: TranscriptEntry[];
+}
+
+/**
+ * Fetch the cold-loaded transcript snapshot for a single Claude Code
+ * session. Entries are returned pre-ordered by `line_index`.
+ */
+export async function fetchTranscript(
+  sessionId: string,
+  opts: { baseUrl?: string } = {},
+): Promise<TranscriptEntry[]> {
+  const base = opts.baseUrl ?? "";
+  const url = `${base}/admin/claude-code/sessions/${encodeURIComponent(sessionId)}/transcript`;
+  const res = await fetch(url);
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(`fetchTranscript: HTTP ${res.status}`);
+  const body = (await res.json()) as TranscriptResponse;
+  return body.entries ?? [];
+}

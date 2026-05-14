@@ -170,20 +170,38 @@ if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have gh
 fi
 
 # Optional cc-viewer dashboard pill. OSC 8 hyperlink wrapping a colored dot
-# pointing at http://localhost:${CC_VIEWER_PORT:-3993}. Green = /health
-# responded within 200ms; red = no response. Drops out silently if curl is
-# missing (terminal degrades to plain "● dashboard" with no link in that case
-# would still require curl for the probe, so we just omit the segment).
+# pointing at http://localhost:${CC_VIEWER_PORT:-3993}.
+#
+#   green   /health answered within 200ms
+#   yellow  /health did not answer BUT ensure-cc-viewer.sh dropped a fresh
+#           "warming-up" marker (< 15s old) — we're inside the bind window
+#           and should not flash red prematurely
+#   red     down, or warmup window expired
+#
+# Drops out silently if curl is missing.
 #
 # Honors CC_VIEWER_PORT, then AP_DASHBOARD_PORT (legacy), then defaults to 3993.
 dashboard=""
 if have curl; then
   _port="${CC_VIEWER_PORT:-${AP_DASHBOARD_PORT:-3993}}"
   _url="http://localhost:${_port}"
+  _warmup_file="${XDG_STATE_HOME:-${HOME}/.local/state}/cc-viewer/warming-up"
   if curl -fs -m 0.2 "${_url}/health" -o /dev/null 2>/dev/null; then
-    _color=$'\033[32m'  # green
+    _color=$'\033[32m'  # green = up
+    # Health confirmed; drop any stale warmup marker.
+    [[ -f "$_warmup_file" ]] && rm -f "$_warmup_file" 2>/dev/null
+  elif [[ -f "$_warmup_file" ]]; then
+    # ensure-cc-viewer.sh just spawned the binary — yellow during the bind
+    # window instead of a misleading red.
+    _age=$(( $(date +%s) - $(cat "$_warmup_file" 2>/dev/null || echo 0) ))
+    if (( _age >= 0 && _age < 15 )); then
+      _color=$'\033[33m'  # yellow = warming up
+    else
+      _color=$'\033[31m'  # red = warmup expired without /health responding
+      rm -f "$_warmup_file" 2>/dev/null
+    fi
   else
-    _color=$'\033[31m'  # red
+    _color=$'\033[31m'  # red = down
   fi
   _reset=$'\033[0m'
   # OSC 8 hyperlink: ESC]8;;URL ESC\ TEXT ESC]8;; ESC\ — clickable in iTerm2

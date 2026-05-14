@@ -1,5 +1,5 @@
 /**
- * ClaudeCodePage — groups live `claude_code.hook` SSE events by session_id.
+ * LogsPage — groups live `claude_code.hook` SSE events by session_id.
  *
  * Streams events from `/admin/events/stream` and buckets them into per-session
  * cards that show hook counts, cwd, duration, and a drill-down timeline.
@@ -16,7 +16,7 @@ import { type StreamEvent, useEventStream } from "../hooks/useEventStream";
 import { type SessionState, groupClaudeCodeEvents } from "../lib/claudeCodeSessions";
 import { fetchRecentEvents } from "../lib/eventApi";
 
-export function ClaudeCodePage() {
+export function LogsPage() {
   const [initial, setInitial] = useState<StreamEvent[] | null>(null);
 
   useEffect(() => {

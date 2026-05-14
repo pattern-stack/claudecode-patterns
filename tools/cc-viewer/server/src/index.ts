@@ -62,4 +62,11 @@ console.log("");
 export default {
   port: PORT,
   fetch: app.fetch,
+  // SSE streams hold connections open indefinitely with bursty (or zero)
+  // traffic. Bun's default 10s idle close would terminate them mid-flight
+  // and trigger client reconnect storms (the dashboard "reconnecting…"
+  // badge perpetually flashing). 0 disables idle reaping; the broadcaster
+  // additionally emits keepalive pings every 15s so any intermediary
+  // (proxy, browser) that has its own idle policy stays happy.
+  idleTimeout: 0,
 };

@@ -1,9 +1,20 @@
-import { ClaudeCodePage } from "./pages/ClaudeCodePage";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AppShell } from "./components/templates/AppShell";
+import { ChatPage } from "./pages/ChatPage";
+import { ChatSessionPage } from "./pages/ChatSessionPage";
+import { LogsPage } from "./pages/LogsPage";
 
 export function App() {
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
-      <ClaudeCodePage />
-    </div>
+    <BrowserRouter>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<Navigate to="/chat" replace />} />
+          <Route path="/logs" element={<LogsPage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/chat/:sessionId" element={<ChatSessionPage />} />
+        </Routes>
+      </AppShell>
+    </BrowserRouter>
   );
 }
