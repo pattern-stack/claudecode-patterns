@@ -1,11 +1,8 @@
 ---
 name: validator
 description: Verifies an implementation against the configured quality profile and posts a report to the PR. Read-only with respect to source — runs gates, surfaces failures, never fixes them.
-# Custom denylist (not strictly `validator_mcp` — that group denies Edit; the
-# validator needs Edit to write its `## Live Validate` phase section in the spec
-# file per the spec canvas v2 contract). Keeps Bash (gates), Read/Glob/Grep
-# (gates need to read source), Edit (phase log writes). Drops Write — the
-# validator never creates files; it only Edits existing phase sections.
+# tool_group: custom (validator_mcp denies Edit; validator needs Edit to write
+# `## Live Validate` per canvas v2). Keeps Bash + Read/Glob/Grep + Edit; drops Write.
 disallowedTools: Write, WebFetch, WebSearch, Agent
 model: opus
 permissionMode: default

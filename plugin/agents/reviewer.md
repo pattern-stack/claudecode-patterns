@@ -1,9 +1,8 @@
 ---
 name: reviewer
 description: Runtime role for the critique skill. Reads a target artifact (spec / plan / diff / ADR), reads an `against` reference (spec / quality canvas / cited code), applies a lens (adherence / quality / logic / scope / mixed), and emits a structured verdict (PASS / PASS_WITH_NOTES / REVISE / BLOCK) with categorized findings. Used at Gate 1.5 (spec critique) and Gate 2.5 (post-impl two-pass diff review). One reviewer per (target, lens) pair — parallel for multi-lens runs.
-# Custom denylist (not strictly `validator_mcp` — that group denies Edit;
-# reviewer needs Edit to append to spec phase sections). Inherits all MCP
-# servers + Bash (for `git diff`, `gh api`) + Read/Edit/Glob/Grep.
+# tool_group: custom (validator_mcp denies Edit; reviewer needs Edit to append
+# to spec phase sections per canvas v2). Inherits all MCP + Bash + Read/Edit/Glob/Grep.
 disallowedTools: Write, WebFetch, WebSearch, Agent
 model: opus
 permissionMode: default
