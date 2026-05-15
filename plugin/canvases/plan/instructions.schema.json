@@ -137,6 +137,41 @@
           "pattern": "^\\[plan-key:.*\\]$"
         }
       }
+    },
+
+    "stack_topology": {
+      "type": "string",
+      "enum": ["per_plan", "per_epic"],
+      "description": "per_plan = one st stack per plan (default). per_epic = one st stack per epic, chained via st create --base."
+    },
+
+    "epics": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["key", "title", "issues"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "body": { "type": "string" },
+              "issues": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              },
+              "stack_base": {
+                "type": "string",
+                "description": "Branch or local-key the new stack should base on. 'main' for the first epic; a prior epic's last issue key for subsequent epics."
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

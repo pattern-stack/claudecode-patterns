@@ -206,14 +206,41 @@ Path resolution: `.claude/sdlc.yml` `artifacts.spec`.
 
 ### Tracker comment
 
-Condensed view of the spec, posted to the issue's comment thread on the configured tracker. Shape governed by `instructions.yaml.tracker_comment`:
+View of the spec posted to the issue's comment thread on the configured tracker. **Shape branches on `instructions.yaml.tracker_comment.mode`:**
 
-- `max_chars` — hard cap (default 2000).
-- `include_sections` — which spec sections to include in the comment.
-- `files_list_inline: true` — include a flat `create / modify` block aggregating the File-level plan.
+#### Mode: `status_envelope` (default; canvas v2; works with `spec_storage: file`)
+
+A ≤15-line status pointer — NOT inline content. Use this shape:
+
+```markdown
+## [Design] <ISSUE-KEY> — <issue title>
+
+**Spec file:** [`<spec-path>`](<permalink>) (§ Goal / Approach / File-level plan populated)
+**Strategy (one line):** <single sentence summary>
+**Touches:** `path/a.ts`, `path/b.ts`
+**Open decisions:** <bullets or "none">
+**Status:** awaiting Gate 1.5 critique
+```
+
+Knobs honored:
+- `max_lines` — hard cap (default 15). Truncate the Open decisions / Touches lists if needed.
+- `spec_link` — `permalink` (default; SHA-pinned) or `branch_relative` (legacy).
 - `signature` — appended at end (default `— specifier agent`).
 
-Read those values from `instructions.yaml`; do not hardcode the comment shape in this prompt.
+The spec file is the durable artifact; the comment is a pointer. Findings and ongoing phase content land in the spec file's phase log (Spec Review / Design Addendum / etc.), not as further inline comments. See [`canvases/spec` README § "Status envelope templates"](../canvases/spec/README.md#status-envelope-templates) for the per-phase envelope shapes used by reviewer, implementer, and validator.
+
+#### Mode: `full_content` (legacy; works with `spec_storage: inline | both`)
+
+A condensed view of the spec inlined into the comment. Use when the project hasn't adopted the file-based spec workflow.
+
+Knobs honored:
+- `max_chars` — hard cap (default 2000).
+- `include_sections` — which spec sections to include (default: `["Goal", "Approach", "Tests", "Open questions"]`).
+- `files_list_inline: true` — include a flat `create / modify` block aggregating the File-level plan.
+- `spec_link` — same as above; `permalink` recommended for the file-link in the header.
+- `signature` — appended at end.
+
+Read these values from `instructions.yaml`; do not hardcode the comment shape in this prompt.
 
 **Links to the spec file must be commit-SHA permalinks**, not branch-relative URLs. A `blob/main/<path>` URL 404s until the spec branch is merged — which may never happen on branch-protected repos where the spec commit lives on a feature branch. Use the SHA captured in Step 4e:
 

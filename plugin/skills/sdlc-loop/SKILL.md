@@ -34,7 +34,13 @@ request
 /sync-issues  →  Linear issues filed
   │
   ▼ per issue
-/design  ─→  specifier  ─→  (Gate 1: state:strategy-approved in Linear)
+/design  ─→  specifier  ─→  /sdlc:critique  ─→  reviewer (lens=mixed)
+  │                              │
+  │                              ▼
+  │                          (Gate 1.5: PASS or PASS_WITH_NOTES)
+  │                              │   ↑ REVISE → specifier re-runs (writes Design Addendum)
+  │                              ▼
+  │                       (Gate 1: state:strategy-approved)
   │
   ▼ per issue
 /develop (Topology A)              OR              /orchestrate (Topology B)
@@ -48,7 +54,22 @@ team: implementer + validator                    coordinator (per issue)
   │                                                  │
   └──────────────────┬───────────────────────────────┘
                      ▼
-                PR opened ─→ (Gate 2: PR review) ─→ merge
+              implementer commits + pushes
+                     │
+                     ▼
+              /sdlc:review ─→ reviewer × 2 sequentially
+                                 ├─ lens=adherence (against spec)         (first)
+                                 └─ lens=quality   (against quality canvas) (after adherence)
+                     │
+                     ▼
+              (Gate 2.5: joined verdict ≠ REVISE/BLOCK)
+                     │   ↑ REVISE → implementer fixes
+                     ▼
+              validator runs gates (Gate 3)
+                     │
+                     ▼
+              gate_mode: interactive ──→ PR opened ─→ (Gate 2: PR review) ─→ merge
+              gate_mode: auto-all    ──→ tracker comment; human reviews batch async
 ```
 
 ## Layers (where each kind of knowledge lives)
@@ -63,15 +84,41 @@ team: implementer + validator                    coordinator (per issue)
 
 When updating: facts → CLAUDE.md or primitive. Phase mechanics → agent. Workflow judgment → here.
 
-## The three gates
+## The gates
 
 | Gate | Surface | Set by | Approves to |
 |---|---|---|---|
 | **Gate 0 — chat approval** | `/plan` chat turn | Human says "ship it" / "approved" | `/sync-issues` |
-| **Gate 1 — `state:strategy-approved`** | Tracker label | Human (strict mode) **OR** specifier (auto / "trust" mode) | `/develop` or `/orchestrate` |
-| **Gate 2 — PR review** | GitHub PR | Human reviewer | merge |
+| **Gate 1.5 — spec critique verdict** | Spec phase section (`Spec Review`) + tracker envelope | `reviewer` agent via `/sdlc:critique` | Gate 1 (strict) or `/develop` directly (auto). REVISE → specifier re-runs. |
+| **Gate 1 — `state:strategy-approved`** | Tracker label | Human (strict mode, after Gate 1.5 PASS) **OR** specifier (auto / "trust" mode) | `/develop` or `/orchestrate` |
+| **Gate 2 — PR review** | GitHub PR | Human reviewer | merge (only fires under `gate_mode: interactive`) |
+| **Gate 2.5 — paired diff review verdict** | Spec phase sections (`Diff Review — Adherence` + `Diff Review — Quality`) + tracker envelope | `reviewer` agent × 2 via `/sdlc:review` | validator (Gate 3) — or implementer re-run on REVISE |
+| **Gate 3 — validator pass** | PR comment (interactive) or tracker comment (auto-all) | `validator` agent | merge / human review |
 
 `implementer` halts without `state:strategy-approved` regardless of how it got set — the gate is structurally preserved. `coordinator` defers the check to implementer.
+
+### Gate 1.5 — pre-implementation spec critique
+
+A `reviewer` agent loads the `critique` skill with `lens=mixed`, reads the spec against cited code, and writes a verdict to the spec's `Spec Review` phase section. Catches the bugs a first-pass designer typically misses (wrong line numbers, miscounted call sites, missed constraints, citation drift) before the implementer runs and the cost compounds.
+
+| Verdict | Effect |
+|---|---|
+| `PASS` / `PASS_WITH_NOTES` | Gate 1.5 cleared. Next: `/sdlc:develop` (or human Gate 1 approval if strict). |
+| `REVISE` | Specifier re-runs `/design` — updates static spec sections in place, appends `Design Addendum` summarizing what changed. Reviewer re-checks. |
+| `BLOCK` | Architectural conflict; human arbitrates. |
+
+`spec_critic_max_iterations` (`sdlc.yml`) caps the design ↔ critique loop. Cap-hit is a halt, not a failure — surfaces full context.
+
+### Gate 2.5 — paired post-implementation diff review
+
+Two `reviewer` agents spawn sequentially via `/sdlc:review` (Adherence first, then Quality — sequential because both Edit the same spec file and the harness doesn't guarantee Edit serialization across concurrent subagents):
+
+- Reviewer A: `target=diff`, `against=spec`, `lens=adherence` → "Did we build what we said?"
+- Reviewer B: `target=diff`, `against=quality-canvas`, `lens=quality` → "Is this well-built?" (spec-blind by construction)
+
+Each writes to its own spec phase section. Verdicts join: the worse of the two wins (BLOCK > REVISE > PASS_WITH_NOTES > PASS in severity order); findings union. The `quality` lens is structurally spec-blind — `/sdlc:review` enforces by passing the quality canvas (not the spec) as `against`, and the reviewer agent halts if `lens=quality` receives a spec-shaped `against`.
+
+The two-lens shape is load-bearing. A single mixed reviewer systematically collapses one lens into the other; the real findings live in the gap.
 
 ### Gate-1 modes: strict vs auto ("trust mode")
 
@@ -89,6 +136,28 @@ sdlc.yml.gate1_default: strict          ← global floor (default; safest)
 | **auto** ("trust mode") | `state:strategy-approved` | no | Mechanical work where human approval is theatre (RFC translation, YAML definitions, vendor adapter wirings) |
 
 Resolution timing: `/sync-issues` reads `plan.auto_approve` and stamps `gate:auto` or `gate:human` on each leaf at issue-creation. Specifier reads only labels at runtime — never reads plan.yaml.
+
+### Gate mode: interactive vs auto-all (cross-gate envelope)
+
+`gate_mode` (in `sdlc.yml`) is the outer envelope that decides what happens **after** Gate 1. It governs Gate 2 (PR review) and where the validator posts. Compose with `gate1_default` to express the full matrix:
+
+| `gate_mode` | `pr_required` | `validator_post_target` | Best for |
+|---|---|---|---|
+| **interactive** (default) | true (implementer opens a PR) | `pr` (validator posts to the PR) | Normal review flow — PR per issue, human reviews each |
+| **auto-all** | false (implementer pushes; no PR) | `tracker` (validator posts to the issue) | AFK batch execution — human reviews many merged branches asynchronously |
+
+Composition:
+
+| `gate_mode` | `gate1_default` | Resulting flow |
+|---|---|---|
+| `interactive` | `strict` | Fully gated, conservative default. Human approves strategy + PR. |
+| `interactive` | `auto` | Auto-strategy, human PR review. |
+| `auto-all` | `strict` | Human-approved strategy, batch-merged branches without PR. |
+| `auto-all` | `auto` | Fully autonomous loop; human reviews after the fact. |
+
+Agents branch on the per-mode flags (`modes.<gate_mode>.pr_required`, `modes.<gate_mode>.validator_post_target`), not on `gate_mode` itself — so new modes can ship by extending `sdlc.yml.modes` without touching agents.
+
+Gate 2.5 (paired diff review) fires under both modes — it's a pre-merge sanity check, not a PR gate.
 
 ## Status taxonomy (9 columns)
 

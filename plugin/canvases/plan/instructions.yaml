@@ -4,7 +4,7 @@
 
 $schema: ./instructions.schema.json
 artifact: plan
-version: 1
+version: 2
 
 # ─── Plan-level fields ─────────────────────────────────────────────────
 plan:
@@ -19,6 +19,8 @@ plan:
     - repo                          # cross-repo flag; defaults to sdlc.yml.repo
     - stack                         # { base, depends_on } — st topology metadata
     - auto_approve                  # boolean; stack-level Gate-1 mode override (see below)
+    - epics                         # epic groupings (required when stack_topology: per_epic)
+    - implementer_view              # annotated | clean (stack-level spec canvas override)
 
   # Epic body length budget (parent issue body).
   epic_body_max_chars: 3000
@@ -49,6 +51,7 @@ issue:
     - depends_on                    # blocking relation via port op set-blocking
     - parallel_with                 # informational
     - labels                        # extra labels (needs:* etc.); state:* NOT set here
+    - key_original                  # set by /sync-issues post-rewrite (was the local-plan key); preserved for trace
 
   # Description verbosity per issue.
   description_verbosity: medium     # short | medium | long
@@ -58,9 +61,39 @@ issue:
 # ─── Sizing guidance ──────────────────────────────────────────────────
 # Plans violating these get warnings during /plan iteration, not hard failures.
 sizing:
-  max_issues_per_stack: 8           # if > 8, prompt user to split into multiple stacks
+  max_issues_per_stack: 8           # if > 8, prompt user to split into multiple stacks (per_plan)
+                                    # or split across epics (per_epic)
   min_issues_per_stack: 2           # < 2 may not warrant its own epic
   max_critical_path_depth: 12       # if longer, plan may be too monolithic
+
+# ─── Stack topology ────────────────────────────────────────────────────
+# per_plan (default): one st stack covers the whole plan; stack slug = plan.slug
+# per_epic: one st stack per epic; child stacks chain via st create --base
+#           pointing into the previous epic's last branch. Stack slug format:
+#           <plan.slug>-<epic.slug>. /sync-issues emits one st-create per epic,
+#           verifying parent→child links via `st stack graph` after each.
+#
+# Use per_epic for plans with ≥3 epics or when downstream epics build on
+# upstream epic tips. Use per_plan for single-epic plans or tightly-coupled
+# small plans where epic-level milestones aren't meaningful.
+stack_topology: per_plan            # per_plan | per_epic
+
+# ─── Epics (required when stack_topology: per_epic) ──────────────────────
+# Each epic groups a contiguous range of issues from issues[]. /sync-issues
+# files one parent epic issue per entry and stacks the leaves accordingly.
+#
+# epics:
+#   - key: foundations
+#     title: "Epic 1 — Foundations"
+#     body: "<2-3 paragraph epic intro>"
+#     issues: [issue-1, issue-2, issue-3]    # local keys from issues[] (rewritten to tracker keys post-sync)
+#     stack_base: main                       # the prior epic's last branch, or main for the first
+#   - key: ports
+#     title: "Epic 2 — Ports + adapter"
+#     body: "..."
+#     issues: [issue-4, issue-5, issue-6]
+#     stack_base: <previous-epic-last-issue-key>  # st auto-resolves to its branch name
+epics: null                         # null (per_plan) | array of {key, title, body, issues, stack_base}
 
 # ─── Layer enumeration ────────────────────────────────────────────────
 # Constrains issue.layer; the GitHub adapter sets project's Layer single-select field.

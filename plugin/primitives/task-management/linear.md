@@ -99,6 +99,37 @@ This repo uses the Linear MCP server for in-session reads/writes. Common operati
 
 Permissions: setting labels requires Linear write scope. The Linear MCP authenticated for this workspace already has it.
 
+## Epic status cascade
+
+When the SDLC loop creates parent epic issues (via `/sync-issues`) and child leaf issues, child-status transitions should cascade to the parent automatically. Manual epic-status moves are error-prone — easy to forget the first time the first child moves, easy to leave the epic at `In Progress` long after the last child reached `In Review`.
+
+| Trigger | Cascade |
+|---|---|
+| **First child** transitions any state → `In Progress` | Move parent epic `Backlog` / `Ready` → `In Progress` |
+| **Last child** transitions any state → `In Review` (i.e., all children are now `In Review` or `Done`) | Move parent epic `In Progress` → `In Review` |
+| **All children** reach `Done` | Move parent epic `In Review` → `Done` |
+
+Each cascade is idempotent — running twice is a no-op (the parent is already at the target state). Agents that move child status (implementer when starting a branch; validator when posting a pass; the lead on /done) must:
+
+1. Resolve the parent epic via `linear.get_issue(child_key).parentId`.
+2. If parent exists, query its children: `linear.list_issues({ parentId, includeArchived: false })`.
+3. Apply the rule above based on the children's collective state.
+4. Call `linear.save_issue(parent_key, { stateId: <resolved> })` only if the parent's current state differs from the target.
+
+Cascade is governed by `sdlc.yml`:
+
+```yaml
+epic_cascade:
+  enabled: true                       # default true; set false to manage epic status manually
+  on_first_child_in_progress: true
+  on_last_child_in_review: true
+  on_all_children_done: true
+```
+
+When `enabled: false`, no agent performs cascade; humans manage epic status.
+
+**Implementation status (v2 follow-up):** the cascade contract is defined here, but as of plugin v0.1.13 no SDLC phase agent (implementer / validator / reviewer / coordinator) actually performs the parent-status update. The "child status mover" in the loop today is mostly implicit (humans drag-and-drop in the tracker UI; GitHub auto-closes on PR merge). A follow-up PR will wire cascade execution into the validator (on `In Review` transitions) and into a new `/sdlc:done` command (on the final `Done` transition). Until then, this section documents intent; expect manual epic-status moves.
+
 ## `needs:*` labels (Topology A team composition)
 
 Per-issue extras for `/develop`'s Topology A team are declared as `needs:*` labels:

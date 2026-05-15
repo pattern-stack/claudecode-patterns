@@ -4,10 +4,12 @@
 
 $schema: ./instructions.schema.json
 artifact: spec
-version: 1
+version: 2
 
 sections:
   # Order matches template.md headings. Renaming a section means updating both files.
+  # The first 7 sections are the **static spec** (current implementation contract).
+  # The remaining 6 are the **phase execution log** (how we got here) — see `phases` below.
   order:
     - "Goal"
     - "Approach"
@@ -16,8 +18,15 @@ sections:
     - "Tests"
     - "Out of scope"
     - "Open questions"
+    - "Spec Review"
+    - "Design Addendum"
+    - "Implementation notes"
+    - "Diff Review — Adherence"
+    - "Diff Review — Quality"
+    - "Live Validate"
 
   # Required sections — implementer halts if any is empty or still contains a {{token}}.
+  # Phase sections are NOT required at design time; they fill in as gates fire.
   required:
     - "Goal"
     - "Approach"
@@ -34,6 +43,92 @@ sections:
     "Tests": medium
     "Out of scope": short
     "Open questions": bulleted
+    "Spec Review": medium
+    "Design Addendum": medium
+    "Implementation notes": short
+    "Diff Review — Adherence": medium
+    "Diff Review — Quality": medium
+    "Live Validate": short
+
+# Phase execution log — sections written by phase agents as gates fire.
+# Each entry maps a template section to its owner agent + gate position +
+# the mission shape that triggers it. The `triggered_by:` block lets the
+# reviewer (and any other consumer) resolve "what writes to this section?"
+# mechanically rather than via hardcoded heuristics.
+#
+# Agents Edit their own section in place (replacing the placeholder line);
+# they never overwrite another phase's section.
+phases:
+  spec_review:
+    section: "Spec Review"
+    owner: reviewer
+    gate: 1.5
+    triggered_by:
+      command: /sdlc:critique
+      lens: mixed
+      target: spec
+      against: cited-code
+  design_addendum:
+    section: "Design Addendum"
+    owner: specifier
+    gate: 1.5
+    triggered_by:
+      command: /sdlc:design                # re-run after Spec Review verdict = REVISE
+      trigger: revise_verdict
+  implementation:
+    section: "Implementation notes"
+    owner: implementer
+    gate: 2
+    triggered_by:
+      command: /sdlc:develop
+  diff_review_adherence:
+    section: "Diff Review — Adherence"
+    owner: reviewer
+    gate: 2.5
+    triggered_by:
+      command: /sdlc:review
+      lens: adherence
+      target: diff
+      against: spec
+  diff_review_quality:
+    section: "Diff Review — Quality"
+    owner: reviewer
+    gate: 2.5
+    triggered_by:
+      command: /sdlc:review
+      lens: quality
+      target: diff
+      against: quality-canvas
+  live_validate:
+    section: "Live Validate"
+    owner: validator
+    gate: 3
+    triggered_by:
+      command: /sdlc:develop                # validator phase
+
+# Append-only semantics for phase sections. Each phase agent reads its own
+# section's placeholder line, replaces it with real content via Edit. Other
+# phase sections remain untouched. Static spec sections (Goal..Open questions)
+# follow normal overwrite semantics on /design re-runs.
+append_mode: true
+
+# Implementer's read of the spec — `annotated` shows the full file; `clean`
+# strips phase sections at spawn time, leaving only the static spec.
+# Default `annotated` for novel work where decision history aids judgment;
+# default `clean` for mechanical work where the addendum corrections are
+# already merged into the static sections.
+#
+# Resolution chain (most-specific wins):
+#   issue label `view:clean` / `view:annotated`           — per-issue
+#   plan.yaml `implementer_view: clean | annotated`       — per-stack
+#   sdlc.yml.implementer_view                             — repo-wide
+#   this knob                                             — plugin default
+#
+# NOTE: consumer wiring is v2 follow-up. As of canvas v2, the implementer
+# agent does NOT yet strip phase sections under `clean`. This knob defines
+# the contract; implementer.md will honor it in a follow-up PR. Until then,
+# `clean` mode is effectively `annotated` (implementer reads the full file).
+implementer_view: annotated
 
 # Diagrams — when to include them and which tool to render.
 diagrams:
@@ -49,10 +144,21 @@ citations:
 code_blocks:
   default_language: typescript
 
-# Tracker comment — condensed view posted to the issue tracker by the specifier.
-# Embedded in the spec artifact for v1; may split into its own artifact later.
+# Tracker comment — condensed view posted to the issue tracker by each phase
+# agent. See `mode` below for the status-envelope-vs-full-content choice.
+#
+# In `status_envelope` mode (default for spec_storage: file), each phase posts
+# a ≤15-line envelope that points to the spec file. The spec file is the
+# durable artifact; tracker comments are status pointers. This is the shape
+# most teams want when specs grow past ~50 lines.
+#
+# In `full_content` mode (legacy), the comment carries the static spec content
+# inline per `include_sections` + `max_chars`. Use when spec_storage: inline.
 tracker_comment:
-  max_chars: 2000
+  mode: status_envelope            # status_envelope | full_content
+  max_lines: 15                    # hard cap in status_envelope mode
+  max_chars: 2000                  # hard cap in full_content mode
   include_sections: ["Goal", "Approach", "Tests", "Open questions"]
-  files_list_inline: true    # if true, include a flat "create / modify" block
+  files_list_inline: true          # full_content mode only
+  spec_link: permalink             # permalink (SHA-pinned) | branch_relative
   signature: "— specifier agent"

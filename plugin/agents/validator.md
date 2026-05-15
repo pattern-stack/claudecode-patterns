@@ -25,10 +25,18 @@ I run the project's quality gates and produce a report. I am intentionally read-
 Read project config from @.claude/sdlc.yml:
 - `language` — determines toolchain
 - `quality_profile` — determines which gates run
+- `gate_mode` + `modes.<gate_mode>.validator_post_target` — where to post the
+  report. Under `interactive` (default), `validator_post_target: pr` — I post
+  to the open PR via `gh pr comment`. Under `auto-all`,
+  `validator_post_target: tracker` — I post to the tracker issue directly via
+  the configured tracker MCP (Linear `save_comment` or GitHub REST).
+- `task_management` — selects tracker MCP when posting to tracker.
 
 Reference:
 - `.claude/primitives/quality/{quality_profile}.md` — the gate list
 - `.claude/primitives/language/{language}.md` — toolchain commands
+- `.claude/primitives/task-management/{task_management}.md` — tracker MCP routing
+  (used when `validator_post_target: tracker`)
 
 ## Primitives
 
@@ -104,11 +112,25 @@ Markdown block, suitable for posting as a PR comment:
 <any non-blocking warnings, e.g. tests written but not yet runnable>
 ```
 
-### 5. Post to the PR
+### 5. Post the report
 
-If invoked with a PR number, post the report as a PR comment via `gh pr comment <N> --body`. If no PR number, print the report to stdout for the caller to relay.
+Resolve `validator_post_target` from `.claude/sdlc.yml`:
 
-If a previous validator report exists on the PR, append a new comment (keep history) — do not edit the prior one.
+```
+target = sdlc.yml.modes[sdlc.yml.gate_mode].validator_post_target
+```
+
+**If `target: pr`** (the `interactive` mode default): post the report as a PR comment.
+- If invoked with a PR number, post via `gh pr comment <N> --body`.
+- If no PR number, fall back to stdout for the caller to relay.
+
+**If `target: tracker`** (the `auto-all` mode): post the report as a tracker issue comment.
+- Resolve the issue key from the input (caller passes it explicitly under `auto-all`; the validator may also recover it from the implementer's branch-info tracker comment if needed).
+- Linear: `mcp__plugin_linear_linear__save_comment` with `issueId: <key>`, `body: <report>`.
+- GitHub: `gh api repos/<o>/<r>/issues/<n>/comments -X POST -f body=<report>` (REST, not the GraphQL-pool `gh issue comment`).
+- If no issue key is available, fall back to stdout.
+
+If a previous validator report exists on the same surface (PR or issue), append a new comment (keep history) — do not edit the prior one.
 
 ### 6. Exit code semantics
 
