@@ -83,7 +83,7 @@ Both reviewers Edit the same spec file (different sections, but same file). The 
 
 ```
 Agent A (first; await completion before spawning B):
-  subagent_type: "sdlc:reviewer"
+  subagent_type: "reviewer"
   description: "Adherence review on <$1> diff"
   prompt: "
 target: <diff-ref>
@@ -96,7 +96,7 @@ rerun: <per Step 2 detection for adherence section>
 "
 
 Agent B (after A returns):
-  subagent_type: "sdlc:reviewer"
+  subagent_type: "reviewer"
   description: "Quality review on <$1> diff"
   prompt: "
 target: <diff-ref>
@@ -117,7 +117,7 @@ rerun: <per Step 2 detection for quality section>
 
 ```
 Agent({
-  subagent_type: "sdlc:reviewer",
+  subagent_type: "reviewer",
   description: "Review on <$1> diff (<lens>)",
   prompt: "
 target: <diff-ref>
@@ -167,13 +167,14 @@ Branch on joined verdict:
 
 ### Step 6: Post combined envelope
 
-Emit a joined envelope (not the individual reviewer envelopes — those went to the phase sections). The joined envelope summarizes:
+Emit a joined envelope (not the individual reviewer envelopes — those went to the phase sections). The joined envelope reuses the `reviewer` phase shape with an additional `joined: true` field rather than introducing a new phase mapping:
 
-- `phase: reviewer-joined`
+- `phase: reviewer`               (same as individual; envelope canvas doesn't need a new mapping)
+- `joined: true`                  (top-level field — present means this is the multi-lens join, not a single reviewer's output)
 - `verdict`: the joined verdict
 - `findings_count`: summed across lenses (de-duplicated)
 - `lenses_run`: [`adherence`, `quality`] (or [`<single>`] in single-lens mode)
-- Both spec phase section paths in `artifact.paths`
+- `artifact.paths`: array of both spec phase section paths (instead of singular `artifact.path`)
 
 ## Human Gates
 

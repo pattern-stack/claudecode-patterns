@@ -76,7 +76,7 @@ The reviewer halts on re-run unless explicitly told `rerun: true` — this comma
 
 ```
 Agent({
-  subagent_type: "sdlc:reviewer",     # plugin-namespaced; resolves to plugin/agents/reviewer.md
+  subagent_type: "reviewer",          # plugin agent registered as bare name (no `sdlc:` prefix)
   description: "Critique <$1> spec (mixed lens)",
   prompt: "
 target: <resolved-spec-path>

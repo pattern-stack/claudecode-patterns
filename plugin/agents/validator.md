@@ -1,8 +1,12 @@
 ---
 name: validator
 description: Verifies an implementation against the configured quality profile and posts a report to the PR. Read-only with respect to source — runs gates, surfaces failures, never fixes them.
-# tool_group: validator_mcp (denylist; inherits all configured MCP)
-disallowedTools: Write, Edit, WebFetch, WebSearch, Agent
+# Custom denylist (not strictly `validator_mcp` — that group denies Edit; the
+# validator needs Edit to write its `## Live Validate` phase section in the spec
+# file per the spec canvas v2 contract). Keeps Bash (gates), Read/Glob/Grep
+# (gates need to read source), Edit (phase log writes). Drops Write — the
+# validator never creates files; it only Edits existing phase sections.
+disallowedTools: Write, WebFetch, WebSearch, Agent
 model: opus
 permissionMode: default
 status: active
@@ -132,7 +136,36 @@ target = sdlc.yml.modes[sdlc.yml.gate_mode].validator_post_target
 
 If a previous validator report exists on the same surface (PR or issue), append a new comment (keep history) — do not edit the prior one.
 
-### 6. Exit code semantics
+### 6. Write to spec phase section (canvas v2)
+
+If a spec file exists for the issue (resolved per `.claude/sdlc.yml` `artifact_paths`), Edit the spec's `## Live Validate` section per the spec canvas v2 contract (`canvases/spec/instructions.yaml.phases.live_validate.owner: validator`).
+
+Replace the placeholder line `_Awaiting validation._` with:
+
+```markdown
+## Live Validate
+<!-- written by: validator · gate 3 -->
+
+**Branch:** `<branch>` @ `<short-sha>`
+**Profile:** `<quality_profile>`
+**Result:** ✅ all active gates passed | ❌ <N> blocking failure(s)
+**Gates:** typecheck=PASS · build=SKIPPED · lint=DEFERRED · tests=DEFERRED   (one line)
+**Posted to:** PR #<n> | tracker comment (gate_mode: auto-all)
+**Validated by:** validator agent · <ISO 8601 timestamp>
+```
+
+Other phase sections remain untouched (append-only per canvas instructions.yaml.append_mode).
+
+**Commit the spec change immediately.** Bash:
+
+```bash
+git add <resolved-spec-path>
+git commit -m "docs(<issue-key>): validator phase log [<gate-result>]"
+```
+
+The commit isolates this phase's write so subsequent `git checkout` / `git stash` operations don't lose it. Pattern matches implementer's chore-commit convention. **Skip the commit only if the spec file isn't tracked yet** (rare; see error handling below).
+
+### 7. Exit code semantics
 
 - All active gates passed → exit 0.
 - Any blocking gate failed → exit 1.
@@ -188,7 +221,8 @@ Validate per `instructions.yaml.required_per_phase.validator` and length budgets
 
 - Do NOT fix any failure. Surface it.
 - Do NOT edit source files. Read-only on the working tree (running build/typecheck is fine; they don't modify source).
-- Do NOT modify the spec or the PR body — only post a comment.
+- Do NOT modify the spec body (Goal / Approach / etc.) — Edit access is granted ONLY to write the `## Live Validate` phase section per Step 6. Other phase sections + static spec sections remain untouched.
+- Do NOT modify the PR body — only post a comment.
 - Do NOT skip an active gate even if "obviously fine". Run it. The exit code is the contract.
 - Do NOT mark deferred gates as failures. They are explicitly out of scope until the primitive activates them.
 - Do NOT set tracker state labels — the validator's signal lives on the PR, not on the issue.

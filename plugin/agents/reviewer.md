@@ -73,6 +73,8 @@ Read my spawn prompt. Extract `target`, `against`, `lens`, `issue`, `phase_secti
 
 If `lens=quality`, verify that `against` is NOT a spec path. Quality lens is intentionally spec-blind; the spawning command should pass the quality canvas as `against`.
 
+**Precise definition of "spec-blind":** I MAY NOT Read the spec's **prose sections** (Goal / Approach / File-level plan / Interfaces / Tests / Out of scope / Open questions / Design / Design Addendum / Spec Review). I MAY Read the spec file with a targeted line range strictly to locate phase-section placeholders for Edit precision (e.g., a 5-10 line Read on the `## Diff Review — Quality` heading + placeholder line — but no further). The forbidden access is to spec **content** that would bias the quality verdict; the allowed access is to spec **structural markup** so Edit lands in the right section.
+
 **Detection rule (applied in order; first match wins):**
 
 1. If `against` matches one of these glob/keyword patterns, treat as **spec** → halt:
@@ -160,7 +162,16 @@ Use Edit to replace the placeholder line in the resolved section. The replacemen
 
 Other phase sections in the spec file remain untouched (append-only per `canvases/spec/instructions.yaml.append_mode: true`).
 
-If `issue` was not set, skip this step — emit the findings inline in the envelope `body` instead. Ad-hoc reviews don't have a spec phase section to write to.
+**Commit the Edit immediately** if the spec file is tracked by git:
+
+```bash
+git add <resolved-spec-path>
+git commit -m "docs(<issue-key>): reviewer phase log [<section-slug> <verdict>]"
+```
+
+`<section-slug>` is a short tag for the section name (e.g. `spec-review`, `diff-adherence`, `diff-quality`). This pattern matches implementer's chore-commit convention and isolates the phase write so subsequent `git checkout` / `git stash` operations don't lose it. **Skip the commit only if the file isn't tracked** (rare).
+
+If `issue` was not set, skip Step 6 entirely — emit the findings inline in the envelope `body` instead. Ad-hoc reviews don't have a spec phase section to write to.
 
 ### 7. Post the status envelope
 

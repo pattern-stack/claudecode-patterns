@@ -5,6 +5,27 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.14] — 2026-05-15
+
+### Fixed (live-execution dogfood pass on 0.1.13)
+
+A second agent ran the full SDLC loop end-to-end against a throwaway scratch repo (4 issues × 2 epics × 5 gates each = 20 gate decisions, ~75 min wall time). The loop flowed first-try with 0 blockers in artifacts, but 3 structural blockers surfaced in plugin scaffolding. All fixed in this patch:
+
+- **`/sdlc:critique` and `/sdlc:review` referenced `subagent_type: "sdlc:reviewer"`** — but the plugin's `reviewer` agent is registered as a bare name in the subagent registry, not under the `sdlc:` namespace prefix. Other SDLC agents are double-listed (both forms work); reviewer was the lone exception. Changed both commands to `subagent_type: "reviewer"`. Works in both filesystem-overlay (dogfood) and installed-plugin contexts.
+- **`validator` agent's `disallowedTools: Write, Edit` contradicted spec canvas v2** — the validator owns `## Live Validate` per `phases.live_validate.owner: validator` but couldn't write it. The validator worked around via `Bash → python3` mutations, which technically bypasses the constraint and undermines its purpose. Removed `Edit` from the denylist (same shape as `reviewer`); added explicit Step 6 ("Write to spec phase section") with a `git add && git commit` follow-up to isolate the phase-log write. Validator constraints updated to allow Edit only against the `## Live Validate` section, not other spec content.
+- **Agent Bash writes to tracked spec files accumulated as uncommitted mutations** — and were nearly lost via a `git stash drop` during a cross-branch `gate_mode` switch. Recovery only worked via `git fsck --unreachable` dangling-object hunt. Reviewer + validator now require an immediate `git add && git commit` after each phase-section write (matches implementer's existing chore-commit convention). Added to constraints + Step 6 of both agents.
+
+### Added
+
+- **`reviewer` phase** entry to envelope canvas `required_per_phase` + `default_attention`. Schema bumped to accept new fields (`mission`, `verdict`, `findings_count`) on reviewer envelopes. Joined output from `/sdlc:review` paired mode reuses `phase: reviewer` with `joined: true` + `lenses_run: [...]` + `artifact.paths: [...]` (array) — no separate `reviewer-joined` phase mapping needed.
+- **Tightened "spec-blind" definition** in reviewer's Step 1 — distinguishes "do not Read the spec's prose sections" (forbidden under `lens=quality`) from "MAY Read the spec file for phase-section markup discovery" (allowed; needed for Edit precision). The previous wording could be misread to forbid all file access, which would have prevented the reviewer from writing its own phase section.
+
+### Internal
+
+- Envelope canvas schema regex extended to accept `reviewer` alongside other phase names in `required_per_phase` and `default_attention`.
+- All four canvases (spec, plan, quality-checks, envelope) validate against their schemas via ajv.
+- Dogfood findings doc archived at `/tmp/sdlc-dogfood-2026-05-15/dogfood-findings.md` (~479 lines, 9 phase blocks + final verdict).
+
 ## [0.1.13] — 2026-05-15
 
 ### Added

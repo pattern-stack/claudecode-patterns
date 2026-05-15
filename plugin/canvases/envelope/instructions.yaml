@@ -14,6 +14,10 @@ required_per_phase:
   specifier:    [phase, issue, status, artifact, gate_action, headline, body]
   implementer:  [phase, issue, status, artifact, gate_action, headline, body, next]
   validator:    [phase, issue, status, artifact, headline, body, next]
+  reviewer:     [phase, issue, status, mission, verdict, findings_count, artifact, headline, body]
+  # Reviewer's joined output (from /sdlc:review paired mode) reuses `phase: reviewer` with
+  # `joined: true` + `lenses_run: [adherence, quality]` + `artifact.paths` (array, not singular).
+  # No separate `reviewer-joined` phase mapping — joined envelope is a variant of `reviewer`.
   coordinator:  [phase, issue, status, headline, body]
 
 # Default attention surfaces per phase. Each agent can override per-run as needed.
@@ -23,6 +27,7 @@ default_attention:
   specifier:    [chat, tracker, log]
   implementer:  [chat, log]
   validator:    [chat, pr, log]
+  reviewer:     [chat, tracker, log]
   coordinator:  [chat, log]
 
 # Length budgets (characters).
