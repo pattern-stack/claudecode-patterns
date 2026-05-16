@@ -13,9 +13,9 @@
     "required_per_phase": {
       "type": "object",
       "patternProperties": {
-        "^(understander|planner|specifier|implementer|validator|coordinator)$": {
+        "^(understander|planner|specifier|implementer|validator|reviewer|coordinator)$": {
           "type": "array",
-          "items": { "enum": ["phase", "issue", "stack", "status", "artifact", "gate_action", "headline", "body", "attention", "next", "metadata"] },
+          "items": { "enum": ["phase", "issue", "stack", "status", "mission", "verdict", "findings_count", "artifact", "gate_action", "headline", "body", "attention", "next", "metadata"] },
           "uniqueItems": true
         }
       },
@@ -25,7 +25,7 @@
     "default_attention": {
       "type": "object",
       "patternProperties": {
-        "^(understander|planner|specifier|implementer|validator|coordinator)$": {
+        "^(understander|planner|specifier|implementer|validator|reviewer|coordinator)$": {
           "type": "array",
           "items": { "enum": ["chat", "tracker", "slack", "log", "pr"] },
           "uniqueItems": true

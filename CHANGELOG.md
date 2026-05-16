@@ -5,6 +5,59 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.1.14] — 2026-05-15
+
+### Fixed (live-execution dogfood pass on 0.1.13)
+
+A second agent ran the full SDLC loop end-to-end against a throwaway scratch repo (4 issues × 2 epics × 5 gates each = 20 gate decisions, ~75 min wall time). The loop flowed first-try with 0 blockers in artifacts, but 3 structural blockers surfaced in plugin scaffolding. All fixed in this patch:
+
+- **`/sdlc:critique` and `/sdlc:review` referenced `subagent_type: "sdlc:reviewer"`** — but the plugin's `reviewer` agent is registered as a bare name in the subagent registry, not under the `sdlc:` namespace prefix. Other SDLC agents are double-listed (both forms work); reviewer was the lone exception. Changed both commands to `subagent_type: "reviewer"`. Works in both filesystem-overlay (dogfood) and installed-plugin contexts.
+- **`validator` agent's `disallowedTools: Write, Edit` contradicted spec canvas v2** — the validator owns `## Live Validate` per `phases.live_validate.owner: validator` but couldn't write it. The validator worked around via `Bash → python3` mutations, which technically bypasses the constraint and undermines its purpose. Removed `Edit` from the denylist (same shape as `reviewer`); added explicit Step 6 ("Write to spec phase section") with a `git add && git commit` follow-up to isolate the phase-log write. Validator constraints updated to allow Edit only against the `## Live Validate` section, not other spec content.
+- **Agent Bash writes to tracked spec files accumulated as uncommitted mutations** — and were nearly lost via a `git stash drop` during a cross-branch `gate_mode` switch. Recovery only worked via `git fsck --unreachable` dangling-object hunt. Reviewer + validator now require an immediate `git add && git commit` after each phase-section write (matches implementer's existing chore-commit convention). Added to constraints + Step 6 of both agents.
+
+### Added
+
+- **`reviewer` phase** entry to envelope canvas `required_per_phase` + `default_attention`. Schema bumped to accept new fields (`mission`, `verdict`, `findings_count`) on reviewer envelopes. Joined output from `/sdlc:review` paired mode reuses `phase: reviewer` with `joined: true` + `lenses_run: [...]` + `artifact.paths: [...]` (array) — no separate `reviewer-joined` phase mapping needed.
+- **Tightened "spec-blind" definition** in reviewer's Step 1 — distinguishes "do not Read the spec's prose sections" (forbidden under `lens=quality`) from "MAY Read the spec file for phase-section markup discovery" (allowed; needed for Edit precision). The previous wording could be misread to forbid all file access, which would have prevented the reviewer from writing its own phase section.
+
+### Internal
+
+- Envelope canvas schema regex extended to accept `reviewer` alongside other phase names in `required_per_phase` and `default_attention`.
+- All four canvases (spec, plan, quality-checks, envelope) validate against their schemas via ajv.
+- Dogfood findings doc archived at `/tmp/sdlc-dogfood-2026-05-15/dogfood-findings.md` (~479 lines, 9 phase blocks + final verdict).
+
+## [0.1.13] — 2026-05-15
+
+### Added
+
+- **`critique` skill** at `plugin/skills/critique/` — generic critic discipline applicable to any SDLC artifact (spec, plan, diff, ADR). Defines verdict taxonomy (`PASS` / `PASS_WITH_NOTES` / `REVISE` / `BLOCK`), finding categories (blockers / notes / nits), lens taxonomy (`adherence` / `quality` / `logic` / `scope` / `mixed`), and join semantics for multi-lens runs. The `quality` lens is structurally spec-blind by construction. Loadable inline by any agent or the lead; forks to subagent for context isolation.
+- **`reviewer` agent** at `plugin/agents/reviewer.md` — runtime role that loads the `critique` skill. One reviewer per (target, lens) pair. Reads mission from spawn prompt, applies discipline, writes verdict to spec phase section via Edit, posts tracker envelope. Used at Gate 1.5 and Gate 2.5; supports REVISE re-runs via explicit `rerun: true` flag.
+- **`/sdlc:critique <ISSUE-KEY>`** command — Gate 1.5 single-reviewer entrypoint (`lens=mixed` against cited code). Catches spec defects (wrong line numbers, miscounted call sites, missed constraints, citation drift) before the implementer cycle wastes the cost. Detects re-runs after REVISE automatically and passes `rerun: true`.
+- **`/sdlc:review <ISSUE-KEY>`** command — Gate 2.5 paired-lens entrypoint. Spawns two reviewers sequentially (`lens=adherence` against the spec, then `lens=quality` against the quality canvas). Joins verdicts: the worse of the two wins; findings union. Sequential (not parallel) because both reviewers Edit the same spec file and harness doesn't guarantee Edit serialization across concurrent subagents.
+- **Spec canvas v2** (`plugin/canvases/spec/`) — adds a 6-section phase execution log (`Spec Review`, `Design Addendum`, `Implementation notes`, `Diff Review — Adherence`, `Diff Review — Quality`, `Live Validate`) appended to the static spec. Each phase section owned by exactly one agent + gate (declared in `instructions.yaml.phases.*` with `triggered_by: { command, lens, target, against }` for mechanical resolution). New top-level knobs: `append_mode: true`, `implementer_view: annotated | clean`, `tracker_comment.mode: status_envelope | full_content`, `tracker_comment.spec_link: permalink | branch_relative`. Schema bumped v1 → v2; old v1 specs render unchanged (new phase sections appear as empty placeholders).
+- **`quality-checks` canvas** at `plugin/canvases/quality-checks/` — registry of named quality categories consumed by the reviewer's `quality` lens. Ships with three starter categories: `convenient_fallback` (the AGENTS.md "missing-data-looks-like-empty-data" rule), `convention_workaround` ("coding around your own framework"), and `magic_constants` (3+-repeat literals looking for a name). Each entry carries `patterns_to_flag`, `counter_examples`, and a `severity_hint`. Project authors override at `.claude/canvases/quality-checks/categories.yaml` (entries with matching `id` replace; novel `id`s extend).
+- **`sdlc-author` agent** at `plugin/agents/sdlc-author.md` — narrow file-author subagent for SDLC artifacts that don't have a dedicated phase agent (ADRs, RFCs, ad-hoc design docs, handoff notes, batch spec drafts). Tools: `Read, Write, Edit, Glob, Grep` only — no Bash, no tracker MCP, no recursion. Sits between `specifier` (full phase workflow) and `general-purpose` (too broad).
+- **`gate_mode: interactive | auto-all`** in `sdlc.example.yml` — cross-gate envelope governing Gate 2 (PR review) + Gate 3 (validate). `interactive` (default): implementer opens a PR, validator posts to it. `auto-all`: implementer pushes branch and posts a tracker comment, validator posts to the tracker, no PR. Composes with existing `gate1_default` (strict / auto) to express the full matrix. Agents branch on `modes.<gate_mode>.{pr_required, validator_post_target}` rather than on `gate_mode` directly so new modes ship by extending `sdlc.yml.modes` without touching agents.
+- **`spec_storage: file | inline | both`** in `sdlc.example.yml` — controls whether spec content lives in the spec file (default) with tracker comments as ≤15-line status envelopes pointing to it, or inline in tracker comments (legacy). Spec canvas's `tracker_comment.mode` defaults track this value.
+- **`stack_topology: per_plan | per_epic`** in the plan canvas — when `per_epic`, `/sync-issues` emits one `st create --base` command per epic in the report, chaining child stacks to the prior epic's last branch. Branches don't exist yet at sync time (forward-looking); the human runs them incrementally as each epic's first issue comes online.
+- **Plan-key rewrite in `/sync-issues`** — after issues are filed, rewrite `plan.yaml` in place: replace each local `key:` with the tracker-assigned key (lowercased; matches `gitBranchName` convention), preserve the original as `key_original:`, and update all `depends_on:` / `parallel_with:` / epic `issues:` references. Eliminates the permanent translation table that drives accumulate between local plan keys and tracker keys.
+- **Epic status cascade contract** in `plugin/primitives/task-management/{linear,github}.md` — defines automatic parent-epic status moves on child transitions (`Backlog → In Progress` on first child; `In Progress → In Review` when all children are `In Review`/`Done`; `In Review → Done` when all children are `Done`). Governed by `sdlc.yml.epic_cascade.*` knobs. **Contract is defined; v2 follow-up wires the actual execution into validator + a new `/sdlc:done` command.**
+- **`/sdlc:critique` / `/sdlc:review` chain from implementer envelope** — under `gate_mode: auto-all`, implementer sets `next.command: "/sdlc:review <ISSUE-KEY>"` so an orchestrator or lead session can fire Gate 2.5 without manual lookup.
+
+### Changed
+
+- **`sdlc-loop` skill** — refreshed gates table with Gate 1.5 (spec critique) and Gate 2.5 (paired diff review), updated loop diagram with the new flow, added Gate 1.5 / Gate 2.5 / gate-mode sections. Ordering note: Gate 1.5 runs BEFORE Gate 1 (critique → human approval); previously implicit, now documented.
+- **`specifier` agent** — `Tracker comment` section splits on `tracker_comment.mode`. Under `status_envelope` (default), emits a ≤15-line `[Design]` envelope with permalink. Under `full_content`, emits the legacy inline shape.
+- **`implementer` agent** — Step 8 (Open the PR) branches on `modes.<gate_mode>.pr_required`. Under `interactive`, opens a draft PR. Under `auto-all`, skips PR and posts a tracker comment with branch + commit. Envelope `next.command` chains accordingly.
+- **`validator` agent** — Step 5 (Post the report) branches on `modes.<gate_mode>.validator_post_target`. Under `pr`, posts to the open PR (existing behavior). Under `tracker`, posts to the tracker issue directly via the configured tracker MCP.
+- **`spec_critic_max_iterations` knob** — was a placeholder; now actually caps the design ↔ critique loop. Cap-hit is a structured halt, not a failure.
+
+### Internal
+
+- Spec canvas `instructions.schema.json` extended to validate `phases.*.triggered_by`, `append_mode`, `implementer_view`, and `tracker_comment.{mode, max_lines, spec_link}`.
+- Plan canvas `instructions.schema.json` extended to validate `stack_topology`, `epics` array shape, and `key_original` as an issue optional field.
+- All new YAML/JSON files validated against schemas via `ajv` in dev; no runtime breakage on existing v1 plan / spec instances.
+
 ## [0.1.12] — 2026-05-14
 
 ### Added

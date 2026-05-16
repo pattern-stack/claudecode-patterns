@@ -1,0 +1,63 @@
+# Quality categories — input to the reviewer agent's `lens=quality` runs.
+# Schema: categories.schema.json
+#
+# Each category describes a pattern the quality reviewer should actively look
+# for. patterns_to_flag are heuristic prompts (not hard regex matches) —
+# semantic match still requires reviewer judgment.
+
+$schema: ./categories.schema.json
+artifact: quality-checks
+version: 1
+
+categories:
+  - id: convenient_fallback
+    name: "Convenient fallback values that misrepresent state"
+    description: |
+      Missing related metadata, malformed provider payloads, or failed parser
+      branches must surface as unknown/deleted/failed/fallback states rather
+      than pretending work is pending or silently dropping records. The bug:
+      missing data looks like empty data; failures look like success.
+    patterns_to_flag:
+      - "function with non-trivial signature returns `[]` / `{}` / `null` from a catch block"
+      - "?? '' or ?? null coercing into a non-null domain field"
+      - "catch (e) { return <default> } without rethrow, log-and-mark-failed, or marker state"
+      - "if (!data) return success — treating absence as a successful no-op"
+      - "filter(Boolean) on a list that may include legitimately-falsy entries"
+    counter_examples:
+      - "Documented placeholder methods that throw NotImplementedError consistently across the port"
+      - "Idempotent operations that legitimately no-op when the resource doesn't exist (e.g. `addLabel` when label already attached)"
+      - "Cache layers returning empty when the underlying store is empty — this is correct cache behavior"
+    severity_hint: note
+
+  - id: convention_workaround
+    name: "Coding around your own framework"
+    description: |
+      Subclass / wrapper / capturing-mechanism that exists to work around the
+      framework's public surface. Signal: fix the surface, not the workaround.
+      The workaround crystallizes the bad shape — every future caller hits it.
+    patterns_to_flag:
+      - "Subclass overrides a private/protected hook just to capture a value the public API doesn't expose"
+      - "Wrapper class that re-implements N methods just to add one capability"
+      - "Capturing-mechanism / mock-style adapter that exists outside test code"
+      - "Manual rebuild of a feature the framework already provides because the framework's version 'isn't quite right'"
+    counter_examples:
+      - "Genuine plugin / extension points the framework explicitly invites (decorator + lifecycle hooks per docs)"
+      - "Temporary workaround with a documented removal trigger (link to upstream issue + target version)"
+      - "Adapter for a closed-source dependency where upstream change isn't possible"
+    severity_hint: blocker
+
+  - id: magic_constants
+    name: "Repeated magic constants"
+    description: |
+      The same literal value appearing in 3+ places across files. The value
+      is looking for a name. Symptoms: change-coupling (touch one, miss the
+      others), grep-by-magic-number when reasoning about behavior.
+    patterns_to_flag:
+      - "Same numeric literal (page size, timeout ms, retry count, batch limit) appearing in ≥3 distinct files"
+      - "Same string literal (provider name, error code, label name) appearing in ≥3 distinct files"
+      - "Comment explaining the literal repeated (or, worse, present in one location but not another)"
+    counter_examples:
+      - "Index values, array offsets, well-known constants (0, 1, -1, 100 as a percent denominator)"
+      - "Test fixtures — repetition is fine within tests"
+      - "Generated code where the source-of-truth lives upstream"
+    severity_hint: nit

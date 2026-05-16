@@ -29,6 +29,11 @@ Read project config from @.claude/sdlc.yml:
 - `quality_profile` — which gates to run before declaring done
 - `commit_style` — commit message format
 - `task_management` — Linear, in this repo
+- `gate_mode` + `modes.<gate_mode>.pr_required` — governs Step 8 (Push +
+  optionally open PR). Under `interactive` (default), I open a PR. Under
+  `auto-all`, I push the branch but do NOT open a PR — instead I post a
+  tracker comment with the branch + commit info so the validator and the
+  human can find the work.
 
 Reference:
 - `.claude/primitives/language/{language}.md` — patterns to follow
@@ -141,12 +146,23 @@ feat(ap-12): <one-line description>
 
 Group related changes; one commit per logical unit. Don't squash unrelated work.
 
-### 8. Open the PR
+### 8. Push the branch — and open a PR if Gate 2 expects one
 
-Push and open a PR via `gh pr create`. The PR body must include `Closes <ISSUE-KEY>` so the tracker auto-links.
+Resolve `pr_required` from `.claude/sdlc.yml`:
+
+```
+pr_required = sdlc.yml.modes[sdlc.yml.gate_mode].pr_required
+```
+
+Always push first:
 
 ```bash
 git push -u origin <branch>
+```
+
+**If `pr_required: true`** (the `interactive` mode default), open a draft PR via `gh pr create`. The PR body must include `Closes <ISSUE-KEY>` so the tracker auto-links.
+
+```bash
 gh pr create --title "feat(ap-12): <title>" --body "$(cat <<'EOF'
 ## Summary
 <3-5 bullets matching the spec's Approach>
@@ -160,6 +176,22 @@ EOF
 ```
 
 Open as draft; the validator will mark ready after gates pass on CI.
+
+**If `pr_required: false`** (the `auto-all` mode), skip the PR and post a tracker comment with the branch + commit info instead. This is the signal validator + human use to find the work:
+
+```markdown
+## [Implement] <ISSUE-KEY>
+
+**Branch:** `<branch>` (pushed; no PR — gate_mode: auto-all)
+**Commit:** `<short-SHA>` — <commit subject>
+**Spec:** <resolved spec path>
+**Gates passed:** <list>
+**Status:** ready for /sdlc:review (Gate 2.5) and validator (Gate 3)
+```
+
+Post via the configured tracker MCP — Linear: `save_comment`; GitHub: `gh api repos/<o>/<r>/issues/<n>/comments` (REST, not the GraphQL-pool `gh issue comment`). Under `auto-all`, the validator will post its report as a sibling comment, not a PR comment.
+
+**Chain the next command in the envelope.** Set `next.command: "/sdlc:review <ISSUE-KEY>"` under `auto-all` so an orchestrator or the lead session can fire Gate 2.5 (paired diff review) without manual lookup. Under `interactive`, the next command is still `/sdlc:develop <ISSUE-KEY>` for the validator phase — humans typically run `/sdlc:review` manually after PR open.
 
 ### 9. Report
 
@@ -182,7 +214,9 @@ For this phase:
 - `artifact.type: branch+pr`, `artifact.path: <PR URL>` (or branch name on halt-before-push)
 - `gate_action: {enforces: [strategy-approved], sets: []}` (mirror frontmatter)
 - `attention.surfaces: [chat, log]` (default — PR review happens via the PR itself, validator surfaces to PR comment)
-- `next.command: "/develop <ISSUE-KEY>"` (to trigger validator) | `null` (when validator is already chained)
+- `next.command` — branches on `sdlc.yml.gate_mode`:
+  - `interactive` mode (PR opened): `"/develop <ISSUE-KEY>"` to trigger validator on the PR, or `null` if validator is already chained in the same `/develop` run.
+  - `auto-all` mode (no PR; branch pushed + tracker comment): `"/sdlc:review <ISSUE-KEY>"` to fire Gate 2.5 (paired diff review). Validator runs after Gate 2.5 passes.
 
 Example (success path):
 
@@ -208,8 +242,41 @@ attention:
   surfaces: [chat, log]
   dm: []
 next:
-  command: "/develop ABC-101"
+  command: "/develop ABC-101"        # interactive mode: chains validator
   reason: "trigger validator on the open PR"
+metadata:
+  duration_seconds: 312
+  model: claude-sonnet-4-6
+  cost_usd: null
+```
+
+Example (auto-all path — no PR, tracker comment posted, Gate 2.5 next):
+
+```yaml
+phase: implementer
+issue: ABC-101
+stack: pm-toolbox-bridge
+status: complete
+artifact:
+  path: <branch-name>                # no PR URL under auto-all
+  type: branch+commit
+  size: 287
+gate_action:
+  enforces: [strategy-approved]
+  sets: []
+headline: "ABC-101 implemented — branch pushed, no PR (gate_mode: auto-all)"
+body: |
+  Branch: <owner>/abc-101-pm-domain (pushed)
+  Commit: <short-sha> — feat(abc-101): pm domain extraction
+  Files: 6 created, 2 modified per spec.
+  Gates passed: typecheck.
+  Tracker comment posted with branch + commit info.
+attention:
+  surfaces: [chat, tracker, log]
+  dm: []
+next:
+  command: "/sdlc:review ABC-101"    # auto-all mode: fire Gate 2.5 paired review
+  reason: "no PR; Gate 2.5 must pass before validator runs"
 metadata:
   duration_seconds: 312
   model: claude-sonnet-4-6

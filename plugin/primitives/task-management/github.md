@@ -125,6 +125,27 @@ done
 
 The default GitHub Issue Types (Bug, Feature, Task, Epic) exist on every org. We add `Project` as a custom type. `Epic` and `Task` are reused from defaults. The adapter resolves type IDs by name at first use.
 
+## Epic status cascade
+
+When the SDLC loop creates parent epic issues and child leaf issues (via `/sync-issues`), child-status transitions cascade to the parent. Identical contract to the Linear primitive — see [`linear.md` § Epic status cascade](./linear.md#epic-status-cascade) for the full rule table.
+
+GitHub adapter binding for the cascade operations:
+
+| Operation | Command |
+|---|---|
+| Resolve parent epic from child | `gh issue view <child> --json body --jq '.body' | grep -oE 'Parent epic: #[0-9]+'` (the sync-issues epic→child link is encoded both as a sub-issue relation and as a `Parent epic: #N` body line for grep-ability) |
+| List children of an epic | `gh issue list --search 'parent:<epic-number>' --json number,labels,projectItems` (uses the `parent:` qualifier on GitHub Issues sub-issue relation) |
+| Get child Status | Project field; resolved via the Project v2 GraphQL `projectItem.fieldValueByName(name: "Status")` |
+| Set parent Status | `gh project item-edit --id <parent-item-id> --field-id <status-field-id> --project-id <project-id> --single-select-option-id <option-id>` |
+
+Cache the parent Project item ID and the Status field's option IDs at session start (the `SessionStart` discover-tracker hook handles this). The cascade is a series of project-field updates, not issue updates per se — the issue's GraphQL `state` (open/closed) is independent.
+
+Idempotence: the adapter compares the parent's current Status to the target before issuing an `item-edit` — skips when already at target.
+
+Per-project enablement: `sdlc.yml.epic_cascade.enabled: false` disables the cascade for all SDLC-managed epics in this repo. Useful when the team uses GitHub Projects automations for status moves and doesn't want the loop double-dipping.
+
+**Implementation status (v2 follow-up):** same as Linear — the cascade contract is defined here, but no SDLC phase agent performs the parent-status update yet. See [`linear.md` § Epic status cascade → Implementation status](./linear.md#epic-status-cascade) for the v2 wiring plan.
+
 ## Project (v2) integration (optional)
 
 If `sdlc.yml.project_number` is set, `create-issue` chains:

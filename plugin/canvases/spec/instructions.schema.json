@@ -36,6 +36,45 @@
       }
     },
 
+    "phases": {
+      "type": "object",
+      "description": "Map of phase keys to template sections owned by phase agents.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["section", "owner", "gate"],
+        "additionalProperties": false,
+        "properties": {
+          "section": { "type": "string" },
+          "owner": { "type": "string" },
+          "gate": { "type": "number" },
+          "triggered_by": {
+            "type": "object",
+            "description": "Mission shape that fires this phase (command + optional lens / target / against / trigger). Consumers resolve phase ownership mechanically from this block.",
+            "additionalProperties": false,
+            "properties": {
+              "command": { "type": "string" },
+              "lens": {
+                "enum": ["adherence", "quality", "logic", "scope", "mixed"]
+              },
+              "target": { "type": "string" },
+              "against": { "type": "string" },
+              "trigger": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "append_mode": {
+      "type": "boolean",
+      "description": "When true, phase agents Edit their own section in place; never overwrite another phase's section."
+    },
+
+    "implementer_view": {
+      "enum": ["annotated", "clean"],
+      "description": "annotated = implementer reads full spec including phase sections. clean = phase sections stripped at spawn time."
+    },
+
     "diagrams": {
       "type": "object",
       "additionalProperties": false,
@@ -69,12 +108,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "mode": { "enum": ["status_envelope", "full_content"] },
+        "max_lines": { "type": "integer", "minimum": 5 },
         "max_chars": { "type": "integer", "minimum": 100 },
         "include_sections": {
           "type": "array",
           "items": { "type": "string" }
         },
         "files_list_inline": { "type": "boolean" },
+        "spec_link": { "enum": ["permalink", "branch_relative"] },
         "signature": { "type": "string" }
       }
     }
