@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pattern-stack/claudecode-patterns/plugin/canvases/proposal/instructions.schema.json",
+  "title": "Proposal artifact instructions",
+  "description": "Knobs governing how a proposal author (human or sdlc-author agent) produces an architecture proposal and how consumers parse it. Hybrid of ADR + RFC; v1 deliberately minimal, tuned to the design-loop port shape.",
+  "type": "object",
+  "required": ["artifact", "version", "sections"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "artifact": { "const": "proposal" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["beta", "stable", "deprecated"] },
+
+    "sections": {
+      "type": "object",
+      "required": ["order", "required", "verbosity"],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "verbosity": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["short", "medium", "long", "code-only", "bulleted"]
+          }
+        }
+      }
+    },
+
+    "status_lifecycle": {
+      "type": "object",
+      "required": ["values", "initial"],
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "initial": { "type": "string" }
+      }
+    },
+
+    "locked_decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "numbered": { "type": "boolean" },
+        "justification_required": { "type": "boolean" },
+        "minimum": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "open_questions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "numbered": { "type": "boolean" },
+        "minimum": { "type": "integer", "minimum": 0 },
+        "resolution_tracked": { "type": "boolean" }
+      }
+    },
+
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subsections_allowed": { "type": "boolean" },
+        "prefer_tables_over_prose": { "type": "boolean" }
+      }
+    },
+
+    "diagrams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "enum": ["mermaid", "excalidraw", "none"] },
+        "in_sections": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "citations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_paths": { "enum": ["required", "optional", "none"] },
+        "line_numbers": { "type": "boolean" }
+      }
+    },
+
+    "related": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shape": { "enum": ["list_of_objects", "list_of_strings"] }
+      }
+    }
+  }
+}
