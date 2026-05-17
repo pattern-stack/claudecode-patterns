@@ -187,4 +187,4 @@ For a complete trace of this loop run on a real epic (sales-patterns-ts issue #4
 - [`/design-audit`](../design-audit/SKILL.md) — audit-only entrypoint
 - [`/develop`](../../commands/develop.md) — composed-mode entrypoint via `needs:design`
 - [Design-loop port proposal](../../../.ai-docs/proposals/design-loop-port.md) — architectural decisions
-- [`HANDOFF.md`](./HANDOFF.md) — known gaps and resume instructions
+- [Port handoff](../../../.ai-docs/handoffs/design-loop-port.md) — known gaps from the first port + resume instructions

@@ -66,10 +66,12 @@ plugin/
 ├── skills/
 │   ├── design-loop/                    # NEW (user-invocable)
 │   │   ├── SKILL.md
-│   │   ├── examples/issue-47.md
-│   │   └── HANDOFF.md
+│   │   └── examples/issue-47.md
 │   └── design-audit/                   # NEW (user-invocable)
 │       └── SKILL.md
+.ai-docs/
+└── handoffs/
+    └── design-loop-port.md             # NEW — port-status doc (was inadvertently inside skill dir on first port; moved here)
 ├── agents/
 │   ├── design-specifier.md             # NEW
 │   ├── design-implementer.md           # NEW
