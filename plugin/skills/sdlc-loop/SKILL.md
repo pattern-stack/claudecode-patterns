@@ -192,7 +192,24 @@ issue filed, no spec yet               → /design <KEY>
 spec approved, single issue, watching  → /develop <KEY>           (Topology A)
 many approved issues, AFK throughput   → /orchestrate <filter>    (Topology B)
 cold-start session                     → /prime
+
+UI epic, multi-phase, locked decisions → /design-loop <spec-path> (standalone)
+audit shipped UI vs design spec        → /design-audit <pr> <spec>
+per-issue design audit in /develop     → label issue needs:design + /develop <KEY>
 ```
+
+## Design-loop side-track
+
+`/design-loop` and `/design-audit` are a parallel cadence for UI work that benefits from structured screenshot-driven audit under multiple themes. They share agents (`design-specifier`, `design-implementer`, `design-auditor`, `browser-pilot`) with `/develop`'s `needs:design` composed mode. The contract lives in the [`design-spec` canvas](../../canvases/design-spec/README.md); image attachment goes through the [`image-posting` primitive](../../primitives/image-posting/README.md).
+
+Two orchestration modes:
+
+- **Standalone** (`/design-loop`) — multi-phase, no tracker issue required. Spec at `.ai-docs/design/<slug>/spec.md`. Termination strategy configurable per-invocation (`user-gate` default, or `max-loops` / `critic-evaluated`).
+- **Composed** (`/develop` with `needs:design`) — single-phase, normal SDLC issue. `design-auditor` slots between implementer and validator; standard Gates 1.5 / 2 / 2.5 / 3 still fire.
+
+The standalone loop has its own internal gating (spec gate → audit → fix-loop → user-gate per phase) that does NOT engage the standard SDLC gates. The composed mode reuses all standard gates and adds `design-auditor` as an extra teammate.
+
+See [`/design-loop` SKILL.md](../design-loop/SKILL.md) for the full choreography and termination semantics.
 
 ## Halt recovery
 
@@ -252,3 +269,5 @@ The Topology B constraint is load-bearing: subagents cannot spawn other subagent
 | [`/develop`](../../commands/develop.md) | Topology A execution |
 | [`/orchestrate`](../../commands/orchestrate.md) | Topology B execution |
 | [`/prime`](../prime/SKILL.md) | Session cold-start |
+| [`/design-loop`](../design-loop/SKILL.md) | Standalone multi-phase UI design pass (beta) |
+| [`/design-audit`](../design-audit/SKILL.md) | Audit shipped UI against a design-spec (beta) |

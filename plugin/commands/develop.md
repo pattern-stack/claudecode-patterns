@@ -45,7 +45,8 @@ Recent: !`git log --oneline -5`
 | `task-management/linear` | primitive | Issue resolution, gate label semantics |
 | `implementer` | agent | Default member of `develop_team` |
 | `validator` | agent | Default member of `develop_team` |
-| `browser-pilot` / `tester` / `designer` | agent (when vendored) | Spawned per `needs:*` labels |
+| `browser-pilot` / `tester` / `designer` | agent | Spawned per `needs:*` labels (`browser-pilot` ships with the plugin since the design-loop port; `tester` / `designer` are project-vendored) |
+| `design-auditor` (+ `browser-pilot`) | agent (composed design mode) | Spawned when issue carries `needs:design` — runs between implementer commit and validator. See [`/design-loop` SKILL.md § Composed mode](../skills/design-loop/SKILL.md#composed-mode). |
 
 ## Steps
 
@@ -79,8 +80,21 @@ Mapping (extend in `.claude/primitives/task-management/linear.md` § needs:* lab
 - `needs:browser-pilot` → `browser-pilot`
 - `needs:tester` → `tester`
 - `needs:designer` → `designer`
+- `needs:design` → `design-auditor` (composed-mode design loop; auditor slots between implementer commit and validator). Also implies `browser-pilot` — add it to the roster if not already present.
 
 If a `needs:*` label maps to an agent file that does not yet exist, warn but do not fail — log "skipping <name>: agent not vendored" and continue.
+
+### Step 4a: needs:design composed-mode wiring
+
+When `needs:design` is present in the roster:
+
+1. Verify the issue's spec references a parent `design-spec` (look for `related:` frontmatter or a `Design spec:` line pointing to `.ai-docs/design/<slug>/spec.md`). If absent, warn the user and proceed without the auditor — the auditor needs a design-spec to grade against.
+2. After the implementer reports its commit + showcase URL, dispatch `design-auditor` (context: fork) with: spec path, phase number (default 1 in composed mode), commit SHA, showcase URL, declared themes, and the open PR's number for posting.
+3. If auditor returns `FIXES`: dispatch `design-implementer` (fix mode) with the findings list, then re-spawn `design-auditor`. Cap at 3 rounds (matches `validator_max_iterations`). On exhaustion, surface and halt.
+4. If auditor returns `BLOCKED`: halt and surface.
+5. On `READY`, hand back to the standard validator gate. The auditor's verdict is visible in the PR comment; Gate 2.5 (`/sdlc:review`) and Gate 3 (validator) still fire normally.
+
+Composed mode does NOT run the standalone loop's per-phase user-gate — the PR-review and validator-pass gates carry that role.
 
 ### Step 5: Spawn the team
 

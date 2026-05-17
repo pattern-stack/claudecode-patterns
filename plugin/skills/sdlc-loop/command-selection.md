@@ -13,18 +13,29 @@ Decision criteria for picking the right command at any point in the SDLC loop.
 | Issue carries `state:strategy-approved`, single issue, watching | `/develop <KEY>` | Topology A — flat team with split-pane visibility |
 | Multiple `state:strategy-approved` issues, want AFK throughput | `/orchestrate <filter>` | Topology B — coordinator-per-issue, subagents headless |
 | Cold-start a fresh session | `/prime` | Loads handoff, branch, ticket, recent commits |
+| UI epic with locked decisions, multi-phase, theme-swap matters | `/design-loop <spec-path>` | Drives spec → implement → audit → fix → validate per phase. Standalone (no tracker issue required). |
+| Audit a shipped/in-flight UI surface against a design spec | `/design-audit <pr-or-branch> <spec-path>` | Audit-only; posts findings with screenshots; no fixes dispatched |
+| Per-issue design work on top of `/develop` | Add `needs:design` label to the issue; run `/develop <KEY>` | Composed mode — `/develop` adds `design-auditor` to the team after implementer commit |
 
 ## /develop vs /orchestrate
 
 | Question | If yes → /develop | If yes → /orchestrate |
 |---|---|---|
 | Will I be at the keyboard for each step? | ✓ | — |
-| Do I need UI verification (`needs:browser-pilot`, `needs:designer`)? | ✓ — Topology B forbids these | — |
+| Do I need UI verification (`needs:browser-pilot`, `needs:designer`, `needs:design`)? | ✓ — Topology B forbids these | — |
 | Does the issue need data/log validation per step (`needs:tester`)? | ✓ | — |
 | Are there many independent issues to grind through? | — | ✓ |
 | Am I OK with halts surfacing only in coordinator reports? | — | ✓ |
 
-If an issue carries any `needs:*` label that maps to a Topology-A agent (`browser-pilot`, `designer`, `tester`), `/orchestrate` will drop it automatically and recommend `/develop`. Don't try to override — these agents exist for split-pane co-presence and don't run headless.
+If an issue carries any `needs:*` label that maps to a Topology-A agent (`browser-pilot`, `designer`, `design-auditor`, `tester`), `/orchestrate` will drop it automatically and recommend `/develop`. Don't try to override — these agents exist for split-pane co-presence and don't run headless.
+
+## /develop (composed-design mode) vs /design-loop (standalone)
+
+When the design work is one PR-sized phase, label the issue `needs:design` and run `/develop <KEY>` — the team picks up `design-auditor` between the implementer's commit and the validator's run. This composes cleanly with all existing gates (1.5, 2, 2.5, 3) and ships as a normal PR.
+
+When the design work is multi-phase or pre-tracker (you're shaping a UI surface from scratch), use `/design-loop <spec-path>` standalone. The loop drives spec → implement → audit → fix → validate per phase with the termination strategy you pick (`user-gate` / `max-loops` / `critic-evaluated`). It can run before any tracker issues exist; spec lives at `.ai-docs/design/<slug>/spec.md`.
+
+The two modes share the same agents, canvas, and primitive. See [`design-loop` SKILL.md § Composed mode](../design-loop/SKILL.md#composed-mode) for the full collapse-rules.
 
 ## /plan vs jumping straight to /design
 
@@ -80,3 +91,12 @@ If `state:strategy-approved` was already set, specifier asks before overwriting 
 
 **"ABC-104 has `needs:browser-pilot`. Can I `/orchestrate` it with the others?"**
 → No. `/orchestrate` will drop it. Run `/develop ABC-104` separately.
+
+**"I'm starting a UI epic — multi-phase, locked decisions, two themes."**
+→ `/design-loop .ai-docs/design/<slug>/spec.md`. Standalone — no tracker issue required up front. Each phase user-gates by default.
+
+**"ABC-105 is a UI polish issue, one phase. I want design audit in the loop."**
+→ Add `needs:design` label. Run `/develop ABC-105`. The team adds `design-auditor` between implementer and validator.
+
+**"I want to audit a PR's design without re-running the loop."**
+→ `/design-audit <PR-number> .ai-docs/design/<slug>/spec.md`. Audit-only; posts findings; no fixes dispatched.
