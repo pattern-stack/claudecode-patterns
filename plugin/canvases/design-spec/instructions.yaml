@@ -1,0 +1,128 @@
+# Design-spec artifact — tunable knobs for design-loop specs.
+# Schema: instructions.schema.json.
+# Section identifiers below MUST match the H2/H3/H4 headings in template.md verbatim.
+#
+# This canvas is the porting target for sales-patterns-ts's
+# `.claude/skills/_design-shared/spec-format.md` (versioned spec contract).
+# `/design-loop` + `/design-audit` skills, and the design-* agents, all read
+# this canvas to know the spec shape.
+
+$schema: ./instructions.schema.json
+artifact: design-spec
+version: 1
+status: beta            # v1 — ports from sales-patterns-ts spec-format v1; shipped before end-to-end exercise
+
+# Spec format version. Agents refuse specs whose frontmatter `spec_format:`
+# does not match this value, with the message:
+#   "Spec format version mismatch: spec is vN, package is vM."
+spec_format_version: 1
+
+sections:
+  # Document-level sections (above the first Phase block).
+  # Phase-block sections (Phase N, Deliverables, AC, etc.) follow a parallel
+  # contract but repeat per phase — see `phase_block.sections` below.
+  order:
+    - "Locked decisions"
+    - "Themes declared"
+    - "Phases"
+
+  required:
+    - "Locked decisions"
+    - "Themes declared"
+    - "Phases"
+
+  verbosity:
+    "Locked decisions": bulleted     # numbered list; each item: assertion + justification
+    "Themes declared": bulleted
+    "Phases": bulleted
+
+# Phase-block contract — the shape every `## Phase N — name` block must follow.
+# Each phase is its own implementer dispatch and its own audit pass.
+phase_block:
+  sections:
+    order:
+      - "Deliverables"
+      - "Acceptance criteria"
+      - "Out of scope for this phase"
+
+    required:
+      - "Deliverables"
+      - "Acceptance criteria"
+
+    # Sub-section requirements under Deliverables.
+    deliverables_subsections:
+      required:
+        - "Tokens"
+        - "Atoms"
+        - "Showcase route"
+
+# Locked-decisions knobs. Auditor grades against these verbatim — they are
+# binding contracts, not preferences. Re-opening a locked decision means
+# authoring a new spec (not editing this one).
+locked_decisions:
+  numbered: true
+  minimum: 1                      # producer halts if zero — a spec with no locked decisions has nothing to grade against
+  require_justification: true     # each decision must include a one-line "Justification: ..." rationale
+
+# Atom-contract knobs. The implementer reads atoms from `### Atoms` and must
+# be able to write the file from the contract alone — no improvisation.
+atom_contract:
+  require_ts_interface: true      # each atom's contract MUST include its TS interface verbatim
+  require_behavior_note: true     # 3-line max behavior note alongside the interface
+  require_file_path: true         # frontend/src/atoms/<Name>.tsx (or equivalent)
+
+# Themes contract — minimum count, theme-swap AC handling.
+themes:
+  minimum: 1                      # at least one theme must be declared
+  theme_swap_required_when_count_gte: 2  # when 2+ themes, theme-swap falsification AC is mandatory; when 1, it's waived but the auditor MUST note the waiver
+
+# Universal acceptance criteria — these are the non-negotiables every design
+# spec inherits. The producer renders them into the `#### Universal AC` block
+# under each phase's `### Acceptance criteria`. Toggle `enabled: false` for an
+# AC only when it genuinely doesn't apply (e.g., theme-swap with one theme).
+#
+# Spec-declared AC are free-form and live under `#### Spec-declared AC`.
+universal_ac:
+  - id: typecheck
+    enabled: true
+    statement: "`tsc --noEmit` exits 0"
+  - id: lint
+    enabled: true
+    statement: "Lint exits 0; no `biome-ignore` / `eslint-disable` added"
+  - id: showcase_200
+    enabled: true
+    statement: "`/_showcase` returns HTTP 200; 0 console errors under each declared theme"
+  - id: theme_swap
+    enabled: true                   # auto-disabled by consumer when themes count == 1
+    statement: "**Theme-swap falsification**: every declared theme renders the surface with no visual regressions or contrast failures. Auditor produces side-by-side screenshots."
+  - id: contrast_wcag_aa
+    enabled: true
+    statement: "**WCAG AA contrast**: all text meets 4.5:1 against its background under every theme. Auditor measures."
+  - id: atoms_no_literals
+    enabled: true
+    statement: "No theme-specific code in atoms — atoms reference CSS variables only, no hardcoded colors/fonts. One exception: data-density numerics (e.g., `11.5px` for mono grids) must be flagged in the implementer report."
+
+# Phase semantics — how phases compose with SDLC issues.
+# Per Open Question #2 in the design-loop-port proposal:
+#   - composed mode: one issue = one phase (intra-issue audit gate)
+#   - standalone mode: /design-loop runs N phases against the spec without tracker issues
+# Both modes read the same spec; the difference is who orchestrates.
+phase_mode:
+  default: standalone               # standalone | composed
+  allow_composed: true              # when true, /develop with needs:design can run a single phase
+
+# Authoring rules — codified to keep specs faithful to the contract.
+authoring_rules:
+  no_phase_jumping: true            # a phase may not reference atoms/tokens from later phases
+  one_pr_per_phase: true            # phase boundaries are also PR / user-gate boundaries
+  locked_decisions_are_binding: true
+
+# Diagrams — light defaults; the design-spec is mostly tabular.
+diagrams:
+  tool: mermaid
+  in_sections: []                   # no diagrams required by default
+
+# Citations — file-path rigor for code references in the spec.
+citations:
+  file_paths: required              # required | optional | none — design specs name files explicitly
+  line_numbers: false               # rarely useful at design-spec stage; the implementation evolves them

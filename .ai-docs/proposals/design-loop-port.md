@@ -178,17 +178,39 @@ spec_format: {{version}}
 
 ## Open questions
 
-_(Decide before the spec phase.)_
+_(Tentative answers locked 2026-05-16 by Claude — **flagged for human confirmation before the port lands**. Code on `feat/design-loop-port` follows these defaults; flip any of them and the port adjusts.)_
 
+1. **Termination strategy default at the plugin level.**
+   **Tentative answer:** `user-gate` with `max-loops: 3` hard cap.
+   **Rationale:** Matches the source's invariant; user-gate is the conservative default for novel work; max-loops at 3 mirrors `validator_max_iterations` + `spec_critic_max_iterations` already in `sdlc.yml`.
 
-1. **Termination strategy default at the plugin level.** Proposing `user-gate` with `max-loops: 3` hard cap. Confirm.
-2. **Phase = SDLC issue, or intra-issue?** The hybrid model implies intra-issue when composed into `/develop` (one issue = one phase) and multi-phase when standalone. Is this dual nature correct, or do we always want phases-as-issues?
-3. **Does `/design-loop` produce a spec at SDLC's `stack_spec` path?** Or a separate `.ai-docs/design/<slug>/spec.md`? Bias: separate path — design specs predate any tracker issue. They get *referenced* by issue specs.
-4. **`browser-pilot` portability.** Anthropic-managed in the source. When we vendor it, does it use Anthropic's tooling (if available), Playwright, or both with fallback? Affects scope.
-5. **Image-posting vs. `validator_post_target`.** Coexist for v1, unify in v2? Or unify now via a generic `output_target` primitive (riskier).
-6. **Critic-evaluated termination — which critic?** A new `reviewer` lens (`lens=design`), or `design-auditor` itself returning a normalized verdict? Bias: `design-auditor` is the critic; it already returns a structured verdict. The `lens=design` for `/review` is the *Gate-2.5 facade* over the same agent.
-7. **Locked decisions: spec-level or phase-level?** Source has them spec-level. Consider phase-level for very large epics.
-8. **Acceptance criteria taxonomy in `instructions.yaml`.** Should universal AC be hardcoded (typecheck, lint, contrast, theme-swap, showcase-200) or fully configurable? Bias: hardcoded list with an `enabled` toggle per item.
+2. **Phase = SDLC issue, or intra-issue?**
+   **Tentative answer:** Intra-issue when composed into `/develop` (a `needs:design` issue runs one design phase); multi-phase when standalone (`/design-loop` against a spec spans phases without tracker issues).
+   **Rationale:** Preserves PR-sized-issue convention for tracker-integrated work, preserves source-loop cadence for greenfield UI epics. Documents the dual nature explicitly in `sdlc-loop` SKILL.md.
+
+3. **Does `/design-loop` produce a spec at SDLC's `stack_spec` path?**
+   **Tentative answer:** Separate path — `.ai-docs/design/<slug>/spec.md`. Add a new `design_spec` entry to `artifact_paths`.
+   **Rationale:** Design specs predate any tracker issue and are referenced *by* issue specs (not the other way around). Conflating with `stack_spec` would force every design-loop run to have a tracker issue.
+
+4. **`browser-pilot` portability.**
+   **Tentative answer:** Vendor a Playwright-based implementation as the default. If Anthropic's managed browser tooling is detected at runtime, prefer it; else fall back to Playwright. Document Playwright as a hard dependency for design-audit; soft for design-loop (spec-only runs don't need a browser).
+   **Rationale:** Anthropic-managed is convenient but not portable; Playwright is universal. The fallback gives us both.
+
+5. **Image-posting vs. `validator_post_target`.**
+   **Tentative answer:** Coexist for v1. `validator_post_target: pr | tracker` keeps choosing the surface; `image_posting: gh | local-folder` chooses *how* to attach images to whichever surface was chosen. Unify into a generic `output_target` primitive in v2 once `linear-comment` and `local-folder` values exist to pressure the design.
+   **Rationale:** They solve different problems; collapsing now is premature. Document the eventual unification as a v2 deferred item.
+
+6. **Critic-evaluated termination — which critic?**
+   **Tentative answer:** `design-auditor` is the critic. Its verdict (`READY` / `FIXES` / `BLOCKED`) drives `critic-evaluated` termination. `/review --lens=design` (deferred to v1.5) becomes the Gate-2.5 facade over the same agent — same critic, different framing.
+   **Rationale:** One critic, two entrypoints. Avoids a parallel `lens=design` reviewer-implementation in v1.
+
+7. **Locked decisions: spec-level or phase-level?**
+   **Tentative answer:** Spec-level only for v1. Phase-level locked decisions are a v2 extension if a real epic pressures them.
+   **Rationale:** Source had spec-level only and it worked for issue #47. Adding phase-level adds canvas complexity without a forcing case.
+
+8. **Acceptance criteria taxonomy in `instructions.yaml`.**
+   **Tentative answer:** Hardcoded universal AC list (`typecheck`, `lint`, `contrast`, `theme-swap`, `showcase-200`) with `enabled: bool` toggle per item. Spec-declared AC are free-form.
+   **Rationale:** Universal AC are the few non-negotiables; making them fully configurable invites accidental quality dropouts. Toggles give the escape hatch when an AC genuinely doesn't apply (e.g., `theme-swap` with one theme).
 
 ## Deferred
 

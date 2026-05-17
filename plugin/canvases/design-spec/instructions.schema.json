@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pattern-stack/claudecode-patterns/plugin/canvases/design-spec/instructions.schema.json",
+  "title": "Design-spec artifact instructions",
+  "description": "Knobs governing the design-loop spec contract. Read by design-specifier (verifies), design-implementer (builds against), design-auditor (grades against), and the /design-loop + /design-audit skills.",
+  "type": "object",
+  "required": ["artifact", "version", "spec_format_version", "sections", "phase_block"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "artifact": { "const": "design-spec" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["beta", "stable", "deprecated"] },
+    "spec_format_version": { "type": "integer", "minimum": 1 },
+
+    "sections": {
+      "type": "object",
+      "required": ["order", "required", "verbosity"],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "verbosity": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["short", "medium", "long", "code-only", "bulleted"]
+          }
+        }
+      }
+    },
+
+    "phase_block": {
+      "type": "object",
+      "required": ["sections"],
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "type": "object",
+          "required": ["order", "required"],
+          "additionalProperties": false,
+          "properties": {
+            "order": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true
+            },
+            "deliverables_subsections": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "required": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "uniqueItems": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "locked_decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "numbered": { "type": "boolean" },
+        "minimum": { "type": "integer", "minimum": 0 },
+        "require_justification": { "type": "boolean" }
+      }
+    },
+
+    "atom_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_ts_interface": { "type": "boolean" },
+        "require_behavior_note": { "type": "boolean" },
+        "require_file_path": { "type": "boolean" }
+      }
+    },
+
+    "themes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minimum": { "type": "integer", "minimum": 1 },
+        "theme_swap_required_when_count_gte": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "universal_ac": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "enabled", "statement"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "statement": { "type": "string" }
+        }
+      },
+      "uniqueItems": true
+    },
+
+    "phase_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "enum": ["standalone", "composed"] },
+        "allow_composed": { "type": "boolean" }
+      }
+    },
+
+    "authoring_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "no_phase_jumping": { "type": "boolean" },
+        "one_pr_per_phase": { "type": "boolean" },
+        "locked_decisions_are_binding": { "type": "boolean" }
+      }
+    },
+
+    "diagrams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "enum": ["mermaid", "excalidraw", "none"] },
+        "in_sections": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "citations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_paths": { "enum": ["required", "optional", "none"] },
+        "line_numbers": { "type": "boolean" }
+      }
+    }
+  }
+}
