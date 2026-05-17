@@ -77,6 +77,7 @@ Don't author canvases by hand — use the [`canvas-authoring`](../skills/canvas-
 | [`envelope/`](envelope/README.md) | every phase agent | CLI (always); render skill (planned) → slack / tracker / pr / log | Active |
 | [`plan/`](plan/README.md) | `planner` | `/sync-issues`, `specifier`, `coordinator`, `implementer`, `sdlc-loop` | Active |
 | [`session/`](session/README.md) | every workflow command (`/plan`, `/design`, `/develop`, `/orchestrate`, `/sync-issues`) | humans browsing past sessions; future render skill; analytics | Active (two-tone observability — `session.json` + `execution.log` + `summary.md`) |
+| [`proposal/`](proposal/README.md) | human author / `sdlc-author` | human reviewer; downstream `planner` once `accepted` | **Beta** (v1 — tuned to design-loop port; deliberately minimal ADR+RFC hybrid; shipped without full review) |
 | `understanding/` | `understander` | `planner`, `specifier`, `coordinator` | Planned |
 | `validator-report/` | `validator` | PR review | Planned |
 | `pr-body/` | `implementer` | GitHub | Planned |
