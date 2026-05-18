@@ -173,15 +173,31 @@ paths:
 
 ## Open questions
 
-1. **Reference detection — file extension only, or also content sniffing?** Bias: extension only. Justification: predictable; if user wants to override, pass `--reference-type=` explicitly.
+_(Tentative answers locked 2026-05-17 by Claude — **flagged for human confirmation before merge.** Code on `feat/design-loop-v2` follows these defaults; flip any of them and the implementation adjusts.)_
 
-2. **Figma URLs — how stored?** Single-line file (`reference.figma-url`) with just the URL? Or a tiny YAML stub with URL + node ID? Bias: single-line URL; node ID embedded in the URL itself.
+1. **Reference detection — file extension only, or also content sniffing?**
+   **Tentative answer:** Extension only.
+   **Rationale:** Predictable; debuggable. If user wants override, `--reference-type=` flag wins. Content sniffing introduces ambiguity for no real benefit.
 
-3. **Surface declaration shape — `surface.txt` (one line) or `surface.json` (structured)?** Bias: `surface.txt` for simple cases (a path); upgrade to `surface.json` if we ever need multi-target.
+2. **Figma URLs — how stored?**
+   **Tentative answer:** Single-line file `reference.figma-url` containing just the frame URL. Node ID is part of the URL itself (Figma URLs already encode `?node-id=...`).
+   **Rationale:** Simpler than YAML; matches the "one path, one file" pattern of the other reference types.
 
-4. **What happens when grader returns BLOCKED in `figma` mode?** Spec mode has a clear answer (spec is internally contradictory). Figma mode: probably "Figma frame couldn't be fetched" or "extracted token set doesn't match any plausible CSS variable". Need a small enumeration.
+3. **Surface declaration shape — `surface.txt` or `surface.json`?**
+   **Tentative answer:** `surface.txt` for v2 — one line, either a filesystem path (where the code lives) or a URL (where the build runs).
+   **Rationale:** Covers single-target cases (~95% of use). Upgrade to `surface.json` in v3 if multi-target ever forces it. Avoids over-structuring.
 
-5. **Composed mode (`/develop` with `needs:design`) — does it work for figma/screenshot references too?** Probably yes mechanically, but the composed-mode use case is most likely "issue references a parent spec." Confirm whether figma/screenshot composed mode is in v2 scope or deferred.
+4. **What `BLOCKED` means in figma mode.**
+   **Tentative answer:** Enumerate four failure modes:
+   - `figma_unreachable` — MCP server not responding or auth missing
+   - `frame_not_found` — URL valid but Figma returns 404 for the node
+   - `mcp_unavailable` — `figma-dev-mode` MCP not configured on this project
+   - `unsupported_node_type` — frame contains components the grader can't extract structural data from (e.g., embedded video)
+   **Rationale:** Each maps to a different user fix (auth / URL correction / MCP install / spec-mode fallback). Generic "blocked" is unhelpful.
+
+5. **Composed mode (`/develop` with `needs:design`) — figma/screenshot too?**
+   **Tentative answer:** **Spec-only for v2.** Composed mode with figma/screenshot references deferred to v3.
+   **Rationale:** Composed mode's primary value is "this tracker issue refines a parent design" — that pattern fits spec refs cleanest. Figma/screenshot composed mode is plausible but the use case hasn't materialized; defer until it does.
 
 ## Deferred
 
