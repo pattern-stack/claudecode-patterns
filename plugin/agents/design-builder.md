@@ -53,12 +53,20 @@ Read the markdown reference. Honor `types.spec` contract:
 - Out-of-scope: anything not in the spec's Deliverables.
 
 ### figma
-Call the `figma-dev-mode` MCP per `types.figma.mcp_ops.builder`:
-- `get_design_context` — frame's component tree, layout primitives
-- `get_metadata` — applied styles, tokens
-- `get_variable_defs` — design tokens (map to CSS vars in your build)
+**v2.1: Read from the figma-snapshot cache, NOT from MCP each round.** The cache lives at `.ai-docs/figma/<slug>/` and is produced by `/figma-snapshot <figma-url>` (required prereq, run before invoking me).
 
-Implement the frame: pick the right layout primitive (flex/grid/absolute per MCP metadata), apply tokens as CSS variables, place children matching the node tree. Do not invent components Figma didn't include.
+Consume:
+- `.ai-docs/figma/<slug>/summary.md` — composition prose + token highlights
+- `.ai-docs/figma/<slug>/tokens.json` — flat token map for CSS-var assignment
+- `.ai-docs/figma/<slug>/metadata.json` — frame tree for layout decisions
+- `.ai-docs/figma/<slug>/design-context.tsx` — reference React stub (read for shape; do NOT import)
+- `.ai-docs/figma/<slug>/reference.png` — visual reference for self-check
+
+If the cache is missing, halt with `figma_snapshot_missing` and instruct the caller to run `/figma-snapshot` first.
+
+Implement the frame: pick the right layout primitive (flex/grid/absolute per `metadata.json`), apply tokens as CSS variables, place children matching the node tree. Do not invent components the snapshot didn't include.
+
+**Component discovery (v2.1):** Before writing new components, grep the codebase for existing atoms/molecules that match the frame's elements. The v2 dogfood found that the builder created `HeaderChips` inline when a `Chip` atom + `PopoverMenu` molecule already existed. Discover, then build.
 
 ### screenshot
 Read the image (multimodal Read). Visual intent only — no structural metadata. Implement what you see:
@@ -86,6 +94,18 @@ Per project's [language primitive](../primitives/language/README.md):
 - 0 console errors on surface (when applicable)
 
 If any gate fails, fix the cause. Do not commit until all pass.
+
+## Verify-in-DOM (v2.1 — required before reporting `ADDRESSED`)
+
+In fix mode, after the commit lands and HMR settles:
+- Re-run `bun ${CLAUDE_PLUGIN_DIR}/scripts/design.ts inspect <url> <probes.json>` (or via `/browser-driver`) against the same selectors JSON the grader used
+- For each finding you claim `ADDRESSED`, the corresponding probe in the inspection JSON must show the EXPECTED state (e.g. cursor: pointer, no overflow, ARIA attrs set)
+- If the inspection still shows the bug, the edit didn't land in the rendered tree (component not mounted, wrong render path, parent class overriding). DIAGNOSE before re-reporting.
+- This step exists because v2 round 2 silently no-op'd 3/6 fixes — the edits were correct but on the wrong components (e.g. AddSectionDivider was only mounted in the showcase route, not the editor).
+
+## Pre-commit hook workaround (v2.1)
+
+This project's husky pre-commit hook treats ANY unstaged diff as a blocker. If you have unrelated unstaged changes (e.g. a dogfood script edit), `git stash push --keep-index -- <path>` them before commit, then `git stash pop`. Documented because v2 dogfood hit this 5+ rounds in a row.
 
 ## Commit
 

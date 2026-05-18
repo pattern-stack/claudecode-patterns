@@ -64,7 +64,16 @@ The grader always returns one of `READY` / `FIXES` / `BLOCKED`.
 
 | Universal | Spec | Figma | Screenshot |
 |---|---|---|---|
-| `internal_contradiction` | `missing_required_section`, `phase_jumping` | `figma_unreachable`, `frame_not_found`, `mcp_unavailable`, `unsupported_node_type` | `reference_image_missing`, `reference_image_unreadable` |
+| `internal_contradiction`, `surface_unreachable_browser` (v2.1), `surface_requires_auth` (v2.1), `surface_evidence_missing` (v2.1) | `missing_required_section`, `phase_jumping` | `figma_unreachable`, `frame_not_found`, `mcp_unavailable`, `unsupported_node_type`, `figma_snapshot_missing` (v2.1) | `reference_image_missing`, `reference_image_unreadable` |
+
+### v2.1 sub-code semantics
+
+| Sub-code | Trigger | Fix hint |
+|---|---|---|
+| `surface_unreachable_browser` | Browser failed to load the surface (cert error, network, headless-incompatible) | Check Caddy/dev-server; `/browser-driver verify-prereqs <url>` |
+| `surface_requires_auth` | Capture landed on a login wall (redirect to `/login` / `/start` / `/auth`) | `/auth-recover` |
+| `surface_evidence_missing` | Neither screenshot nor inspection JSON could be produced | Investigate `/browser-driver` output; check viewport / waitAfterNav |
+| `figma_snapshot_missing` | Figma-type reference but no fresh `.ai-docs/figma/<slug>/snapshot.yaml` | `/figma-snapshot <figma-url>` |
 
 Each maps to a different user fix. The grader's verdict includes the sub-code; the loop surfaces it verbatim.
 

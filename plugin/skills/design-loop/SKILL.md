@@ -36,14 +36,16 @@ References conform to the [`design-reference`](../../canvases/design-reference/R
 | `--strategy` | no | `user-gate` | Termination: `user-gate` / `max-loops` / `grader-good`. See [Termination](#termination). |
 | `--max-loops` | no | `3` | Hard cap on rounds regardless of strategy. |
 
-## Prerequisites
+## Prerequisites (auto-verified at skill start)
 
 - `git` + `gh` (`gh auth status` exits 0)
-- `image-posting` primitive's `verify-prereqs` → `ok: true`
-- `browser-pilot` agent present
+- `image-posting` primitive's `verify-prereqs` → `ok: true` (only when `target` is provided)
 - `design-builder` + `design-grader` agents present
-- For `figma` mode: `figma-dev-mode` MCP server configured + reachable
-- Dev server running when surface is a URL (loop verifies HTTP 200)
+- `bun ${CLAUDE_PLUGIN_DIR}/scripts/design.ts verify <surface-url>` (via `/browser-driver`) → `ok: true` (200 + non-stale auth + non-loading title)
+- For `figma` mode: `.ai-docs/figma/<slug>/snapshot.yaml` exists and is fresh (else: run `/figma-snapshot <figma-url>` first; will block until done)
+- If `/browser-driver` reports `authStale: true` → halt with "run `/auth-recover`"
+
+The loop runs these checks automatically at start and halts with explicit recovery hints on failure. Each prereq lists which skill to invoke for fix.
 
 ## Termination
 
@@ -60,13 +62,29 @@ All strategies halt immediately on `BLOCKED`. `--mode=audit` ignores `--strategy
 ## Choreography
 
 ```
+# Pre-flight
+verify_prereqs():
+  /browser-driver verify-prereqs <surface-url>      # 200, non-stale auth, non-loading title
+  if figma reference:
+    /figma-snapshot <figma-url> --check-only        # snapshot exists + fresh
+  halt-on-fail with explicit fix hint per finding
+
 round = 1
 loop:
   if mode == loop:
     builder.run(reference, surface, mode=phase|fix, round, findings?)
     capture builder.commit_sha
+    # NEW (v2.1): builder must verify each ADDRESSED finding via
+    # /browser-driver inspect with the grader's selectors JSON BEFORE reporting.
+
   grader.run(reference, surface, commit_sha, round, target)
-  post grader.verdict via image-posting
+    # NEW (v2.1): grader MUST run both /browser-driver capture (screenshot)
+    # AND /browser-driver inspect (structural + interactive probe). The
+    # verdict is gated on the inspection JSON, not just the screenshot.
+    # READY requires: zero overflow, zero cursor mismatches, all interactive
+    # elements have proper role+aria, plus visual match to the figma snapshot.
+
+  post grader.verdict via image-posting (if target provided)
 
   switch grader.verdict:
     READY:
@@ -78,7 +96,9 @@ loop:
       if round >= max_loops: halt (cap-hit)
       else: round += 1; continue (builder runs in fix mode next iteration)
     BLOCKED:
-      halt with sub-code; surface to user
+      halt with sub-code (universal: `surface_unreachable_browser`,
+      `surface_requires_auth`, `surface_evidence_missing`,
+      `internal_contradiction`); surface to user with /skill-to-run hint
 ```
 
 Spec mode adds one wrinkle: if the reference declares multiple phases, the loop runs phase-by-phase. Each phase has its own round counter; phase boundaries are user-gate boundaries under `user-gate` strategy. Phase semantics belong to the spec reference type only.

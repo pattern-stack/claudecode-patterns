@@ -50,16 +50,24 @@ On failure: return `BLOCKED` with appropriate sub-code (per `grading.blocked_cod
 | `figma` | Reference file is one-line URL; URL parses; figma-dev-mode MCP responds to `get_metadata` against it. |
 | `screenshot` | Image file exists, extension in `accepted_extensions`, file is readable. |
 
-## Step 2 — capture surface evidence
+## Step 2 — capture surface evidence (v2.1: TWO required artifacts)
 
 Verify build:
 - `git rev-parse HEAD` matches `commit_sha`
-- Surface URL (if `surface.txt` is a URL) returns HTTP 200
+- Surface URL (if `surface.txt` is a URL) returns HTTP 200 via `/browser-driver verify-prereqs`
 
 For each declared theme in the reference (default: 1 implicit theme if none declared):
-- Dispatch `browser-pilot` with: surface URL, theme name, viewport (1280x720 default).
-- `browser-pilot` sets `data-theme` if multiple themes declared, captures full-page screenshot, captures per-section screenshots, captures interactive states (hover/selected/active/disabled).
-- Screenshots land at `.ai-docs/design/<slug>/iterations/<round>/`.
+
+### 2a. Screenshot (visual evidence)
+- `bun ${CLAUDE_PLUGIN_DIR}/scripts/design.ts capture <url> .ai-docs/design/<slug>/iterations/<round>/surface-<theme>.png`
+- Viewport defaults to the figma frame's native size (env `VIEWPORT_W`/`VIEWPORT_H`) — NOT 1280x720, which hid overflow bugs in v2.
+
+### 2b. Inspection (structural + interactive evidence) — NEW in v2.1
+- Author a selectors JSON at `.ai-docs/design/<slug>/probes.json` listing every interactive affordance in the surface (chips, buttons, dropdowns, tooltips). Reference `/browser-driver` SKILL for the JSON shape.
+- `bun ${CLAUDE_PLUGIN_DIR}/scripts/design.ts inspect <url> <probes.json> .ai-docs/design/<slug>/iterations/<round>/inspect-<theme>.json`
+- The inspection JSON includes: per-probe `cursor`, `role`, `ariaLabel`, `ariaPressed`, `ariaExpanded`, `ariaDisabled`, `disabled`, `overflowing`, `boxW`, plus interaction outcomes (dropdown items, tooltip text).
+
+**A verdict cannot be issued without BOTH artifacts.** Screenshots alone graded READY in v2 dogfood while overflow + cursor bugs remained — that's the failure mode this step closes.
 
 ## Step 3 — grade (type-specific)
 
@@ -74,16 +82,25 @@ For each entry in `## Checks`:
 
 ### figma — `comparison: structural_plus_visual`
 
-Fetch reference data per `types.figma.mcp_ops.grader`:
-- `get_metadata` — applied styles, tokens used
-- `get_screenshot` — the frame as image
+**v2.1: Read from the figma-snapshot cache, NOT from MCP each round.** The cache lives at `.ai-docs/figma/<slug>/` and is produced by `/figma-snapshot <figma-url>`. If the cache is missing, halt with `figma_snapshot_missing` and a hint to run `/figma-snapshot`.
+
+Consume:
+- `.ai-docs/figma/<slug>/tokens.json` — flat token map for structural compare
+- `.ai-docs/figma/<slug>/summary.md` — composition + tokens prose (the consumable artifact)
+- `.ai-docs/figma/<slug>/reference.png` — visual reference
+- `.ai-docs/figma/<slug>/metadata.json` — frame tree if a deep look is needed
 
 Compare structural:
-- Tokens in the build (CSS vars resolved) vs tokens in `get_metadata`. Mismatch → finding.
-- Layout primitive (flex/grid) in build vs frame's primitive. Mismatch → finding.
+- Tokens in the build (CSS vars resolved) vs `tokens.json`. Mismatch → finding.
+- Layout primitive (flex/grid) in build vs frame's primitive (from `metadata.json`). Mismatch → finding.
+- **NEW**: Inspection JSON (`inspect-<theme>.json`) checks:
+  - Any probe with `overflowing: true` → Definitely broken
+  - Any interactive probe (`role=button` / `role=menuitem` etc.) with `cursor` other than `pointer` (or `not-allowed` when `disabled`) → Definitely broken
+  - Any interactive probe missing `aria-label` AND no readable text content → Definitely broken
+  - Dropdown probe with `interactive.<key>.open !== true` → Definitely broken (menu doesn't open)
 
 Compare visual:
-- Build screenshot vs Figma `get_screenshot`. LLM-judged delta. Categorize per severity.
+- Build screenshot vs `reference.png`. LLM-judged delta. Categorize per severity.
 
 ### screenshot — `comparison: visual_only`
 
