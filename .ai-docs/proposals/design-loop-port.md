@@ -1,12 +1,16 @@
 ---
-status: draft-architecture
+status: superseded
 author: dug (with Claude)
 date: 2026-05-16
+superseded_by: .ai-docs/proposals/design-loop-v2.md (2026-05-17)
 related:
   - source: pattern-stack/sales-patterns-ts @ cad9e74 (branch feat/design-loop-skill, unmerged)
   - source-merged: pattern-stack/sales-patterns-ts PR #74 (docs+tooling: multi-pass-loop-runbook, gh-attach-image skill)
   - dogfood-conversation: 2026-05-16 review session
 ---
+
+> **SUPERSEDED 2026-05-17 by [`design-loop-v2.md`](./design-loop-v2.md).** v1 shipped a spec-only port (PR #88, held unmerged). v2 generalizes to three reference types (spec / figma / screenshot) sharing one engine, with leaner agents/skills/canvas. Foundations (image-posting primitive, gh-attach-image, browser-pilot, proposal canvas, 8 open-question decisions) carry over to v2. See v2 proposal § Migration for the v1→v2 file mapping.
+
 
 # Port: `design-loop` into the SDLC plugin
 
