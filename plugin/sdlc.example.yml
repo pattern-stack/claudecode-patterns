@@ -30,6 +30,19 @@ repo: <owner>/<repo>          # GitHub repo for /sync-issues (required when task
 # project_number: <n>         # OPTIONAL: GitHub Project v2 number; auto-discovered at SessionStart by plugin/scripts/discover-tracker.sh
 team_key: ABC                 # tracker team key (Linear; harmless under github)
 
+# === Image posting (beta — design-loop port) ===
+# How agents attach screenshots / diagrams to comment surfaces. Orthogonal to
+# task_management — a project may be on Linear but post images via GitHub PR
+# comments. Defaults: `gh` if task_management is github, else `local-folder`.
+#
+# Adapters: plugin/primitives/image-posting/<value>.md
+#   gh            — Playwright-driven upload via GitHub's composer; works on
+#                   private repos via session cookies. Requires one-time:
+#                   `node ${CLAUDE_PLUGIN_DIR}/scripts/gh-attach-image.mjs --auth`
+#   local-folder  — writes comment markdown + images to a local dir (v1.1)
+#   linear-comment — Linear's attachment API (v2)
+image_posting: gh             # gh | local-folder | linear-comment (future)
+
 # === Gate-1 mode ===
 # strict: specifier posts strategy + sets state:awaiting-strategy-review + halts (default; safest).
 # auto:   specifier posts strategy + sets state:strategy-approved directly (no human Gate-1 review).
@@ -141,6 +154,11 @@ artifact_paths:
   plan:           .ai-docs/stacks/<slug>/plan.yaml
   stack_research: .ai-docs/stacks/<slug>/<topic>.md
   stack_spec:     .ai-docs/stacks/<slug>/specs/<issue-key>.md
+
+  # Design-loop (v2 — reference-driven iteration). Each surface gets its own
+  # design root containing the reference (spec / figma-url / image), surface
+  # declaration, and per-iteration grader screenshots.
+  design_root:    .ai-docs/design/<surface-slug>/
 
   # Cross-cutting / legacy:
   cross_cutting_research: .ai-docs/research/<topic>.md
