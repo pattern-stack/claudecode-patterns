@@ -45,7 +45,8 @@ Recent: !`git log --oneline -5`
 | `task-management/linear` | primitive | Issue resolution, gate label semantics |
 | `implementer` | agent | Default member of `develop_team` |
 | `validator` | agent | Default member of `develop_team` |
-| `browser-pilot` / `tester` / `designer` | agent (when vendored) | Spawned per `needs:*` labels |
+| `browser-pilot` / `tester` / `designer` | agent | Spawned per `needs:*` labels (`browser-pilot` ships with the plugin since the design-loop port; `tester` / `designer` are project-vendored) |
+| `design-grader` (+ `browser-pilot`) | agent (composed-design mode, spec-only for v2) | Spawned when issue carries `needs:design` — runs between implementer commit and validator. See [`/design-loop` SKILL.md § Composed mode](../skills/design-loop/SKILL.md#composed-mode-develop-with-needsdesign). |
 
 ## Steps
 
@@ -79,8 +80,21 @@ Mapping (extend in `.claude/primitives/task-management/linear.md` § needs:* lab
 - `needs:browser-pilot` → `browser-pilot`
 - `needs:tester` → `tester`
 - `needs:designer` → `designer`
+- `needs:design` → `design-grader` (composed-mode design loop, spec references only for v2). Also implies `browser-pilot` — add it to the roster if not already present.
 
 If a `needs:*` label maps to an agent file that does not yet exist, warn but do not fail — log "skipping <name>: agent not vendored" and continue.
+
+### Step 4a: needs:design composed-mode wiring
+
+When `needs:design` is present in the roster:
+
+1. Verify the issue's spec references a parent design reference. Look for a `Design reference:` line or `design_reference:` frontmatter key pointing to `.ai-docs/design/<slug>/reference.md`. Spec-only for v2 — if the reference is a `.figma-url` or image, warn and proceed without the grader (figma/screenshot composed mode deferred to v3).
+2. After the implementer reports its commit + showcase URL, dispatch `design-grader` (context: fork) with: reference path, surface (from `surface.txt` or the issue's spec), commit SHA, round=1, the open PR's number for posting.
+3. If grader returns `FIXES`: dispatch `design-builder` (fix mode) with the findings list, then re-spawn `design-grader`. Cap at 3 rounds (matches `validator_max_iterations`). On exhaustion, surface and halt.
+4. If grader returns `BLOCKED`: halt and surface the sub-code (per [`design-reference` canvas](../canvases/design-reference/README.md) § Verdicts).
+5. On `READY`, hand back to the standard validator gate. The grader's findings are visible in the PR comment; Gate 2.5 (`/sdlc:review`) and Gate 3 (validator) still fire normally.
+
+Composed mode does NOT run the standalone loop's per-round user-gate — the PR-review and validator-pass gates carry that role.
 
 ### Step 5: Spawn the team
 
