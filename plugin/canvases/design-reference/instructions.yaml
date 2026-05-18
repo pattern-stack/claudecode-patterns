@@ -1,0 +1,92 @@
+# Design-reference artifact — tunable knobs for design-loop references.
+# Schema: instructions.schema.json. v2 collapses v1's 7 knob blocks to 3.
+#
+# Consumers: design-builder (reads reference), design-grader (compares to
+# reference), /design-loop skill (orchestrates). See README.md for the
+# semantics of each reference type.
+
+$schema: ./instructions.schema.json
+artifact: design-reference
+version: 1
+status: beta            # v2 first cut; shipped before end-to-end exercise
+
+# === Block 1: types ===
+# Per-reference-type contract. Each type names the sections required in the
+# template, plus any type-specific configuration (MCP server names, comparison
+# strategy, etc.). reference_type frontmatter must match one of these keys.
+types:
+  spec:
+    required_sections: [Reference, Surface, Checks]
+    optional_sections: [Themes]
+    require_locked_decisions: true       # inside Reference body — assertion + justification
+    require_atoms_with_ts_interfaces: true
+    require_falsifiable_checks: true     # each check gradable by typecheck/lint/runtime/visual
+    comparison: spec_native              # grader iterates Checks + Locked decisions
+
+  figma:
+    required_sections: [Reference, Surface]
+    optional_sections: [Checks, Themes]  # Checks if author wants extra gradeable items
+    mcp_server: figma-dev-mode
+    mcp_ops:
+      builder:  [get_design_context, get_metadata, get_variable_defs]
+      grader:   [get_metadata, get_screenshot]
+    comparison: structural_plus_visual   # MCP structural deltas + visual diff fallback
+    reference_format: figma_url          # single-line file `reference.figma-url`
+
+  screenshot:
+    required_sections: [Reference, Surface]
+    optional_sections: [Checks, Themes]
+    comparison: visual_only              # LLM-judged delta between build and reference
+    reference_format: image              # `reference.png` or `reference.jpg`
+    accepted_extensions: [".png", ".jpg", ".jpeg"]
+
+# === Block 2: grading ===
+# How the loop terminates + caps. Shared across all reference types.
+grading:
+  termination_default: user-gate         # user-gate | max-loops | grader-good
+  max_loops_default: 3                   # hard cap regardless of strategy
+  findings_ceiling: 7                    # grader returns BLOCKED if exceeded — spec or build structurally off
+
+  # Verdict shape — what the grader returns. Stable across types.
+  verdicts: [READY, FIXES, BLOCKED]
+
+  # BLOCKED sub-codes (per Open Q #4) — surfaced in the grader's verdict so
+  # the user knows which fix applies. Type-specific subset; "internal_contradiction"
+  # is universal (spec mode's traditional BLOCKED reason).
+  blocked_codes:
+    universal:
+      - internal_contradiction           # reference is internally inconsistent
+    spec:
+      - missing_required_section
+      - phase_jumping
+    figma:
+      - figma_unreachable                # MCP server not responding / auth missing
+      - frame_not_found                  # URL valid, frame 404
+      - mcp_unavailable                  # figma-dev-mode MCP not configured
+      - unsupported_node_type
+    screenshot:
+      - reference_image_missing
+      - reference_image_unreadable
+
+# === Block 3: paths ===
+# Standardized layout under .ai-docs/design/<slug>/. Agents discover assets
+# mechanically from these patterns — no per-invocation path flags needed.
+paths:
+  design_root: .ai-docs/design/<slug>/
+  reference:
+    spec:       reference.md
+    figma:      reference.figma-url
+    screenshot: reference.png            # or .jpg / .jpeg per accepted_extensions
+  surface: surface.txt                   # one line: filesystem path OR URL
+  iterations: iterations/<N>/            # per-round screenshots
+  handoff: handoff.md                    # optional; written on loop completion
+
+# === Sections (rendered into template.md) ===
+# v2 keeps this minimal — most per-type rules live in `types.<t>.required_sections`.
+sections:
+  order: [Reference, Surface, Checks, Themes]
+  verbosity:
+    Reference: long
+    Surface:   short
+    Checks:    bulleted
+    Themes:    bulleted

@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pattern-stack/claudecode-patterns/plugin/canvases/design-reference/instructions.schema.json",
+  "title": "Design-reference artifact instructions",
+  "description": "Knobs governing the design-loop v2 reference contract. Three reference types (spec / figma / screenshot) share one canvas; per-type behavior lives in `types.<t>`. Read by design-builder, design-grader, /design-loop, /design-audit.",
+  "type": "object",
+  "required": ["artifact", "version", "types", "grading", "paths", "sections"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "artifact": { "const": "design-reference" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["beta", "stable", "deprecated"] },
+
+    "types": {
+      "type": "object",
+      "required": ["spec", "figma", "screenshot"],
+      "additionalProperties": false,
+      "properties": {
+        "spec":       { "$ref": "#/definitions/specType" },
+        "figma":      { "$ref": "#/definitions/figmaType" },
+        "screenshot": { "$ref": "#/definitions/screenshotType" }
+      }
+    },
+
+    "grading": {
+      "type": "object",
+      "required": ["termination_default", "max_loops_default", "verdicts"],
+      "additionalProperties": false,
+      "properties": {
+        "termination_default": { "enum": ["user-gate", "max-loops", "grader-good"] },
+        "max_loops_default":   { "type": "integer", "minimum": 1 },
+        "findings_ceiling":    { "type": "integer", "minimum": 1 },
+        "verdicts": {
+          "type": "array",
+          "items": { "enum": ["READY", "FIXES", "BLOCKED"] },
+          "uniqueItems": true
+        },
+        "blocked_codes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+
+    "paths": {
+      "type": "object",
+      "required": ["design_root", "reference", "surface"],
+      "additionalProperties": false,
+      "properties": {
+        "design_root": { "type": "string" },
+        "reference": {
+          "type": "object",
+          "required": ["spec", "figma", "screenshot"],
+          "additionalProperties": false,
+          "properties": {
+            "spec":       { "type": "string" },
+            "figma":      { "type": "string" },
+            "screenshot": { "type": "string" }
+          }
+        },
+        "surface":    { "type": "string" },
+        "iterations": { "type": "string" },
+        "handoff":    { "type": "string" }
+      }
+    },
+
+    "sections": {
+      "type": "object",
+      "required": ["order"],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "verbosity": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["short", "medium", "long", "code-only", "bulleted"]
+          }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "specType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_sections":              { "type": "array", "items": { "type": "string" } },
+        "optional_sections":              { "type": "array", "items": { "type": "string" } },
+        "require_locked_decisions":       { "type": "boolean" },
+        "require_atoms_with_ts_interfaces": { "type": "boolean" },
+        "require_falsifiable_checks":     { "type": "boolean" },
+        "comparison":                     { "enum": ["spec_native"] }
+      }
+    },
+    "figmaType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_sections": { "type": "array", "items": { "type": "string" } },
+        "optional_sections": { "type": "array", "items": { "type": "string" } },
+        "mcp_server":        { "type": "string" },
+        "mcp_ops": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "builder": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "grader":  { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+          }
+        },
+        "comparison":       { "enum": ["structural_plus_visual"] },
+        "reference_format": { "const": "figma_url" }
+      }
+    },
+    "screenshotType": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_sections":  { "type": "array", "items": { "type": "string" } },
+        "optional_sections":  { "type": "array", "items": { "type": "string" } },
+        "comparison":         { "enum": ["visual_only"] },
+        "reference_format":   { "const": "image" },
+        "accepted_extensions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    }
+  }
+}
