@@ -90,3 +90,14 @@ a:hover {
     transform: rotate(360deg);
   }
 }
+
+/* Live-session dot pulse (used on the chat list). */
+@keyframes apdash-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--green);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}

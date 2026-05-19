@@ -1,7 +1,14 @@
 /**
- * ThinkingPart — collapsible purple-accented panel for assistant
- * `thinking` blocks. Collapsed by default once complete (shows the first
- * line as a summary); click the header to expand.
+ * ThinkingPart — visual marker for an assistant `thinking` block.
+ *
+ * Three states:
+ *   - streaming (not complete): spinner + "thinking…", default-expanded so
+ *     incremental tokens are visible as they arrive.
+ *   - complete with text: collapsible disclosure with a summary line
+ *     in the header and full text in the body.
+ *   - complete but empty: Claude's redacted/signature-only thinking. We
+ *     can't show the text (the server never sent it), so render a small
+ *     non-interactive chip — no caret, no fake "thinking" placeholder.
  */
 
 import { useState } from "react";
@@ -14,10 +21,53 @@ interface ThinkingPartProps {
 }
 
 export function ThinkingPart({ content, complete }: ThinkingPartProps) {
-  // Default-open while incomplete (mirrors the chat-patterns TUI default).
+  const hasBody = content.length > 0;
+
+  if (complete && !hasBody) {
+    return <RedactedThinkingChip />;
+  }
+
+  return <DisclosureThinking content={content} complete={complete} hasBody={hasBody} />;
+}
+
+function RedactedThinkingChip() {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 8px",
+        borderRadius: 999,
+        border: "1px dashed var(--purple)",
+        background: "rgba(188, 140, 255, 0.06)",
+        color: "var(--purple)",
+        fontFamily: "var(--font-mono)",
+        fontSize: 11,
+        width: "fit-content",
+      }}
+      title="Claude generated thinking tokens here; the body is signature-only and not displayable."
+    >
+      <SparkleIcon size={10} />
+      <span>thinking</span>
+      <span style={{ color: "var(--fg-subtle)" }}>redacted</span>
+    </div>
+  );
+}
+
+function DisclosureThinking({
+  content,
+  complete,
+  hasBody,
+}: {
+  content: string;
+  complete: boolean;
+  hasBody: boolean;
+}) {
+  // Default-open while streaming so live tokens are visible.
   const [expanded, setExpanded] = useState(!complete);
   const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
-  const summary = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine || "thinking";
+  const summary = firstLine.length > 80 ? firstLine.slice(0, 80) + "…" : firstLine;
 
   return (
     <div
@@ -58,7 +108,7 @@ export function ThinkingPart({ content, complete }: ThinkingPartProps) {
         )}
         <SparkleIcon size={11} />
         <span style={{ color: "var(--fg-default)", fontWeight: 500 }}>thinking</span>
-        {!expanded && (
+        {!expanded && hasBody && (
           <span
             style={{
               color: "var(--fg-muted)",
@@ -72,7 +122,7 @@ export function ThinkingPart({ content, complete }: ThinkingPartProps) {
           </span>
         )}
       </button>
-      {expanded && (
+      {expanded && hasBody && (
         <div
           style={{
             marginTop: 6,

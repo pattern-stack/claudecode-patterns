@@ -91,6 +91,7 @@ export function ChatSessionPage() {
         <ChatPanel
           messages={messages}
           emptyLabel={loading ? "Loading transcript…" : "No transcript entries for this session."}
+          expectingReply={connected}
         />
       </div>
     </div>
