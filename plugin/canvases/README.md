@@ -69,6 +69,16 @@ Don't author canvases by hand — use the [`canvas-authoring`](../skills/canvas-
 
 `instructions.yaml.version` increments on breaking changes (renamed/removed knobs, changed enum values). Producers and consumers fail loudly on unknown versions rather than degrade silently.
 
+## Family subfolders
+
+Most canvases live flat under `canvases/<name>/` — they're cross-cutting (every domain uses them, no surface-specific parser rules). Canvases that share **parser-sensitive syntax** for a specific surface get grouped into a family subfolder with a `CONVENTIONS.md` next to them:
+
+| Family | Surface | Shared conventions |
+|---|---|---|
+| [`github/`](github/README.md) | GitHub PRs + issues + Projects | Closing keywords, `[plan-key:]` markers, sub-issue rollup, Issue Types, Status field options |
+
+The pattern: subfolder when canvases share a surface-specific parser rule set (otherwise the same rules drift across each canvas's README independently); flat when they're cross-cutting. If Linear-native artifact canvases ever ship, they'd sit in a peer `linear/` folder with their own `CONVENTIONS.md` (different keywords, key-shaped identifiers, no Issue Types).
+
 ## Current canvases
 
 | Name | Producer | Consumers | Status |
@@ -79,7 +89,10 @@ Don't author canvases by hand — use the [`canvas-authoring`](../skills/canvas-
 | [`session/`](session/README.md) | every workflow command (`/plan`, `/design`, `/develop`, `/orchestrate`, `/sync-issues`) | humans browsing past sessions; future render skill; analytics | Active (two-tone observability — `session.json` + `execution.log` + `summary.md`) |
 | `understanding/` | `understander` | `planner`, `specifier`, `coordinator` | Planned |
 | `validator-report/` | `validator` | PR review | Planned |
-| `pr-body/` | `implementer` | GitHub | Planned |
+| [`github/`](github/README.md) | — (family folder) | — | Active (CONVENTIONS.md + family README; member canvases authored in follow-up PRs) |
+| `github/pr-body/` | `implementer`, `specifier`, docs-author | GitHub | Planned (v1 of family) |
+| `github/issue-body/` | `/sync-issues`, `planner` | GitHub | Planned (v1 of family) |
+| `github/epic-body/` | `/sync-issues`, `planner` | GitHub | Planned (v1 of family) |
 | `tracker-comment/` | `specifier`, `validator` | Tracker UI | Currently embedded in spec/ |
 | `coordinator-status/` | `coordinator` | Orchestrator | Planned |
 
