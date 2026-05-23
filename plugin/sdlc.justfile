@@ -19,16 +19,16 @@ default:
 
 # ─── Verify (SDLC config invariants) ──────────────────────────────────
 
-# verify everything (canvases + tool groups)
+# verify all (canvases + tool groups)
 [group('verify')]
 verify: verify-canvases verify-tool-groups
 
-# verify each canvas's instructions.yaml against its schema
+# verify canvas instructions.yaml schemas
 [group('verify')]
 verify-canvases:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-canvases.sh"
 
-# verify each agent's # tool_group: matches its tools/disallowedTools list
+# verify agent tool_group annotations
 [group('verify')]
 verify-tool-groups:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-tool-groups.sh"
@@ -37,24 +37,24 @@ verify-tool-groups:
 # One recipe per launchable Claude Code agent UX. Recipes pre-apply the
 # right --output-style so users don't have to remember flag names.
 
-# canvas-author in developer voice (knobs, diffs, four-block scaffold)
+# canvas-author — developer voice
 [group('claude')]
 canvas-dev:
     claude --agent canvas-author --output-style canvas-flow-developer
 
-# canvas-author in seller voice (outcomes, samples, hides mechanism)
+# canvas-author — seller voice
 [group('claude')]
 canvas-seller:
     claude --agent canvas-author --output-style canvas-flow-seller
 
 # ─── Canvas reconciliation ────────────────────────────────────────────
 
-# list canvases on disk reconciled against sdlc.yml.canvases
+# list canvases vs sdlc.yml.canvases
 [group('verify')]
 canvases:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/list-canvases.sh"
 
-# Print the resolved plugin directory (debug aid — useful when recipes can't find scripts)
+# print resolved plugin dir (debug)
 [group('verify')]
 where:
     @cd .. && echo "cwd: $(pwd)"; echo "plugin_dir: ${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}"
