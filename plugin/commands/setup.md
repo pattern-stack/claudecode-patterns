@@ -49,7 +49,7 @@ No arguments. The flow is conversational.
 
   If `$PLUGIN_ROOT` is empty or `"$PLUGIN_ROOT/sdlc.example.yml"` doesn't exist, halt with: "sdlc plugin install not found at ~/.claude/plugins/installed_plugins.json (key `sdlc@claudecode-patterns`). Install via `/plugin install sdlc@claudecode-patterns` and retry."
 - A project (`pwd`) — git repo not required, but warn if absent (worktree feature won't work).
-- `just`: optional. Warn + skip the verify step if missing.
+- `just`: optional, but **≥ 1.28.0 recommended**. Warn + skip the verify step if missing. If present but older than 1.28.0, warn (don't block): older `just` mis-renders the `--list` submodule view — the alignable-width cap was 30 (raised to 50 in 1.27.0, #2039/#2063) and `--list-submodules` indentation was only fixed in 1.28.0 (#2108/#2113), so a long recipe like `verify-tool-groups` overflows the comment column and the descriptions stop lining up. Cosmetic only. See Step 8.
 
 ## Flow
 
@@ -136,10 +136,24 @@ Best-effort. Don't halt setup on failure.
 ### Step 8: Run verifiers
 
 ```bash
-just sdlc::verify
+if command -v just >/dev/null 2>&1; then
+  # Warn (don't block) on a just too old to align the submodule --list view.
+  # 1.28.0 is the floor: alignable-width cap 30→50 (#2039) + submodule list
+  # indentation fix (#2063) landed in 1.27.0; --list-submodules (#2108/#2113)
+  # in 1.28.0. Below that, `just sdlc::...` descriptions overflow the # column.
+  JUST_VER="$(just --version 2>/dev/null | awk '{print $2}')"
+  if [ -n "$JUST_VER" ] && [ "$(printf '%s\n1.28.0\n' "$JUST_VER" | sort -V | head -1)" != "1.28.0" ]; then
+    echo "⚠️  just $JUST_VER < 1.28.0 — 'just --list' will mis-align the sdlc:: recipe descriptions (cosmetic). Upgrade for correct rendering: 'brew upgrade just' (or your package manager)."
+  fi
+  just sdlc::verify
+else
+  echo "⚠️  just not found — install via your package manager, then run 'just sdlc::verify' to confirm. Skipping for now."
+fi
 ```
 
-If `just` not installed: print "⚠️  `just` not found — install via your package manager, then run `just sdlc::verify` to confirm. Skipping for now."
+If `just` not installed: the `else` branch prints the install hint and skips verify.
+
+If `just` is present but older than 1.28.0: print the upgrade hint, then still run the verifiers (the version gap is cosmetic — the recipes work, they just don't align in `--list`).
 
 If verifiers fail: surface the output but don't undo the setup. The user can fix the config.
 
@@ -273,6 +287,7 @@ Otherwise specifier degrades to label-only.
 
 - End-to-end run in a fresh tmpdir produces a valid `.claude/sdlc.yml` (with `gate1_default: strict`) and a resolvable `.claude/sdlc.justfile` symlink.
 - Verifiers (`just sdlc::verify`) pass post-setup (when `just` is installed).
+- A `just` older than 1.28.0 triggers the cosmetic-alignment upgrade warning (Step 8) but still runs the verifiers; a missing `just` skips them with the install hint; `just` ≥ 1.28.0 warns about neither.
 - Reconfigure path on existing sdlc.yml is non-destructive by default (default-quit; reconfigure writes backup before overwrite).
 - Next-steps output includes the gate-mode override-layers line; the `project_number:` hint line appears iff `task_management: github`.
 - Command is named `/sdlc:setup` (not `/sdlc:init`) — does not collide with native `/init`.
