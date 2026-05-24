@@ -106,6 +106,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/gate-guard.sh",
+            "async": false,
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PermissionRequest": [
