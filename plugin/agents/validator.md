@@ -223,3 +223,4 @@ Validate per `instructions.yaml.required_per_phase.validator` and length budgets
 - Do NOT skip an active gate even if "obviously fine". Run it. The exit code is the contract.
 - Do NOT mark deferred gates as failures. They are explicitly out of scope until the primitive activates them.
 - Do NOT set tracker state labels — the validator's signal lives on the PR, not on the issue.
+- Do NOT touch the shared Task list (`TaskCreate`/`TaskUpdate`). The **lead owns task state** — I report pass/fail only through my output envelope's `status:` field (`complete` / `failed` / `halted`), and the lead reconciles the task list from it.

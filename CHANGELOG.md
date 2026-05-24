@@ -5,6 +5,27 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.2] — 2026-05-24
+
+### Fixed (dogfood pass on the `/develop` workflow gaps)
+
+Resolves the actionable items in `.ai-docs/research/develop-workflow-gaps.md` (field notes from running `/develop` end-to-end). Notably, gap #1 fired on turn one of *this* fix-session — invoking `/develop` from an approved spec couldn't start.
+
+- **`/develop` spec-location mismatch (gap #2)** — `develop.md` hardcoded `.ai-docs/specs/<key>.md`, ignoring `artifact_paths`. Now resolves stack-co-located → legacy like the phase agents, so the planned-spec → develop handoff doesn't silently break. (The `/plan`-writes-specs half of the original note is stale — `plan.md` writes `plans/`, not `specs/`.)
+- **`/develop` was Linear-hardcoded (bonus)** — resolved get-issue via the Linear MCP despite `task_management: github`. Now adapter-agnostic, matching the phase agents.
+- **Over-promised automation (gap #5)** — added an explicit "What this command automates — and what it does not" table: tracker writes are agent-conditional (no `gh`/MCP ⇒ no write), session logs are not auto-committed.
+- **Ambiguous shared-task-list ownership (gap #3)** — declared **lead-owned**. `implementer` and `validator` now carry a hard constraint: do not touch the shared Task list; report progress only via the output envelope `status:` field.
+
+### Added
+
+- **Spec-path entry into `/develop` (gap #1)** — `/develop <spec-path>` jumps straight to Implement (the "we planned, now build" path), skipping Understand/Plan/Spec; Gate 1 is satisfied by the approved-spec handoff. Step 0 disambiguates issue-key vs spec-path.
+- **Enforced merge gate via hook (gap #6)** — new `plugin/hooks/gate-guard.sh` `PreToolUse` hook **hard-blocks** `git push` to `main`/`master` and `gh pr merge --admin` (override: `SDLC_GATE_OVERRIDE=1`). Converts the narrative "human gate before merge" into actual control flow that survives a long autonomous loop. **Behavior change for consumers:** pushing to the default branch is now denied by default.
+- **Cross-repo isolation guardrail (gap #7)** — new "Cross-repo isolation" section in `dual-worktree-strategy.md` (throwaway worktree/clone for cross-repo work; never mutate a tree another agent owns) + `isolation: "worktree"` wired into `/develop` Step 5.
+
+### Internal
+
+- Filed upstream note `.ai-docs/research/upstream-cc-completed-vs-failed.md` (gap #4 — harness reports a failed teammate as `completed`; out of plugin scope, mitigated plugin-side by trusting the envelope `status:` over the completion notification).
+
 ## [0.1.14] — 2026-05-15
 
 ### Fixed (live-execution dogfood pass on 0.1.13)

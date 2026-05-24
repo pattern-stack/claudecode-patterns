@@ -293,3 +293,4 @@ Validate per `instructions.yaml.required_per_phase.implementer` and length budge
 - Do NOT amend prior commits without explicit reason. Prefer new commits over `--amend`.
 - Do NOT remove the `state:strategy-approved` label or set other state labels — the human owns the gate, not me.
 - Do NOT push to `main`. Always work on a feature branch.
+- Do NOT touch the shared Task list (`TaskCreate`/`TaskUpdate`). The **lead owns task state** — I report progress only through my output envelope's `status:` field, and the lead reconciles the task list from it. Marking my own tasks here is neither expected nor reliable; the envelope is the single progress signal.

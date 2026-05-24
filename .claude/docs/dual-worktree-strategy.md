@@ -200,3 +200,19 @@ You & Claude:
 - Review cycle efficiency
 - Reduced context switching for you
 - Cleaner git history through coordinated merges
+
+## Cross-repo isolation
+
+The sections above cover *in-repo* parallelism. The harder failure mode — observed in practice — is **two agents mutating the same working tree across repos** (e.g. an SDLC validator generating into, or validating against, a sibling repo that another agent already owns). Symptoms: stray `worktrees/`, `.claude/worktrees/`, a `.claude copy/`, and named worktrees with duplicate files in the sibling repo — parallel-agent worktree churn that correctness should never have depended on a human remembering to prevent.
+
+Rules (these are guardrails, not suggestions):
+
+1. **In-repo work uses a managed worktree.** When `sdlc.yml.worktree.enabled: true`, `/develop` (and the `/orchestrate` coordinator) spawn the `implementer` with `isolation: "worktree"` — the Agent tool gives it an isolated git worktree, auto-cleaned if unchanged. The lead never hand-manages these paths.
+
+2. **Cross-repo work defaults to a throwaway worktree or clone.** Any step that reads-to-validate or writes-to-generate against a *different* repo must operate on a disposable checkout of that repo — `git worktree add` off the sibling's clone, or a fresh `git clone` into a temp dir — **never** the sibling's primary working tree. Tear it down when the step completes.
+
+3. **Never mutate a tree you don't own.** If another agent (or a human) is active in a repo's working tree, treat it as read-only from the outside. A cross-repo oracle/validation step that needs to *build* must do so in its own isolated checkout, so a concurrent agent's uncommitted state can't corrupt the run (and vice-versa).
+
+4. **Lightweight ownership signal (multi-agent setups).** Before mutating a shared tree, drop/check a `.claude/.session/tree-owner` marker (agent id + ISO timestamp). It's advisory — a cheap "who's holding this tree" lock that lets a second agent back off to its own worktree instead of colliding. Not a substitute for rule 2; a backstop for when isolation was skipped.
+
+**Default:** if you're unsure whether a step touches another repo's tree, isolate. A throwaway worktree is cheap; a corrupted concurrent run is not. See `plugin/commands/develop.md` § "Worktree isolation" (Step 5) for where this is wired into the spawn path.
