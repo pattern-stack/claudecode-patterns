@@ -5,6 +5,17 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.3] — 2026-05-24
+
+### Added
+
+- **Dashboard self-upgrade on session start** — the `cc-viewer` dashboard now updates itself to match the installed plugin version with no manual step. `/health` reports the running version (the launcher injects `CC_VIEWER_VERSION`), and the `SessionStart` hook (`ensure-cc-viewer.sh`) compares it to the installed plugin version: a match is a no-op (unchanged behavior); a mismatch — or an older binary with no `version` field — triggers a graceful restart onto the new version-pinned binary. This makes every future upgrade self-healing (including the 0.2.2 → 0.2.3 transition, since this hook ships in 0.2.3 and runs right after `/plugin update`). Replaces the prior `pkill -f cc-viewer` workaround.
+- Stale-restart targets the actual port listener (`lsof -ti tcp:$PORT`, robust to `setsid` re-parenting) with a recorded-pid fallback — TERM, brief wait, then KILL — instead of `pkill`-by-name.
+
+### Changed
+
+- `/health` response gains a `version` field (`{status, version}`); the `status: "ok"` shape is preserved for existing consumers.
+
 ## [0.2.2] — 2026-05-24
 
 ### Fixed (dogfood pass on the `/develop` workflow gaps)

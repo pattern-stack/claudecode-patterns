@@ -48,19 +48,55 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 BIN="$(ensure_tool cc-viewer)"
 [[ -z "$BIN" || ! -x "$BIN" ]] && exit 0   # silent skip
 
-# ---- Already running? ------------------------------------------------------
+# ---- State dir + expected version ------------------------------------------
+STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/cc-viewer"
+mkdir -p "$STATE_DIR"
+LOG_FILE="${STATE_DIR}/server.log"
 PORT="${CC_VIEWER_PORT:-3993}"
+
+# The binary is version-pinned (cc-viewer-v<plugin-version>-<platform>); $BIN
+# above already resolved to the installed plugin version. A running dashboard
+# whose /health reports a different version — or none, i.e. an older binary
+# predating the /health version field — is stale and gets restarted onto $BIN.
+VERSION="$(jq -r '.version // empty' "${PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null)"
+
+# Stop the running dashboard. Prefer the actual port listener (robust to
+# setsid re-parenting); fall back to the recorded pid. TERM, brief wait, KILL.
+stop_dashboard() {
+  local pid="" rec
+  if command -v lsof >/dev/null 2>&1; then
+    pid="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)"
+  fi
+  if [[ -z "$pid" && -f "${STATE_DIR}/server.pid" ]]; then
+    rec="$(cat "${STATE_DIR}/server.pid" 2>/dev/null)"
+    [[ -n "$rec" ]] && kill -0 "$rec" 2>/dev/null && pid="$rec"
+  fi
+  if [[ -n "$pid" ]]; then
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 15); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  rm -f "${STATE_DIR}/server.pid"
+}
+
+# ---- Already running? Current version → done; stale → self-upgrade ---------
 if command -v curl >/dev/null 2>&1; then
-  if curl -sS -m 0.3 "http://localhost:${PORT}/health" >/dev/null 2>&1; then
-    exit 0
+  HEALTH="$(curl -sS -m 0.5 "http://localhost:${PORT}/health" 2>/dev/null)"
+  if [[ -n "$HEALTH" ]]; then
+    # Can't determine the expected version (no jq / missing plugin.json) —
+    # don't second-guess a healthy server; leave it running.
+    [[ -z "$VERSION" ]] && exit 0
+    RUNNING_VERSION="$(printf '%s' "$HEALTH" | jq -r '.version // empty' 2>/dev/null)"
+    if [[ "$RUNNING_VERSION" == "$VERSION" ]]; then
+      exit 0   # up-to-date — nothing to do
+    fi
+    printf '[ensure-cc-viewer] running v%s, expected v%s — upgrading dashboard\n' \
+      "${RUNNING_VERSION:-unknown}" "$VERSION" >>"$LOG_FILE"
+    stop_dashboard
   fi
 fi
 
 # ---- Spawn detached --------------------------------------------------------
-STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/cc-viewer"
-mkdir -p "$STATE_DIR"
-LOG_FILE="${STATE_DIR}/server.log"
-
 # Drop a warmup marker so the dashboard-status.sh statusline component can
 # render yellow ("starting") during the bind window instead of red. The
 # marker is cleared by dashboard-status.sh once /health responds, and
@@ -71,11 +107,15 @@ date +%s > "${STATE_DIR}/warming-up" 2>/dev/null || true
 # both pass the /health probe and both spawn. The second will fail to
 # bind PORT and exit; the first owns the dashboard. Harmless but visible
 # in the log.
+#
+# CC_VIEWER_VERSION is echoed back by /health so the next session can tell
+# whether the running dashboard matches the installed plugin version.
 if command -v setsid >/dev/null 2>&1; then
-  setsid nohup env PORT="$PORT" "$BIN" >>"$LOG_FILE" 2>&1 < /dev/null &
+  setsid nohup env PORT="$PORT" CC_VIEWER_VERSION="$VERSION" "$BIN" >>"$LOG_FILE" 2>&1 < /dev/null &
 else
-  nohup env PORT="$PORT" "$BIN" >>"$LOG_FILE" 2>&1 < /dev/null &
+  nohup env PORT="$PORT" CC_VIEWER_VERSION="$VERSION" "$BIN" >>"$LOG_FILE" 2>&1 < /dev/null &
 fi
+echo $! > "${STATE_DIR}/server.pid" 2>/dev/null || true
 disown 2>/dev/null || true
 
 # ---- Bootstrap-event replay ------------------------------------------------
