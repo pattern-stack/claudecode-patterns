@@ -1,15 +1,18 @@
 /**
- * ToolCallPart — collapsible mono-typed card for a single assistant
- * tool_use. Header shows status (pending / ok / error) + tool name +
- * optional duration. Body (when expanded) shows the JSON input, the
- * output (if any), and an error block (if any).
+ * ToolCallPart — collapsible card for an assistant `tool_use` block.
+ *
+ * Header: disclosure caret + status badge (pending/ok/error) + wrench
+ * icon + tool name + optional duration. Body: INPUT json + OUTPUT
+ * (string or json) + ERROR (when present), each in its own CodeBlock.
  */
 
-import { type ReactNode, useState } from "react";
-import { Badge, type BadgeTone } from "../../atoms/Badge";
-import { Spinner } from "../../atoms/Spinner";
-import { WrenchIcon } from "../../atoms/icons";
+import { useState } from "react";
 import type { Part } from "../../../lib/transcript";
+import { Badge, type BadgeTone } from "../../atoms/Badge";
+import { CodeBlock } from "../../atoms/CodeBlock";
+import { Spinner } from "../../atoms/Spinner";
+import { Text } from "../../atoms/Text";
+import { WrenchIcon } from "../../atoms/icons";
 
 type ToolCallPart = Extract<Part, { kind: "tool_call" }>;
 
@@ -30,8 +33,6 @@ export function ToolCallPart({ part }: ToolCallPartProps) {
         border: "1px solid var(--border-muted)",
         borderRadius: 6,
         overflow: "hidden",
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
       }}
     >
       <button
@@ -47,8 +48,8 @@ export function ToolCallPart({ part }: ToolCallPartProps) {
           border: "none",
           color: "var(--fg-default)",
           cursor: "pointer",
-          fontFamily: "inherit",
-          fontSize: "inherit",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
           textAlign: "left",
         }}
       >
@@ -63,10 +64,12 @@ export function ToolCallPart({ part }: ToolCallPartProps) {
           <Spinner size={10} color="var(--yellow)" />
         )}
         <WrenchIcon size={11} />
-        <span style={{ color: "var(--fg-default)" }}>{part.name}</span>
+        <Text size="xs" family="mono">{part.name}</Text>
         {part.durationMs !== undefined && (
-          <span style={{ color: "var(--fg-subtle)", marginLeft: "auto" }}>
-            {Math.round(part.durationMs)}ms
+          <span style={{ marginLeft: "auto" }}>
+            <Text size="xs" tone="subtle" family="mono">
+              {Math.round(part.durationMs)}ms
+            </Text>
           </span>
         )}
       </button>
@@ -77,61 +80,26 @@ export function ToolCallPart({ part }: ToolCallPartProps) {
             padding: "8px 10px",
             display: "flex",
             flexDirection: "column",
-            gap: 6,
-            color: "var(--fg-muted)",
+            gap: 8,
           }}
         >
           {hasArguments(part.arguments) && (
-            <Section label="input">
-              <pre style={sectionPreStyle}>{JSON.stringify(part.arguments, null, 2)}</pre>
-            </Section>
+            <CodeBlock label="input" copyable maxHeight={240}>
+              {JSON.stringify(part.arguments, null, 2)}
+            </CodeBlock>
           )}
           {part.result !== undefined && (
-            <Section label="output">
-              <pre style={sectionPreStyle}>{formatResult(part.result)}</pre>
-            </Section>
+            <CodeBlock label="output" copyable maxHeight={400}>
+              {formatResult(part.result)}
+            </CodeBlock>
           )}
           {part.error && (
-            <Section label="error" tone="red">
-              <pre style={{ ...sectionPreStyle, color: "var(--red)" }}>{part.error}</pre>
-            </Section>
+            <CodeBlock label="error" tone="danger" copyable>
+              {part.error}
+            </CodeBlock>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-const sectionPreStyle = {
-  margin: 0,
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-  color: "var(--fg-muted)",
-} as const;
-
-function Section({
-  label,
-  tone = "muted",
-  children,
-}: {
-  label: string;
-  tone?: "muted" | "red";
-  children: ReactNode;
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          textTransform: "uppercase",
-          letterSpacing: 0.5,
-          color: tone === "red" ? "var(--red)" : "var(--fg-subtle)",
-          marginBottom: 2,
-        }}
-      >
-        {label}
-      </div>
-      {children}
     </div>
   );
 }

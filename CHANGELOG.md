@@ -5,6 +5,12 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.4] — 2026-05-24
+
+### Changed
+
+- **cc-viewer chat UI polish** — turn grouping, project list, and a refactor onto atoms (`Text`, `Timestamp`, `Truncate`, `StatusDot`, `CodeBlock`), `WaitingIndicator`, and reworked `TurnCard` / `ChatPanel` / thinking + tool-call parts. Viewer-only (no server/contract change). Version-bumped so the rebuilt dashboard binary ships to consumers on `/plugin update` (the `tools/` change alone doesn't trip the version-bump gate).
+
 ## [0.2.3] — 2026-05-24
 
 ### Added

@@ -1,24 +1,28 @@
 /**
- * WaitingIndicator molecule — small spinner + "thinking…" label shown
- * when an assistant message has no parts yet but is expected to arrive.
+ * WaitingIndicator molecule — spinner + label shown when Claude is
+ * working on something (post-user-message, mid-tool, mid-thinking).
  */
 
 import { Spinner } from "../atoms/Spinner";
+import { Text } from "../atoms/Text";
 
-export function WaitingIndicator() {
+interface WaitingIndicatorProps {
+  label?: string;
+}
+
+export function WaitingIndicator({ label = "thinking…" }: WaitingIndicatorProps) {
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
         gap: 8,
-        color: "var(--fg-muted)",
-        fontSize: 12,
-        fontFamily: "var(--font-mono)",
       }}
     >
       <Spinner size={10} />
-      thinking…
+      <Text size="sm" tone="muted" family="mono">
+        {label}
+      </Text>
     </div>
   );
 }
