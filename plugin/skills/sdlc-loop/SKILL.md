@@ -192,7 +192,24 @@ issue filed, no spec yet               → /design <KEY>
 spec approved, single issue, watching  → /develop <KEY>           (Topology A)
 many approved issues, AFK throughput   → /orchestrate <filter>    (Topology B)
 cold-start session                     → /prime
+
+UI work against a reference (spec/figma/screenshot)     → /design-loop --reference=...
+audit a built UI surface against a reference            → /design-audit --reference=... --target=<PR>
+per-issue design audit composed into /develop           → label issue needs:design + /develop <KEY>
 ```
+
+## Design-loop side-track
+
+`/design-loop` is an iterative refinement loop for UI work. It works against three reference types: **spec / figma / screenshot**, all sharing one engine via the [`design-reference`](../../canvases/design-reference/README.md) canvas. The loop's shape is: builder builds → grader screenshots and grades → builder applies fixes → grader rechecks → terminate per strategy.
+
+Two entrypoints:
+
+- **`/design-loop`** — full loop. Standalone (no tracker issue required). Termination configurable (`user-gate` / `max-loops` / `grader-good`).
+- **`/design-audit`** — thin wrapper for `--mode=audit`. One grader pass, no builder, no fix loop. Use for PR review.
+
+Composed mode via `/develop` + `needs:design` runs spec-mode only (figma/screenshot composed mode deferred to v3). See [`/design-loop` SKILL.md § Composed mode](../design-loop/SKILL.md#composed-mode-develop-with-needsdesign) for the collapse rules.
+
+Shared substrate: [`browser-pilot`](../../agents/browser-pilot.md) for screenshot capture, [`image-posting` primitive](../../primitives/image-posting/README.md) for findings posting, `figma-dev-mode` MCP for figma references.
 
 ## Halt recovery
 
@@ -252,3 +269,5 @@ The Topology B constraint is load-bearing: subagents cannot spawn other subagent
 | [`/develop`](../../commands/develop.md) | Topology A execution |
 | [`/orchestrate`](../../commands/orchestrate.md) | Topology B execution |
 | [`/prime`](../prime/SKILL.md) | Session cold-start |
+| [`/design-loop`](../design-loop/SKILL.md) | Iterative UI refinement against any reference type (beta) |
+| [`/design-audit`](../design-audit/SKILL.md) | Audit-only design pass (beta) |

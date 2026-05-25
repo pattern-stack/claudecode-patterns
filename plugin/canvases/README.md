@@ -88,6 +88,7 @@ The pattern: subfolder when canvases share a surface-specific parser rule set (o
 | [`plan/`](plan/README.md) | `planner` | `/sync-issues`, `specifier`, `coordinator`, `implementer`, `sdlc-loop` | Active |
 | [`session/`](session/README.md) | every workflow command (`/plan`, `/design`, `/develop`, `/orchestrate`, `/sync-issues`) | humans browsing past sessions; future render skill; analytics | Active (two-tone observability — `session.json` + `execution.log` + `summary.md`) |
 | [`proposal/`](proposal/README.md) | human author / `sdlc-author` | human reviewer; downstream `planner` once `accepted` | **Beta** (v1 — tuned to design-loop port; deliberately minimal ADR+RFC hybrid; shipped without full review) |
+| [`design-reference/`](design-reference/README.md) | human author | `design-builder`, `design-grader`, `/design-loop`, `/design-audit` | **Beta** (v2 — three reference types: spec / figma / screenshot; replaces v1 `design-spec` canvas) |
 | `understanding/` | `understander` | `planner`, `specifier`, `coordinator` | Planned |
 | `validator-report/` | `validator` | PR review | Planned |
 | [`github/`](github/README.md) | — (family folder) | — | Active (CONVENTIONS.md + family README; member canvases authored in follow-up PRs) |

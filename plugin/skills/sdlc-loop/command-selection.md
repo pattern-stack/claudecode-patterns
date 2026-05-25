@@ -13,18 +13,29 @@ Decision criteria for picking the right command at any point in the SDLC loop.
 | Issue carries `state:strategy-approved`, single issue, watching | `/develop <KEY>` | Topology A — flat team with split-pane visibility |
 | Multiple `state:strategy-approved` issues, want AFK throughput | `/orchestrate <filter>` | Topology B — coordinator-per-issue, subagents headless |
 | Cold-start a fresh session | `/prime` | Loads handoff, branch, ticket, recent commits |
+| UI work against a reference (spec / figma / screenshot) | `/design-loop --reference=<path>` | Iterative refinement loop. Standalone (no tracker issue required). Three termination strategies. |
+| Audit a built UI surface against a reference | `/design-audit --reference=<path> --target=<PR>` | One grader pass; posts findings; no fixes dispatched. |
+| Per-issue design audit composed into `/develop` | Label issue `needs:design` + run `/develop <KEY>` | Composed-mode (spec references only for v2). Grader slots between implementer and validator. |
 
 ## /develop vs /orchestrate
 
 | Question | If yes → /develop | If yes → /orchestrate |
 |---|---|---|
 | Will I be at the keyboard for each step? | ✓ | — |
-| Do I need UI verification (`needs:browser-pilot`, `needs:designer`)? | ✓ — Topology B forbids these | — |
+| Do I need UI verification (`needs:browser-pilot`, `needs:designer`, `needs:design`)? | ✓ — Topology B forbids these | — |
 | Does the issue need data/log validation per step (`needs:tester`)? | ✓ | — |
 | Are there many independent issues to grind through? | — | ✓ |
 | Am I OK with halts surfacing only in coordinator reports? | — | ✓ |
 
-If an issue carries any `needs:*` label that maps to a Topology-A agent (`browser-pilot`, `designer`, `tester`), `/orchestrate` will drop it automatically and recommend `/develop`. Don't try to override — these agents exist for split-pane co-presence and don't run headless.
+If an issue carries any `needs:*` label that maps to a Topology-A agent (`browser-pilot`, `designer`, `design-grader`, `tester`), `/orchestrate` will drop it automatically and recommend `/develop`. Don't try to override — these agents exist for split-pane co-presence and don't run headless.
+
+## /develop (composed-design mode) vs /design-loop (standalone)
+
+When the design work is one PR-sized phase against a **spec** reference, label the issue `needs:design` and run `/develop <KEY>` — `design-grader` slots between the implementer's commit and the validator's run. Standard SDLC gates (1.5 / 2 / 2.5 / 3) carry the user-gate role.
+
+For figma/screenshot references, or multi-phase spec work, use `/design-loop --reference=<path>` standalone. v2 supports composed mode only for spec references — figma/screenshot composed mode is deferred.
+
+Both modes share agents (`design-builder` + `design-grader` + `browser-pilot`), the `design-reference` canvas, and the `image-posting` primitive. See [`/design-loop` SKILL.md § Composed mode](../design-loop/SKILL.md#composed-mode-develop-with-needsdesign).
 
 ## /plan vs jumping straight to /design
 
@@ -80,3 +91,18 @@ If `state:strategy-approved` was already set, specifier asks before overwriting 
 
 **"ABC-104 has `needs:browser-pilot`. Can I `/orchestrate` it with the others?"**
 → No. `/orchestrate` will drop it. Run `/develop ABC-104` separately.
+
+**"I'm starting a UI epic from scratch with locked decisions across multiple phases."**
+→ Author a spec at `.ai-docs/design/<slug>/reference.md`. Run `/design-loop --reference=.ai-docs/design/<slug>/reference.md`.
+
+**"The designer handed me a Figma frame. I want to build it and iterate."**
+→ Save the frame URL to `.ai-docs/design/<slug>/reference.figma-url`. Run `/design-loop --reference=.ai-docs/design/<slug>/reference.figma-url`.
+
+**"I have a screenshot of what I want it to look like."**
+→ Drop the image at `.ai-docs/design/<slug>/reference.png`. Run `/design-loop --reference=.ai-docs/design/<slug>/reference.png`.
+
+**"I want to audit a teammate's PR for design quality."**
+→ `/design-audit --reference=.ai-docs/design/<slug>/reference.* --target=<PR-number>`.
+
+**"ABC-105 refines a parent design spec. I want the grader in the loop."**
+→ Add `needs:design` label. Run `/develop ABC-105`. Composed mode adds `design-grader` between implementer and validator.
