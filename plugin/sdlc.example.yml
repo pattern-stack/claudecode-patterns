@@ -171,9 +171,22 @@ tool_groups:
 # one artifact type. Project canvases at `.claude/canvases/<name>/` win over
 # plugin canvases at `${CLAUDE_PLUGIN_DIR}/canvases/<name>/` (canvas-author
 # writes to project path on edit — fork-on-edit).
+#
+# Family subfolders: canvases that share surface-specific parser rules live
+# under `.claude/canvases/<family>/<name>/` with a `CONVENTIONS.md` next to
+# them (e.g. github/ for GitHub-syntax-sensitive artifacts). Register them
+# with the full family-prefixed path. See plugin/canvases/README.md
+# "Family subfolders" section for the pattern + when to use it.
 canvases:
   spec:               .claude/canvases/spec/           # producer: specifier; consumers: implementer, coordinator, validator, reviewer
   envelope:           .claude/canvases/envelope/       # cross-surface output wrapper; every phase agent emits
   plan:               .claude/canvases/plan/           # producer: planner; consumers: /sync-issues + downstream specifier
   session:            .claude/canvases/session/        # producers: every workflow command; two-tone observability
   quality-checks:     .claude/canvases/quality-checks/ # input to reviewer's lens=quality runs (Gate 2.5)
+
+  # GitHub family — canvases sharing GitHub-syntax conventions (closing keywords,
+  # [plan-key:] markers, sub-issue rollup). Authored in follow-up PRs; uncomment
+  # the registry rows as each canvas lands.
+  # github/pr-body:           .claude/canvases/github/pr-body/         # producer: implementer, specifier, docs-author; consumer: GitHub
+  # github/issue-body:        .claude/canvases/github/issue-body/      # producer: /sync-issues, planner; consumer: GitHub
+  # github/epic-body:         .claude/canvases/github/epic-body/       # producer: /sync-issues, planner; consumer: GitHub

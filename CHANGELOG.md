@@ -5,6 +5,22 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.5] — 2026-05-24
+
+### Added
+
+- **GitHub canvas family** — new subfolder `plugin/canvases/github/` introduces the family-grouping pattern for canvases sharing surface-specific parser conventions.
+  - [`plugin/canvases/github/CONVENTIONS.md`](plugin/canvases/github/CONVENTIONS.md) — the load-bearing reference doc. Captures the 9 closing keywords + format constraint (parser ignores `Closes <prose> X#N`; canonicalized to `Closes` immediately followed by the bare reference, one per line), cross-repo `owner/repo#N` form, URL-everywhere policy, REST-for-tracker-writes, permalink-with-SHA, the Layer enum (L0..L7), `state:*` + `gate:*` label palette, conventional commit types (9), Issue Type enum (`project | epic | task`), 9-option Status taxonomy, plan markers (`[plan-epic:]` / `[plan-key:]`), branch + commit conventions, and an 8-entry anti-pattern catalog. All grounded in existing primitives + plan canvas (no fresh design — consolidation).
+  - [`plugin/canvases/github/README.md`](plugin/canvases/github/README.md) — family overview, member canvas roadmap, pattern rationale (subfolder when artifacts share a surface-specific parser rule set; flat when cross-cutting).
+- **`plugin/canvases/README.md`** — new "Family subfolders" section documents the pattern + when to use it. Registry table extended with the github family + planned member rows (`github/pr-body`, `github/issue-body`, `github/epic-body`).
+- **`plugin/sdlc.example.yml`** — `canvases:` registry block documents family-prefixed registration form + commented placeholders for the planned github-family members.
+
+### Notes
+
+- Foundational PR: ships the family folder, conventions, and registration form only. Member canvases (`github/pr-body`, `github/issue-body`, `github/epic-body`) are authored via `/sdlc:canvas new` in subsequent PRs — the canvas-author dialog is the right surface for the design decisions involved (knob enums, section requirements, verbosity defaults), not an upfront draft.
+- `pr-review-comment` and `epic-review-synthesis` continue to live as project-local canvases in `pattern-stack/dealbrain-integrations` for now. Migrating them into `plugin/canvases/github/` is a follow-up coordinated PR (delete from project-local + add here + update the `pr-reviewer` agent + `stack-review` skill references) — not bundled here because it touches a second repo.
+- `just verify-canvases` continues to pass (no new `instructions.yaml` added; this PR is docs + registry only).
+
 ## [0.2.4] — 2026-05-24
 
 ### Changed
