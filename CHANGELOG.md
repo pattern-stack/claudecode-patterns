@@ -5,6 +5,19 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.7] — 2026-05-24
+
+### Added — design-loop (v2 + v2.1)
+
+Consolidated bump for the design-loop port (PRs #95/v2 and #90/v2.1; the v1 port #88 was superseded and closed). An iterative "build → grade → fix" loop for UI work, runnable standalone or composed into `/develop` via `needs:design`.
+
+- **`design-reference` canvas** — one engine, three reference types (`spec` / `figma` / `screenshot`) via a `reference_type:` discriminator.
+- **Agents** — `design-builder` (builds/fixes a surface; component-discovery + verify-in-DOM steps) and `design-grader` (captures screenshot **and** inspection JSON, grades against the reference, returns `READY` / `FIXES` / `BLOCKED`). Both `tool_group: custom`. Plus vendored `browser-pilot` (browser teammate over chrome-devtools + playwright MCP).
+- **`image-posting` primitive** (beta) — sibling to `task-management`; v1 `gh` adapter (Playwright + GitHub composer) with vendored `gh-attach-image.mjs`.
+- **Skills** — `design-loop` (orchestrator; standalone + composed modes), `design-audit` (audit-only), `browser-driver` (Playwright substrate: `capture` / `inspect` / `verify`, auth-aware + cert-bypassing), `figma-snapshot` (extract a Figma frame once per change to `.ai-docs/figma/<slug>/`; downstream reads the cache, not the MCP each round).
+- **`/develop` composed mode** — `needs:design` wires `design-grader` between the implementer commit and the validator (Step 4a), preserving the standard gates.
+- **v2.1 hardening** — grading requires both a screenshot and an inspection JSON (cursor / ARIA / overflow / interaction probes), closing the v2 failure where the grader passed `READY` while real bugs (wrong cursor, overflowing chips, missing ARIA) remained invisible in a screenshot alone.
+
 ## [0.2.6] — 2026-05-24
 
 ### Added
