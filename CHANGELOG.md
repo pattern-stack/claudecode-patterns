@@ -5,6 +5,13 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.6] — 2026-05-24
+
+### Added
+
+- **`proposal` canvas (beta)** at `plugin/canvases/proposal/` — a minimal ADR + RFC hybrid for pre-spec architecture docs. Sections: `Context` / `Goal` / `Locked decisions` / `Architecture` / `Open questions` / `Deferred` / `Next step` (all required except `Deferred`). Knobs: `status_lifecycle` (draft-architecture → under-review → accepted → superseded/rejected), numbered `locked_decisions` (min 1) + `open_questions` (min 1 — a proposal with zero open questions is a spec), `architecture` (tables-over-prose), mermaid `diagrams`, looser `citations` than `spec/`. Shipped `status: beta` pending a second consumer.
+- **`.ai-docs/proposals/design-loop-port.md`** — first proposal authored against the canvas: the architecture plan for porting `/design-loop` + `/design-audit` from `pattern-stack/sales-patterns-ts` (5 locked decisions, 8 open questions). Proposal artifact only — no agents/commands/skills/runtime touched here.
+
 ## [0.2.5] — 2026-05-24
 
 ### Added

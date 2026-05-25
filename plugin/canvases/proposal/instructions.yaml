@@ -1,0 +1,93 @@
+# Proposal artifact — tunable knobs for architecture proposal docs (ADR + RFC hybrid).
+# Schema: instructions.schema.json (validate with ajv-cli or any JSON Schema validator).
+# Section identifiers below MUST match the H2 headings in template.md verbatim.
+#
+# v1 scope: shaped for the design-loop port proposal. Future proposals reuse
+# this canvas as-is; if they need different shapes (e.g., strict-ADR with
+# Alternatives Considered required), tune via instructions.yaml or add a
+# sibling canvas. See README for the deliberate-minimalism note.
+
+$schema: ./instructions.schema.json
+artifact: proposal
+version: 1
+status: beta            # v1 — shipped without full review, tuned to a single proposal (design-loop port). Promote to `stable` after a second proposal pressures the shape.
+
+sections:
+  # Order matches template.md headings. Renaming means editing both files.
+  order:
+    - "Context"
+    - "Goal"
+    - "Locked decisions"
+    - "Architecture"
+    - "Open questions"
+    - "Deferred"
+    - "Next step"
+
+  # Required sections — consumer halts if any is empty or still contains a {{token}}.
+  # "Deferred" is optional — small proposals may have nothing deferred.
+  required:
+    - "Context"
+    - "Goal"
+    - "Locked decisions"
+    - "Architecture"
+    - "Open questions"
+    - "Next step"
+
+  # Verbosity hints — producer adapts content depth per section.
+  # Allowed values: short | medium | long | code-only | bulleted
+  verbosity:
+    "Context": medium
+    "Goal": short
+    "Locked decisions": bulleted
+    "Architecture": long
+    "Open questions": bulleted
+    "Deferred": bulleted
+    "Next step": short
+
+# Frontmatter status lifecycle. Producer sets initial status; humans advance it.
+status_lifecycle:
+  values:
+    - draft-architecture     # first cut, open questions outstanding
+    - under-review           # open questions answered, awaiting human sign-off
+    - accepted               # decisions locked, spec phase can start
+    - superseded             # replaced by a later proposal (link via `related:`)
+    - rejected               # decided against; kept for the decision record
+  initial: draft-architecture
+
+# Locked-decisions knobs. Locked means binding — like /design-loop's "locked decisions"
+# block, future agents grade against these verbatim.
+locked_decisions:
+  numbered: true                   # numbered list, stable references
+  justification_required: false   # one-liner rationale encouraged but not enforced (v1)
+  minimum: 1                      # at least one decision must be locked for the proposal to be meaningful
+
+# Open-questions knobs. The whole point of a proposal is to flush unresolved decisions.
+# An empty Open questions block usually means the doc is a spec, not a proposal.
+open_questions:
+  minimum: 1                      # producer halts if zero — this is the proposal's load-bearing distinction from a spec
+  numbered: true
+  resolution_tracked: false       # v2: track answered-by linkbacks; v1 just lists them
+
+# Architecture-section knobs.
+architecture:
+  subsections_allowed: true       # the section may contain H3s (Component map, sub-systems, etc.)
+  prefer_tables_over_prose: true  # bias the producer toward tabular comparisons
+
+# Diagrams — same shape as spec/ canvas, light defaults.
+diagrams:
+  tool: mermaid                   # mermaid | excalidraw | none
+  in_sections: ["Architecture"]   # producer decides per case
+
+# Citations — lighter than spec/ (no required file:line for proposals).
+citations:
+  file_paths: optional            # required | optional | none
+  line_numbers: false
+
+# Frontmatter `related:` shape — array of refs. Free-form for v1.
+# Each entry SHOULD be one of:
+#   { source: <url-or-path> }            # what this proposal is based on
+#   { spec: <path> }                     # a spec that traces from this proposal
+#   { supersedes: <path> }               # the proposal this replaces
+#   { conversation: <date-or-id> }       # a session where decisions were made
+related:
+  shape: list_of_objects
