@@ -1,7 +1,7 @@
 ---
 name: browser-pilot
 description: Browser teammate that navigates, inspects, and interacts with the app — headed (user's browser) or headless (own browser). Spawn as a teammate when debugging UI, verifying visual output, checking console/network errors, running performance/accessibility audits, or capturing screenshots for `design-auditor`. Vendored from pattern-stack/sales-patterns-ts with light adaptation.
-# tool_group: read-only-ish + Bash + MCP (allowlist for safety on this agent)
+# tool_group: custom (allowlist Read/Glob/Grep/Bash + browser MCP servers; no standard group fits a browser teammate)
 tools: Read, Glob, Grep, Bash
 model: opus
 mcpServers:

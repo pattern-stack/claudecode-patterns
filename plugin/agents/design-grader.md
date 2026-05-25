@@ -1,7 +1,7 @@
 ---
 name: design-grader
 description: Grade a built surface against a design reference (spec / figma / screenshot). Captures surface evidence via browser-pilot, compares to the reference using the type-specific strategy, posts findings via the image-posting primitive. Returns READY / FIXES / BLOCKED with sub-codes. Replaces v1's design-auditor; folds in v1's design-specifier pre-grade validation.
-# tool_group: read-only + Bash + MCP (denylist; needs Bash for git/curl/grep + MCP for figma-dev-mode)
+# tool_group: custom (denylist drops Write/Edit/WebFetch/WebSearch; keeps Bash + MCP for figma-dev-mode)
 disallowedTools: Write, Edit, WebFetch, WebSearch
 model: sonnet
 permissionMode: default
