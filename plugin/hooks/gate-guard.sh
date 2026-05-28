@@ -58,8 +58,14 @@ deny() {
 }
 
 # --- Rule 2: gh pr merge --admin (and -A short flag) ---------------------------
-if printf '%s' "$CMD" | grep -Eq 'gh[[:space:]]+pr[[:space:]]+merge'; then
-  if printf '%s' "$CMD" | grep -Eq -- '(--admin|[[:space:]]-A([[:space:]]|$))'; then
+# Anchor `gh pr merge` to a *command position* — start of the command, or right
+# after a shell separator / newline (`;` `&&` `||` `|` `(`). This fires on a real
+# invocation but NOT on the flag string appearing inside a quoted argument (a PR
+# `--body`, a `git commit -m` message) or a heredoc. Without the anchor,
+# `gh pr create --body "...gh pr merge --admin..."` — e.g. docs that *describe*
+# the flag — was falsely blocked. `--admin` / `-A` are matched as flag tokens.
+if printf '%s' "$CMD" | grep -Eq '(^|[;&|(])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'; then
+  if printf '%s' "$CMD" | grep -Eq -- '(^|[[:space:]])(--admin([[:space:]]|=|$)|-A([[:space:]]|$))'; then
     deny "SDLC gate-guard: \`gh pr merge --admin\` bypasses branch protection and Gate 2 (human PR review). Merge through the normal review path, or set SDLC_GATE_OVERRIDE=1 for a deliberate exception."
   fi
 fi
@@ -68,7 +74,7 @@ fi
 # Match a push whose ref token is main/master in the common shapes:
 #   git push origin main | git push origin HEAD:main | git push -f origin master
 #   git push origin :main (delete is allowed — skip) is NOT matched below.
-if printf '%s' "$CMD" | grep -Eq 'git[[:space:]]+push'; then
+if printf '%s' "$CMD" | grep -Eq '(^|[;&|(])[[:space:]]*git[[:space:]]+push([[:space:]]|$)'; then
   # Push args that name main/master as the *target* branch.
   if printf '%s' "$CMD" | grep -Eq '(^|[[:space:]])(main|master)([[:space:]]|$)|(:|HEAD:)(main|master)([[:space:]]|$)'; then
     deny "SDLC gate-guard: pushing to the default branch (main/master) is blocked — work on a feature branch and open a PR (Gate 2). Set SDLC_GATE_OVERRIDE=1 for a deliberate exception."
