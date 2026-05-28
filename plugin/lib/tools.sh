@@ -96,6 +96,21 @@ _state_dir() {
   echo "${stateRoot}/${tool}"
 }
 
+# _latest_installed_binary <tool> <platform> — print the newest already-cached
+# binary for this tool+platform, by version. Empty if none. Used as the
+# fallback when the exact-version binary can't be fetched (see ensure_tool):
+# a plugin bump that ships no new binary leaves nothing to download, so we
+# reuse the most recent one already on disk.
+_latest_installed_binary() {
+  local tool="$1" platform="$2" bindir f
+  bindir="$(_state_dir "$tool")/bin"
+  [[ -d "$bindir" ]] || return 0
+  # The version segment is the only part that varies across candidates, so a
+  # version sort of the full paths orders by version; take the highest.
+  f="$(ls -1 "${bindir}/${tool}-v"*"-${platform}" 2>/dev/null | sort -V | tail -1)"
+  [[ -n "$f" && -x "$f" ]] && echo "$f"
+}
+
 # ---- Public API ------------------------------------------------------------
 
 # tool_binary_path <name> — print the expected cache path for the tool's
@@ -107,6 +122,69 @@ tool_binary_path() {
   platform="$(_detect_platform)"
   [[ -z "$version" || -z "$platform" ]] && { echo ""; return 0; }
   echo "$(_state_dir "$tool")/bin/${tool}-v${version}-${platform}"
+}
+
+# _download_tool <tool> <version> <platform> — fetch the exact-version binary
+# from the GH release into the cache. Echoes the binary path on success (rc 0);
+# rc 1 on any failure (no curl/tar, 404, checksum mismatch, malformed tarball).
+# Diagnostics go to install.log, never stdout, so the caller can capture the
+# path cleanly.
+_download_tool() {
+  local tool="$1" version="$2" platform="$3"
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar  >/dev/null 2>&1 || return 1
+
+  local repo state_dir bindir tmp tarball binary_name url bin
+  repo="$(_gh_repo)"
+  state_dir="$(_state_dir "$tool")"
+  bindir="${state_dir}/bin"
+  bin="$(tool_binary_path "$tool")"
+  binary_name="$(_json_field "$_TOOLS_JSON" ".tools[\"${tool}\"].binary_name")"
+  [[ -z "$binary_name" ]] && binary_name="$tool"
+
+  mkdir -p "$bindir"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/tools-${tool}.XXXXXX")"
+  tarball="${tool}-${platform}.tar.gz"
+  url="https://github.com/${repo}/releases/download/v${version}/${tarball}"
+
+  if ! curl -fsSL --max-time 30 -o "${tmp}/${tarball}" "$url" 2>>"${state_dir}/install.log"; then
+    rm -rf "$tmp"
+    echo "[tools.sh] download failed: $url (see ${state_dir}/install.log)" >>"${state_dir}/install.log"
+    return 1
+  fi
+
+  # Optional checksum verification — best-effort; missing SHA256SUMS won't
+  # block install (we'd rather have telemetry than nothing).
+  if curl -fsSL --max-time 10 -o "${tmp}/SHA256SUMS" \
+      "https://github.com/${repo}/releases/download/v${version}/SHA256SUMS" 2>/dev/null; then
+    local expected actual
+    expected="$(grep -E " ${tarball}$" "${tmp}/SHA256SUMS" | awk '{print $1}' | head -1)"
+    if [[ -n "$expected" ]]; then
+      actual="$(shasum -a 256 "${tmp}/${tarball}" 2>/dev/null | awk '{print $1}')"
+      if [[ "$actual" != "$expected" ]]; then
+        echo "[tools.sh] checksum mismatch for ${tarball} (expected ${expected:0:12}…, got ${actual:0:12}…)" >>"${state_dir}/install.log"
+        rm -rf "$tmp"
+        return 1
+      fi
+    fi
+  fi
+
+  if ! tar -xzC "$tmp" -f "${tmp}/${tarball}" 2>>"${state_dir}/install.log"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  if [[ ! -f "${tmp}/${binary_name}" ]]; then
+    echo "[tools.sh] tarball missing binary '${binary_name}'" >>"${state_dir}/install.log"
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  mv "${tmp}/${binary_name}" "$bin"
+  chmod +x "$bin"
+  rm -rf "$tmp"
+
+  echo "$bin"
 }
 
 # ensure_tool <name> — make sure the binary exists, downloading if needed.
@@ -147,58 +225,23 @@ ensure_tool() {
     return 0
   fi
 
-  # ---- Download path -----------------------------------------------------
-  command -v curl >/dev/null 2>&1 || return 0
-  command -v tar  >/dev/null 2>&1 || return 0
-
-  local repo state_dir bindir tmp tarball binary_name url
-  repo="$(_gh_repo)"
-  state_dir="$(_state_dir "$tool")"
-  bindir="${state_dir}/bin"
-  binary_name="$(_json_field "$_TOOLS_JSON" ".tools[\"${tool}\"].binary_name")"
-  [[ -z "$binary_name" ]] && binary_name="$tool"
-
-  mkdir -p "$bindir"
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/tools-${tool}.XXXXXX")"
-  tarball="${tool}-${platform}.tar.gz"
-  url="https://github.com/${repo}/releases/download/v${version}/${tarball}"
-
-  if ! curl -fsSL --max-time 30 -o "${tmp}/${tarball}" "$url" 2>>"${state_dir}/install.log"; then
-    rm -rf "$tmp"
-    echo "[tools.sh] download failed: $url (see ${state_dir}/install.log)" >>"${state_dir}/install.log"
+  # Try to fetch the exact-version binary for this plugin release.
+  if _download_tool "$tool" "$version" "$platform"; then
     return 0
   fi
 
-  # Optional checksum verification — best-effort; missing SHA256SUMS won't
-  # block install (we'd rather have telemetry than nothing).
-  if curl -fsSL --max-time 10 -o "${tmp}/SHA256SUMS" \
-      "https://github.com/${repo}/releases/download/v${version}/SHA256SUMS" 2>/dev/null; then
-    local expected actual
-    expected="$(grep -E " ${tarball}$" "${tmp}/SHA256SUMS" | awk '{print $1}' | head -1)"
-    if [[ -n "$expected" ]]; then
-      actual="$(shasum -a 256 "${tmp}/${tarball}" 2>/dev/null | awk '{print $1}')"
-      if [[ "$actual" != "$expected" ]]; then
-        echo "[tools.sh] checksum mismatch for ${tarball} (expected ${expected:0:12}…, got ${actual:0:12}…)" >>"${state_dir}/install.log"
-        rm -rf "$tmp"
-        return 0
-      fi
-    fi
+  # Download unavailable — most often a plugin version bump whose release
+  # attached no new binary because the tool source didn't change, leaving a
+  # 404 at the version-pinned URL. Rather than drop telemetry, reuse the
+  # newest binary already on disk. The autostart hooks spawn it with the
+  # plugin version in $CC_*_VERSION, so /health still reports the plugin
+  # version — no version-mismatch restart thrash.
+  local fallback
+  fallback="$(_latest_installed_binary "$tool" "$platform")"
+  if [[ -n "$fallback" ]]; then
+    echo "[tools.sh] no published binary for v${version}; using newest installed: $(basename "$fallback")" \
+      >>"$(_state_dir "$tool")/install.log"
+    echo "$fallback"
   fi
-
-  if ! tar -xzC "$tmp" -f "${tmp}/${tarball}" 2>>"${state_dir}/install.log"; then
-    rm -rf "$tmp"
-    return 0
-  fi
-
-  if [[ ! -f "${tmp}/${binary_name}" ]]; then
-    echo "[tools.sh] tarball missing binary '${binary_name}'" >>"${state_dir}/install.log"
-    rm -rf "$tmp"
-    return 0
-  fi
-
-  mv "${tmp}/${binary_name}" "$bin"
-  chmod +x "$bin"
-  rm -rf "$tmp"
-
-  echo "$bin"
+  return 0
 }
