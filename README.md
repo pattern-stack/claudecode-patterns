@@ -235,6 +235,18 @@ Two-tone observability: machine-indexable for analytics, human-skimmable for for
 
 ---
 
+## Agent governance — the workflow layer
+
+Running agents as a team **is** governance: deny-by-default policy hooks, least-privilege agent roles, staged human gates, and a git-native audit trail — every control a file you can read and a behavior you can **reproduce**, not a claim.
+
+A real example from a live session: a [policy hook](plugin/hooks/gate-guard.sh) blocked an agent — *holding explicit user authorization to merge* — from `gh pr merge --admin`, and the agent **could not self-authorize past it** (it's `PreToolUse` — it decides before the command's inline env ever applies). Privilege escalation, reserved for a human, deterministically.
+
+Complementary to infra-layer toolkits like [microsoft/agent-governance-toolkit](https://github.com/microsoft/agent-governance-toolkit) — same threat model, different layer. Honest OWASP Agentic Top 10 coverage + the full control surface (hooks · least-privilege roles · gates · auditable emission · canvases):
+
+→ **[docs/AGENT-GOVERNANCE.md](docs/AGENT-GOVERNANCE.md)**
+
+---
+
 ## What's in `plugin/` (the installable bundle)
 
 ```

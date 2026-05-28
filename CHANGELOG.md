@@ -5,6 +5,16 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.8] — 2026-05-27
+
+### Fixed — gate-guard hook precision
+
+- **`gate-guard` no longer false-positives on prose.** Rules 1 & 2 grepped the entire command string, so a command that merely *mentioned* a blocked pattern (the admin merge-bypass flag, or a default-branch name) inside a quoted argument — a PR body, a `git commit -m` message, a heredoc, a doc edit — was wrongly denied. The verb matches (`gh pr merge`, `git push`) are now anchored to a *command position* (start of command, or right after a shell separator / newline), so the rules fire on real invocations, not text. Added `plugin/hooks/gate-guard.test.sh` (17 cases; `jq` or `python3`).
+
+### Added — agent-governance showcase
+
+- **`docs/AGENT-GOVERNANCE.md`** + a README "Agent governance" section: positions the framework's governance as the *workflow layer* (deterministic policy hooks, least-privilege agent roles, staged human gates, git-native auditability), with an honest OWASP Agentic Top 10 map and code-linked, **reproducible** controls. Complementary to infra-layer toolkits.
+
 ## [0.2.7] — 2026-05-24
 
 ### Added — design-loop (v2 + v2.1)
