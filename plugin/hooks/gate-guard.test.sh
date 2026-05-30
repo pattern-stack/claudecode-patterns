@@ -38,9 +38,24 @@ echo "Rule 1 — push to default branch:"
 assert_deny  'git push origin main'                              'push to main → deny'
 assert_deny  'git push -f origin master'                         'force push to master → deny'
 assert_deny  'git push origin HEAD:main'                         'push HEAD:main → deny'
+assert_deny  'git push origin develop:main'                      'push develop:main → deny'
+assert_deny  'git push main'                                     'push (remote=main / current→main) → deny'
+assert_deny  'foo && git push origin main'                       'real push to main after && → deny'
+assert_deny  'git push origin main && echo done'                 'real push to main before && → deny'
 assert_allow 'git push origin docs/agent-governance'            'push to feature branch → allow'
 assert_allow 'git push -u origin dug/observability'            'push to namespaced feature branch → allow'
-assert_allow 'git commit -m "will merge to main after review"'  'commit msg mentioning main → allow'
+assert_allow 'git commit -m "will merge to main after review"'  'commit msg mentioning main (no push) → allow'
+# Regression: cross-statement "main" must not contaminate a feature-branch push.
+assert_allow 'git push -u origin chore/release-0.11.0
+gh pr create --base main --head chore/release-0.11.0 --title x' \
+  'feature push bundled with `gh pr create --base main` → allow'
+assert_allow 'git commit -m "merge into main later"; git push origin feat/x' \
+  'commit msg mentioning main + feature push → allow'
+assert_allow 'git push origin feature/maintenance-window'        'feature branch whose name contains "main" substring → allow'
+assert_allow 'git checkout -b chore/release origin/main; git push origin chore/release' \
+  'checkout off origin/main then push feature → allow'
+assert_allow 'gh pr create --base main --body "run: git push origin main to ship"' \
+  'PR body describing a push to main → allow'
 
 echo "Cross-cutting:"
 assert_allow 'rm -rf /tmp/whatever'                              'unrelated command → allow'

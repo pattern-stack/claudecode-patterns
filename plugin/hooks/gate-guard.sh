@@ -71,14 +71,24 @@ if printf '%s' "$CMD" | grep -Eq '(^|[;&|(])[[:space:]]*gh[[:space:]]+pr[[:space
 fi
 
 # --- Rule 1: git push to the default branch (main / master) --------------------
-# Match a push whose ref token is main/master in the common shapes:
+# Match a push whose *own target ref* is main/master. Two conditions, in ONE
+# regex, are both required:
+#   (a) `git push` sits at a command position — start of line or right after a
+#       shell separator (`;` `&&` `||` `|` `&` `(`). This is what lets a PR or
+#       commit *body* that merely describes a push ("…run git push origin
+#       main…") pass: there, `git push` is preceded by ordinary text, not a
+#       separator, so it is not a real invocation.
+#   (b) main/master appears within the SAME statement's args — i.e. only
+#       non-separator chars (`[^;&|()]*`) lie between `git push` and the ref.
+#       This is the fix for the cross-statement false positive: a sibling
+#       command that mentions "main" (`gh pr create --base main`,
+#       `git commit -m '…main…'; git push origin feat`) no longer trips the
+#       guard, because that "main" is not in the push statement's own args.
+# Shapes covered (all still denied):
 #   git push origin main | git push origin HEAD:main | git push -f origin master
-#   git push origin :main (delete is allowed — skip) is NOT matched below.
-if printf '%s' "$CMD" | grep -Eq '(^|[;&|(])[[:space:]]*git[[:space:]]+push([[:space:]]|$)'; then
-  # Push args that name main/master as the *target* branch.
-  if printf '%s' "$CMD" | grep -Eq '(^|[[:space:]])(main|master)([[:space:]]|$)|(:|HEAD:)(main|master)([[:space:]]|$)'; then
-    deny "SDLC gate-guard: pushing to the default branch (main/master) is blocked — work on a feature branch and open a PR (Gate 2). Set SDLC_GATE_OVERRIDE=1 for a deliberate exception."
-  fi
+#   | git push origin develop:main | git push main | … && git push origin main
+if printf '%s' "$CMD" | grep -Eq '(^|[;&|(])[[:space:]]*git[[:space:]]+push[^;&|()]*([[:space:]]|:|HEAD:)(main|master)([[:space:]]|$)'; then
+  deny "SDLC gate-guard: pushing to the default branch (main/master) is blocked — work on a feature branch and open a PR (Gate 2). Set SDLC_GATE_OVERRIDE=1 for a deliberate exception."
 fi
 
 exit 0
