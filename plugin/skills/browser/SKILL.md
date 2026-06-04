@@ -79,6 +79,8 @@ Stored as an env var in `.claude/settings.local.json` (gitignored, never committ
 
 Valid values: `arc`, `chrome`, `chromium`, `brave`, `edge`, `vivaldi`, `opera`.
 
+Setting a preference also opts you into the `check-cdp` SessionStart nudge: when :9222 is dark at session start, you get your browser's relaunch command up front instead of discovering it mid-task.
+
 ### CDP connection check (run before any user-browser interaction)
 
 1. Call the chrome-devtools `list_pages` tool.
