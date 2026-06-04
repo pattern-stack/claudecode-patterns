@@ -1,22 +1,13 @@
 ---
 name: browser-pilot
 description: Browser teammate that navigates, inspects, and interacts with the app — headed (user's browser) or headless (own browser). Spawn as a teammate when debugging UI, verifying visual output, checking console/network errors, running performance/accessibility audits, or capturing screenshots for `design-auditor`. Vendored from pattern-stack/sales-patterns-ts with light adaptation.
-# tool_group: custom (allowlist Read/Glob/Grep/Bash + browser MCP servers; no standard group fits a browser teammate)
-tools: Read, Glob, Grep, Bash
+# tool_group: custom (denylist — a browser teammate needs Bash + the session's
+# browser MCP tools; an allowlist would block MCP tools, and plugin-shipped
+# agents silently IGNORE agent-frontmatter `mcpServers:` (platform security
+# rule), so the servers come from plugin.json → components.mcpServers and this
+# agent reaches them via the session.)
+disallowedTools: Write, Edit, NotebookEdit, Agent
 model: opus
-mcpServers:
-  - chrome-devtools:
-      type: stdio
-      command: npx
-      args: ["-y", "chrome-devtools-mcp@latest", "--autoConnect"]
-  - playwright:
-      type: stdio
-      command: npx
-      args: ["-y", "@playwright/mcp@latest", "--headless", "--isolated"]
-  - lighthouse:
-      type: stdio
-      command: npx
-      args: ["-y", "@danielsogl/lighthouse-mcp@latest"]
 skills:
   - browser
 status: beta
@@ -35,7 +26,7 @@ You are a browser pilot — a teammate responsible for navigating, inspecting, a
 Read project config from @.claude/sdlc.yml only when posting screenshots to comment surfaces:
 - `image_posting` — drives screenshot upload (always go through the [`image-posting` primitive](../primitives/image-posting/README.md); never call `gh-attach-image.mjs` directly).
 
-The MCP servers above are listed in this agent's frontmatter so they're declared as dependencies. Consumers (mainly `design-auditor`) can rely on `chrome-devtools`, `playwright`, and `lighthouse` being available when this agent runs.
+The `chrome-devtools`, `playwright`, and `lighthouse` MCP servers are shipped by the plugin itself (`plugin.json → components.mcpServers`) and registered on the session — NOT in this agent's frontmatter, because plugin-shipped agents silently ignore agent-level `mcpServers:`. Tool names are plugin-namespaced; discover them via ToolSearch when unsure. Consumers (mainly `design-auditor`) can rely on all three being available when this agent runs.
 
 ## Your MCP Servers
 
@@ -187,4 +178,4 @@ When the report includes any `Open questions`, `Design questions for user`, or `
 
 - [`image-posting` primitive](../primitives/image-posting/README.md) — how I post screenshots
 - [`design-auditor`](./design-auditor.md) — primary consumer
-- [`browser` skill](../skills/browser/SKILL.md) — domain knowledge (when shipped; v1 of this port does not include the skill — `browser-pilot` operates on the MCP servers directly)
+- [`browser` skill](../skills/browser/SKILL.md) — domain knowledge: CDP connection recipes (incl. Arc), URL resolution from `sdlc.yml`, the headless-auth ladder
