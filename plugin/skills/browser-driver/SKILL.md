@@ -89,7 +89,7 @@ Used by `/design-loop` at start.
 
 ## Mode: user-browser (chrome-devtools)
 
-Not yet wrapped by this skill. If needed: spawn a subagent that has the `chrome-devtools` MCP server in its frontmatter (e.g., `browser-pilot`). The user must have Chrome running with `--remote-debugging-port=9222`.
+Owned by the [`browser`](../browser/SKILL.md) skill — the plugin ships a `chrome-devtools` MCP server (plugin.json → components.mcpServers) that connects to the user's own browser on CDP :9222. See that skill for launch recipes (incl. Arc's flag-loss quirks) and the connection-check protocol. This skill stays the scripted headless path.
 
 ## Constraints
 
@@ -99,6 +99,7 @@ Not yet wrapped by this skill. If needed: spawn a subagent that has the `chrome-
 
 ## Related
 
+- [`browser`](../browser/SKILL.md) — interactive sibling: user-browser CDP mode, headless MCP driving, audits; shares `.playwright/auth.json` and the headed-once bootstrap (`scripts/auth-capture.mjs`)
 - [`/auth-recover`](../auth-recover/SKILL.md) — refreshes `.playwright/auth.json` when stale
 - [`/design-loop`](../design-loop/SKILL.md) — primary consumer
 - [`/figma-snapshot`](../figma-snapshot/SKILL.md) — sibling, snapshots the reference

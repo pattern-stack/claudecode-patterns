@@ -5,6 +5,22 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.11] — 2026-06-04
+
+### Added — `browser` skill + plugin-shipped MCP servers
+
+- **`/browser` skill** (`skills/browser/`) — unified browser interaction, promoted from the per-project copies that had drifted across ~19 checkouts (several still carrying another project's ports). User-browser mode over CDP :9222 (launch table for all Chromium browsers + the hard-won Arc recipes: flag lost on Cmd-Q, force-quit relaunch one-liner, `EnableRemoteDebugging` defaults fallback), headless mode via the playwright server, audits via lighthouse. Project URLs resolve from `sdlc.yml → browser:` (frontend_url / api_url / prod_url) instead of being hardcoded — the drift that plagued the old copies.
+- **`/browse` + `/verify` commands** — ported from the legacy skill, de-project-ified.
+- **Plugin-shipped MCP servers** (`plugin.json → components.mcpServers`): `chrome-devtools` (pinned, `--browserUrl http://127.0.0.1:9222`), `playwright` (pinned, `--headless --isolated`), `lighthouse` (pinned). Every consuming project gets the deps with the plugin — no per-project `.mcp.json` setup. Note: plugin servers are namespaced (`mcp__plugin_sdlc_<server>__…`), so they coexist with same-named project-level servers (at the cost of a duplicate process — projects can drop their own entries).
+- **`scripts/auth-capture.mjs`** — generic headed-once auth bootstrap: visible browser at a login URL, user authenticates by hand, storage state saved to `.playwright/auth.json` (shared with `browser-driver`), headless thereafter. Projects with their own credential plumbing point `sdlc.yml → browser.auth_script` at it instead.
+
+- **`check-cdp` SessionStart hook** — when (and only when) a dev has set `BROWSER_PREFERENCE` in `.claude/settings.local.json` and CDP :9222 is dark, the session opens with a one-shot nudge carrying that browser's relaunch command (Arc gets the force-quit one-liner + the sticky `EnableRemoteDebugging` tip). Devs without a preference are never nagged.
+
+### Fixed — `browser-pilot` agent had dead MCP config
+
+- The agent declared `chrome-devtools`/`playwright`/`lighthouse` under `mcpServers:` in its frontmatter — **silently ignored for plugin-shipped agents** (platform security rule), so the agent has been running without its browser tools whenever consumed via the plugin. Servers now ship at plugin level (above) and the agent's `tools:` allowlist (which also blocked MCP tools) became a denylist so the session's browser tools are reachable.
+- `browser-driver`'s "user-browser mode: not yet wrapped" now points at the `browser` skill.
+
 ## [0.2.8] — 2026-05-27
 
 ### Fixed — gate-guard hook precision
