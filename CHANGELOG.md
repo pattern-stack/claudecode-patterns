@@ -5,6 +5,12 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.12] — 2026-06-04
+
+### Added — `project-documentation` skill
+
+- **`project-documentation` skill** (`skills/project-documentation/`) — durable-docs discipline (ADRs, specs, RFCs), upstreamed from codegen-patterns and generalized for arbitrary consumers. **Detection-first**: learns the consumer repo's naming scheme, header style, and status vocabulary from its existing files before creating anything (the original hardcoded one repo's conventions — and had drifted even there: its ADR glob matched zero files). Bundled `templates/{adr,spec}.md` cover the greenfield case only. Codifies the **two-planes split** (durable `docs/` owned by this skill vs SDLC working artifacts owned by `sdlc.yml → artifact_paths` + canvases), append-only ADRs with number-collision checks, **status-in-place lifecycle** (no archive folders — files never move, so links never break), and the "specs are post-implementation truth" rule (update the spec in the same PR that implements it). Delegates bulk authorship to `sdlc-author`.
+
 ## [0.2.11] — 2026-06-04
 
 ### Added — `browser` skill + plugin-shipped MCP servers
