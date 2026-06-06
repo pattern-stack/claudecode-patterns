@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   verify:
-    name: invariants (canvases + tool groups)
+    name: invariants (canvases + tool groups + teammate tools)
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +38,9 @@ jobs:
 
       - name: Verify tool groups
         run: just sdlc::verify-tool-groups
+
+      - name: Verify teammate tools
+        run: just sdlc::verify-teammate-tools
 
       - name: Verify canvases
         run: just sdlc::verify-canvases

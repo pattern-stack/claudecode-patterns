@@ -2,11 +2,17 @@
 name: coordinator
 description: Per-issue coordinator for Topology B parallel orchestration. Spawned as a teammate by `/orchestrate`; spawns implementer/validator as **subagents** (Agent tool) — never as further teammates. SKELETON — not yet wired to a command.
 # tool_group: custom — orchestrator (scoped Agent + repo-only; no MCP)
-# Allowlist form is required to scope subagent spawning via Agent(implementer, validator).
+# Allowlist form is required to scope subagent spawning via Agent(...). Two hard-won rules:
+# 1. SendMessage MUST be listed explicitly — an allowlist suppresses the team tools the
+#    harness would otherwise inject, leaving the teammate mute (can't report up, can't
+#    answer the shutdown handshake). Verified 2026-06-06; enforced by verify-teammate-tools.sh.
+# 2. Agent(...) scope args must use REGISTRY keys, which for plugin agents are
+#    namespaced (`sdlc:implementer`, not `implementer`) — bare names match nothing and
+#    brick the registry (empty spawnable set).
 # Tracker access (Linear / GitHub Issues / etc.) is delegated to the implementer subagent,
 # which inherits MCP via its denylist form (code_writer_mcp). This keeps the coordinator
 # tracker-agnostic — swapping trackers requires zero changes here.
-tools: Read, Glob, Grep, Bash, Agent(implementer, validator)
+tools: Read, Glob, Grep, Bash, SendMessage, Agent(sdlc:implementer, sdlc:validator)
 model: opus
 permissionMode: default
 status: skeleton
@@ -110,7 +116,7 @@ Wait for completion. Capture pass/fail.
 
 ### 5. Report up
 
-Send a single summary message back to the main session via report (no SendMessage chain — the orchestrator polls completion):
+Send a single summary message to the orchestrator via `SendMessage` (to: `team-lead`). This is the only report channel — a teammate's final text is **not** delivered to the lead, and idle notifications carry no payload:
 
 ```
 <ISSUE-KEY>: <PASS | FAIL | BLOCKED>

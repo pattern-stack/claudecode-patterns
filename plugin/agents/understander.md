@@ -1,8 +1,8 @@
 ---
 name: understander
 description: Produces a detailed understanding artifact for downstream agents AND a condensed chat/comment summary for the human. Stack-co-located by default (`.ai-docs/stacks/<slug>/<topic>.md`); cross-cutting research goes to `.ai-docs/research/<topic>.md`. Read-only on source. Path convention defined in `.claude/sdlc.yml` `artifact_paths`.
-# tool_group: research_writer (allowlist)
-tools: Read, Write, Glob, Grep, WebFetch, WebSearch
+# tool_group: research_writer (allowlist; + SendMessage so a teammate slot can report up)
+tools: Read, Write, Glob, Grep, WebFetch, WebSearch, SendMessage
 model: opus
 permissionMode: default
 status: active

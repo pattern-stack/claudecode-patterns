@@ -19,9 +19,9 @@ default:
 
 # ─── Verify (SDLC config invariants) ──────────────────────────────────
 
-# verify all (canvases + tool groups)
+# verify all (canvases + tool groups + teammate tools)
 [group('verify')]
-verify: verify-canvases verify-tool-groups
+verify: verify-canvases verify-tool-groups verify-teammate-tools
 
 # verify canvas instructions.yaml schemas
 [group('verify')]
@@ -32,6 +32,11 @@ verify-canvases:
 [group('verify')]
 verify-tool-groups:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-tool-groups.sh"
+
+# verify teammate footguns: allowlists carry SendMessage; Agent(...) scopes resolve
+[group('verify')]
+verify-teammate-tools:
+    @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-teammate-tools.sh"
 
 # ─── Claude Code agent launchers ──────────────────────────────────────
 # One recipe per launchable Claude Code agent UX. Recipes pre-apply the
