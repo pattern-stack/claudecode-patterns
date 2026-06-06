@@ -136,6 +136,10 @@ Example: user `"Doug"`, issue `PSC-67 "/design: commit spec on impl branch"` →
 
 **4b. Checkout or create the branch**:
 
+**Shared-tree guard (load-bearing)** — never `git checkout` / `git switch` the MAIN working tree. Other agents may be operating in it concurrently (observed: a specifier checked out its spec branch under a mid-edit implementer — one commit away from cross-contaminated branches). Decide by where you are:
+
+- **You are in an isolated worktree** (spawned with `isolation: "worktree"`; cwd is under `.claude/worktrees/` or `git rev-parse --git-common-dir` differs from `git rev-parse --git-dir`): the tree is yours — check out directly:
+
 ```bash
 git fetch origin <branch> 2>/dev/null || true
 if git rev-parse --verify "origin/<branch>" >/dev/null 2>&1; then
@@ -147,7 +151,23 @@ else
 fi
 ```
 
-**Guard**: before checkout, verify `git branch --show-current` resolves to the feature branch name, not `main`. If after checkout the current branch is still `main` (shouldn't happen but defensive), abort — do **not** commit to `main`.
+- **You are in the main working tree**: do the branch work in a private temp worktree instead — the main tree's checkout never moves:
+
+```bash
+git fetch origin <branch> 2>/dev/null || true
+WT="$(mktemp -d)/spec-<branch-slug>"
+if git rev-parse --verify "origin/<branch>" >/dev/null 2>&1; then
+  git worktree add "$WT" <branch>
+else
+  git worktree add -b <branch> "$WT" origin/main
+fi
+mkdir -p "$WT/$(dirname <resolved spec path>)" && cp <resolved spec path> "$WT/<resolved spec path>"
+cd "$WT"   # steps 4c–4e run here; afterwards: cd - && git worktree remove "$WT"
+```
+
+(Exception: if the main tree already sits on `<branch>` — re-run case — commit in place; no switch is needed.)
+
+**Guard**: before committing, verify `git branch --show-current` resolves to the feature branch name, not `main`. If it resolves to `main`, abort — do **not** commit to `main`.
 
 **4c. Stage and commit the spec**:
 

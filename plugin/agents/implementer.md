@@ -90,6 +90,8 @@ Per `.claude/primitives/task-management/github.md`:
 - Branch name: `<owner>/<issue-key-lowercase>-<short-slug>`
 - Slug derived from the issue title (3-4 words, kebab-case)
 
+**Shared-tree guard (load-bearing)** — never `git checkout` / `git switch` the MAIN working tree. In parallel topologies other agents share it, and a branch switch under them cross-contaminates everyone's work. Check where you are first: if you were spawned with `isolation: "worktree"` (cwd under `.claude/worktrees/`, or `git rev-parse --git-common-dir` differs from `git rev-parse --git-dir`), the tree is yours — proceed below. If you find yourself in the main working tree, create a private worktree (`git worktree add <dir> <branch>`) and do ALL work there — or halt and ask your spawner to re-spawn you with `isolation: "worktree"`.
+
 **Remote-aware branch setup** — the specifier now pushes the branch with the spec commit before the implementer runs. Always check for the remote branch first:
 
 ```bash

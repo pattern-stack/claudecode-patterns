@@ -94,11 +94,14 @@ This is the load-bearing trade-off: I lose the ability to gate-check before spaw
 
 ```
 Agent(
-  subagent_type: "general-purpose",
+  subagent_type: "sdlc:implementer",
   description: "Implement <ISSUE-KEY>",
-  prompt: "<implementer.md system prompt> + <issue context>"
+  isolation: "worktree",
+  prompt: "<issue context>"
 )
 ```
+
+`isolation: "worktree"` is mandatory here, not a preference — in Topology B multiple coordinators share the repo checkout, and an implementer switching branches in the shared tree cross-contaminates every sibling's work (observed 2026-06-06: a specifier checked out its spec branch under a mid-edit implementer).
 
 Wait for completion. Capture the branch name and PR URL from the subagent's report.
 
@@ -106,9 +109,10 @@ Wait for completion. Capture the branch name and PR URL from the subagent's repo
 
 ```
 Agent(
-  subagent_type: "general-purpose",
+  subagent_type: "sdlc:validator",
   description: "Validate <ISSUE-KEY>",
-  prompt: "<validator.md system prompt> + <branch name> + <PR number>"
+  isolation: "worktree",
+  prompt: "<branch name> + <PR number>"
 )
 ```
 

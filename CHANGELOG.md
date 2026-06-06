@@ -7,6 +7,17 @@ Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plug
 
 ## [0.2.13] — 2026-06-06
 
+### Fixed — WorktreeCreate telemetry hook broke `isolation: "worktree"` harness-wide
+
+- **Removed the `WorktreeCreate` entry from `hooks/hooks.json`.** The harness gives `WorktreeCreate` PROVIDER semantics, not observer semantics: registering any hook delegates worktree creation to it and expects the created path back. The passive `emit.sh` telemetry shim therefore shadowed the default `git worktree add` — every `Agent` spawn with `isolation: "worktree"` in every plugin-consuming project failed with `WorktreeCreate hook failed: hook succeeded but returned no worktree path`. Reproduced and fix verified end-to-end in fresh sessions (spawn succeeds, temp worktree created + auto-cleaned). `WorktreeRemove` was tested the same way and is observer-safe — its telemetry stays. `hooks.json`'s `description` and `claude-platform/reference/settings.md` now document the provider contract so it can't sneak back in.
+
+### Hardened — shared-tree branch switching (fallout of the isolation outage)
+
+While isolation was broken, sdlc agents fell back to the main working tree — a specifier `git checkout`'d its spec branch under a mid-edit implementer. Defense-in-depth so that can't recur:
+
+- `coordinator.md` spawn snippets now pass `isolation: "worktree"` (mandatory in Topology B) and use the namespaced `subagent_type`s.
+- `specifier.md` § 4b and `implementer.md` § 4: never `git checkout`/`git switch` the main working tree — isolated-worktree agents proceed as before; agents that find themselves in the main tree do branch work in a private `git worktree add` (specifier) or halt and request isolation (implementer).
+
 ### Fixed — teammates spawned from allowlist agents were mute (broke `/orchestrate`)
 
 Two platform behaviors, verified empirically with live probe teammates (and observed in a real `/orchestrate` run, where all three coordinators failed to report while the denylist-form implementer reported fine):
