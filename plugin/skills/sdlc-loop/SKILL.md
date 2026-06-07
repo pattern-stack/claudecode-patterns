@@ -84,6 +84,25 @@ team: implementer + validator                    coordinator (per issue)
 
 When updating: facts → CLAUDE.md or primitive. Phase mechanics → agent. Workflow judgment → here.
 
+## Delegate or author directly
+
+Whether to spin up a dedicated agent or author the artifact directly in the main session is **the primary agent's discretion** — and the deciding factor is usually **context budget**, not artifact type.
+
+Each command names an agent to **delegate to** (`planner`, `specifier`, …). Treat that as the **default path, not a mandate.** A handoff to a fresh subagent has a real cost: it starts cold, so you re-brief it with context you already hold, and fidelity leaks across the transfer. Delegation earns that cost when it buys something back — parallel fan-out, independent/adversarial eyes, a clean main-context window, or a format the subagent specializes in. When it buys none of those, authoring directly is faster and higher-fidelity.
+
+| Favors **authoring directly** (spend main context) | Favors **delegating** (conserve main context) |
+|---|---|
+| Short horizon: plan-then-stop, one artifact, human about to review | Long horizon: AFK/autonomous loop, many phases ahead (`gate_mode: auto-all`, `/orchestrate`) — the main loop must survive many more turns |
+| You already hold the synthesis (just ran the research/sweep yourself) | The work is fan-out — independent search/coverage the primary can't hold in one head |
+| Tight human-in-the-loop iteration (a Gate-0 chat loop): owning the file means tuning in-conversation, not lossy round-trips | You want independent decomposition or adversarial eyes the primary is too anchored to give |
+| The delegation brief would be so prescriptive the subagent is just transcribing | The artifact's format/schema is the subagent's specialty and getting it wrong is costly downstream (e.g. `/sync-issues` reads the plan schema) |
+
+The context-budget axis is the one most often missed. If you're going to produce one artifact and **halt for human review**, spending main-session context is free — burn it, author directly. If you're **mid-autonomous-loop**, every token you spend now is one the rest of the loop can't use later — delegate to keep the window clean, even when you could author it yourself.
+
+Rule of thumb: **delegate the fan-out; hold the synthesis — then weigh against how much context the rest of the session still needs.**
+
+When the call is close, hybridize: let the dedicated agent produce the first draft (it owns the format), then take the pen for the human-gated iteration (you own the context). This is also the fallback when a delegated agent dies mid-run — adopt its partial artifact and continue directly rather than re-delegating from cold.
+
 ## The gates
 
 | Gate | Surface | Set by | Approves to |

@@ -62,6 +62,8 @@ Read `.claude/sdlc.yml` for `language`, `task_management`, `team_key`. No decisi
 
 ### Step 2: Strategize
 
+> **Delegate, or author directly?** `specifier` is the **default**, not a mandate. The context-budget tradeoff applies: author the spec directly when you already hold the context and a human gate is next; delegate to conserve the main window in a long autonomous run. See [`sdlc-loop` § Delegate or author directly](../skills/sdlc-loop/SKILL.md#delegate-or-author-directly).
+
 **Delegate to**: `specifier` agent
 
 **Mission**:
