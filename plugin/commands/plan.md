@@ -54,6 +54,8 @@ If no `.ai-docs/research/<slug>.md` exists for the topic and the request is non-
 
 ### Step 2: Plan
 
+> **Delegate, or author directly?** `planner` is the **default**, not a mandate. If you already hold the synthesis (e.g. you just ran the research) and the next stop is human review, authoring the YAML yourself is often faster and higher-fidelity — and a Gate-0 chat loop is easier to tune when you own the file. Delegate to conserve the main window when this is part of a long autonomous run. See [`sdlc-loop` § Delegate or author directly](../skills/sdlc-loop/SKILL.md#delegate-or-author-directly).
+
 **Delegate to**: `planner` agent
 
 **Mission**:

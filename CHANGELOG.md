@@ -5,6 +5,13 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.13] — 2026-06-07
+
+### Changed — delegate-or-author discretion (workflow judgment)
+
+- **`sdlc-loop` skill** — new **"Delegate or author directly"** section. The agent each command names to *delegate to* (`planner`, `specifier`, …) is the **default, not a mandate**: whether to spin up a dedicated subagent or author the artifact in the main session is the primary agent's discretion, and the deciding factor is usually **context budget**, not artifact type. A two-column tradeoff table (spend main context vs conserve it) makes the call explicit — short-horizon/plan-then-stop and "you already hold the synthesis" favor authoring directly; long autonomous loops (`gate_mode: auto-all`, `/orchestrate`) favor delegating to keep the window clean. Adds the hybrid pattern (let the agent draft the format, take the pen for the human-gated iteration) and the dead-agent fallback (adopt a crashed agent's partial artifact and continue directly rather than re-delegating cold).
+- **`/plan` + `/design` commands** — short pointer at the `Delegate to` step reframing the named agent as default-not-mandate, with the context-budget cue and a deep-link to the new `sdlc-loop` section. Scoped to the single-agent authoring commands; `/develop` + `/orchestrate` (which spawn teams) are unaffected.
+
 ## [0.2.12] — 2026-06-04
 
 ### Added — `project-documentation` skill
