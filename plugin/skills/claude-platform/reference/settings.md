@@ -104,8 +104,8 @@ Full canonical list (29 events). Source: https://code.claude.com/docs/en/hooks.
 | `ConfigChange` | Settings reloaded |
 | `CwdChanged` | Working dir changed |
 | `FileChanged` | Tracked file changed |
-| `WorktreeCreate` | Worktree created (used to copy `.worktreeinclude` patterns) |
-| `WorktreeRemove` | Worktree being removed |
+| `WorktreeCreate` | **PROVIDER, not observer** — registering any hook here delegates worktree creation to it; the hook must create the worktree and return its path (stdout for command hooks, `hookSpecificOutput.worktreePath` otherwise). A passive hook shadows the default `git worktree add` and breaks every `isolation: "worktree"` spawn (verified 2026-06-06). Never register telemetry here. |
+| `WorktreeRemove` | Worktree being removed — observer-safe (passive hooks do not shadow removal; verified 2026-06-06) |
 | `PreCompact` / `PostCompact` | Around auto-compaction |
 | `Elicitation` / `ElicitationResult` | Around `AskUserQuestion` |
 | `SessionEnd` | Session ended |

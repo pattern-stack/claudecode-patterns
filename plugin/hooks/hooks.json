@@ -1,5 +1,5 @@
 {
-  "description": "Emit Claude Code lifecycle events to the bundled cc-viewer dashboard (defaults to http://localhost:3993; override via CC_VIEWER_URL or CC_VIEWER_PORT). The dashboard binary is installed lazily by the SessionStart `ensure-cc-viewer.sh` hook.",
+  "description": "Emit Claude Code lifecycle events to the bundled cc-viewer dashboard (defaults to http://localhost:3993; override via CC_VIEWER_URL or CC_VIEWER_PORT). The dashboard binary is installed lazily by the SessionStart `ensure-cc-viewer.sh` hook. WorktreeCreate is deliberately ABSENT: the harness gives it PROVIDER semantics (a registered hook replaces the default `git worktree add` and must return the created path), so a passive telemetry hook breaks every `isolation: \"worktree\"` Agent spawn harness-wide. WorktreeRemove is observer-safe (verified 2026-06-06) and stays.",
   "hooks": {
     "SessionStart": [
       {
@@ -423,19 +423,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh WorktreeRemove",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "WorktreeCreate": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/emit.sh WorktreeCreate",
             "async": true,
             "timeout": 10
           }

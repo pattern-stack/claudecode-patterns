@@ -1,8 +1,8 @@
 ---
 name: claude-platform-drift-check
 description: Read-only auditor that diffs the project's `claude-platform` skill against canonical Claude Code and Anthropic Agent SDK docs, surfacing renamed / added / removed fields, new lifecycle events, new SDK primitives, and changed precedence rules. Use when the user asks "is this still right", before authoring new components, or on a recurring cadence (`/loop`, `/schedule`). Does NOT edit files — reports only.
-# tool_group: research (allowlist; WebSearch unused but kept for canonical group match)
-tools: Read, Glob, Grep, WebFetch, WebSearch
+# tool_group: research (allowlist; WebSearch unused but kept for canonical group match; + SendMessage so a teammate slot can report up)
+tools: Read, Glob, Grep, WebFetch, WebSearch, SendMessage
 model: sonnet
 permissionMode: plan
 color: cyan

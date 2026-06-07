@@ -26,12 +26,17 @@ fi
 
 # Normalize a comma-separated tool list into sorted unique tokens.
 # Strips whitespace and Agent(...) parenthetical args (compares the bare token).
+# Also strips team-plumbing tools (SendMessage, Task*) — they're harness
+# coordination channels, orthogonal to the capability groups in sdlc.yml.
+# Allowlist agents MUST carry SendMessage (see verify-teammate-tools.sh), so
+# excluding it here keeps both checks satisfiable at once.
 normalize() {
   echo "$1" \
     | tr ',' '\n' \
     | sed -E 's/\(.*\)//' \
     | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
     | grep -v '^$' \
+    | grep -vE '^(SendMessage|TaskCreate|TaskGet|TaskList|TaskUpdate)$' \
     | sort -u
 }
 

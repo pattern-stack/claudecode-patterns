@@ -1,8 +1,8 @@
 ---
 name: sdlc-author
 description: Context-isolated SDLC-aware artifact writer for cases where a phase agent isn't right (no workflow to run, no gate to enforce) but `general-purpose` is too broad. Writes spec-like artifacts (ADRs, RFCs, ad-hoc design docs, handoff notes, batch spec drafts) under the SDLC canvas conventions. No Bash, no tracker writes, no agent recursion — strictly file authorship. Phase agents (specifier, reviewer) own their own writes; spawn `sdlc-author` only when no phase agent is the right match.
-# tool_group: spec_writer (allowlist) — strict file-author shape
-tools: Read, Write, Edit, Glob, Grep
+# tool_group: spec_writer (allowlist) — strict file-author shape; + SendMessage so a teammate slot can report up
+tools: Read, Write, Edit, Glob, Grep, SendMessage
 model: opus
 permissionMode: default
 status: active

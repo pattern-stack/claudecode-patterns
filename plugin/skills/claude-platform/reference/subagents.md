@@ -46,6 +46,12 @@ disallowedTools: Write, Edit          # denylist (preferred when you want "every
 
 When both are set: `disallowedTools` is removed first, then `tools` is intersected against what remains. A tool in both is gone.
 
+### Allowlists silence teammates (verified 2026-06-06)
+
+An explicit `tools:` allowlist is honored literally when the agent is spawned as a **teammate** — the harness does NOT inject the team tools (`SendMessage`, `Task*`) it grants to inheriting agents. The teammate still *receives* messages and emits idle notifications, but cannot report up, answer plan-approval, or complete the shutdown handshake (`shutdown_response` rides SendMessage). Error signature: `"SendMessage exists but is not enabled in this context"`.
+
+Rule: any allowlist agent that may run as a teammate must name `SendMessage` explicitly (this works — verified); denylist agents inherit it for free. Enforced in this plugin by `scripts/verify-teammate-tools.sh`.
+
 ### Restrict subagent spawning (when this agent runs as `--agent`)
 
 ```yaml
@@ -53,6 +59,8 @@ tools: Agent(worker, researcher), Read, Bash    # only these subagents can be sp
 tools: Agent, Read, Bash                        # any subagent can be spawned
 # Omit Agent entirely → cannot spawn any subagents
 ```
+
+`Agent(...)` args must be **registry keys**. Plugin-shipped agents register namespaced — `Agent(sdlc:implementer)`, not `Agent(implementer)`. A scope of bare names that match nothing yields an EMPTY spawnable set: every `subagent_type` (including the default `general-purpose`) fails with `Agent type '…' not found. Available agents:` (blank).
 
 `Agent(...)` only matters when this agent is the main thread. **Subagents cannot spawn other subagents**, period.
 
