@@ -7,6 +7,7 @@ import type { ChatMessage, Part } from "../../lib/transcript";
 import { Text } from "../atoms/Text";
 import { Avatar } from "../molecules/Avatar";
 import { ErrorPart } from "./parts/ErrorPart";
+import { ImagePart } from "./parts/ImagePart";
 import { TextPart } from "./parts/TextPart";
 import { ThinkingPart } from "./parts/ThinkingPart";
 import { ToolCallPart } from "./parts/ToolCallPart";
@@ -66,6 +67,8 @@ function PartView({ part }: { part: Part }) {
       return <ToolCallPart part={part} />;
     case "error":
       return <ErrorPart message={part.message} errorType={part.errorType} />;
+    case "image":
+      return <ImagePart src={part.src} alt={part.alt} caption={part.caption} />;
     default: {
       const _: never = part;
       void _;

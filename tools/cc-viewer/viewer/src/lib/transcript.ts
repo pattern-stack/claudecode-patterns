@@ -33,8 +33,43 @@ export type Part =
       result?: unknown;
       error?: string;
       durationMs?: number;
+      /** Images attached to the tool result (e.g. Read of a PNG). */
+      images?: string[];
     }
-  | { kind: "error"; errorType: string; message: string };
+  | { kind: "error"; errorType: string; message: string }
+  | { kind: "image"; src: string; alt?: string; caption?: string };
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+
+/** Anthropic image block `source` -> a renderable src (data URL or http url). */
+function imageSrcFromSource(source: unknown): string | null {
+  if (!source || typeof source !== "object") return null;
+  const s = source as Record<string, unknown>;
+  if (s.type === "base64" && typeof s.media_type === "string" && typeof s.data === "string") {
+    return `data:${s.media_type};base64,${s.data}`;
+  }
+  if (s.type === "url" && typeof s.url === "string") return s.url;
+  return null;
+}
+
+/** A local image file path -> a URL the backend can stream. Null if not an image. */
+function fileImageSrc(p: string): string | null {
+  if (!IMAGE_EXT.test(p)) return null;
+  return `/admin/file?path=${encodeURIComponent(p)}`;
+}
+
+/** Pull base64/url image srcs out of a tool_result content array. */
+function extractResultImages(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const out: string[] = [];
+  for (const b of content) {
+    if (b && typeof b === "object" && (b as Record<string, unknown>).type === "image") {
+      const src = imageSrcFromSource((b as Record<string, unknown>).source);
+      if (src) out.push(src);
+    }
+  }
+  return out;
+}
 
 export interface ChatMessage {
   id: string;
@@ -117,11 +152,14 @@ export function entriesToMessages(entries: TranscriptEntry[]): ChatMessage[] {
         continue;
       }
 
-      // Plain user text blocks.
+      // Plain user text + pasted images.
       const parts: Part[] = [];
       for (const block of blocks) {
         if (block.type === "text" && typeof block.text === "string") {
           parts.push({ kind: "text", content: block.text });
+        } else if (block.type === "image") {
+          const src = imageSrcFromSource(block.source);
+          if (src) parts.push({ kind: "image", src });
         }
       }
       if (parts.length === 0) continue;
@@ -151,6 +189,23 @@ export function entriesToMessages(entries: TranscriptEntry[]): ChatMessage[] {
           name,
           arguments: block.input ?? {},
         });
+        // File-delivery tools carry image paths, not bytes — render them inline.
+        if (name === "SendUserFile" || name === "SendUserFiles") {
+          const input = (block.input ?? {}) as Record<string, unknown>;
+          const files = Array.isArray(input.files) ? input.files : [];
+          const caption = typeof input.caption === "string" ? input.caption : undefined;
+          let first = true;
+          for (const f of files) {
+            if (typeof f !== "string") continue;
+            const src = fileImageSrc(f);
+            if (!src) continue;
+            parts.push({ kind: "image", src, alt: f, caption: first ? caption : undefined });
+            first = false;
+          }
+        }
+      } else if (bType === "image") {
+        const src = imageSrcFromSource(block.source);
+        if (src) parts.push({ kind: "image", src });
       }
     }
     if (parts.length === 0) continue;
@@ -185,10 +240,12 @@ function mergeToolResult(messages: ChatMessage[], tr: ToolResultBlock): void {
     const part = m.parts[idx];
     if (!part || part.kind !== "tool_call") continue;
     const formatted = formatToolResult(tr.content);
+    const images = extractResultImages(tr.content);
     const patched: Part = {
       ...part,
       result: formatted,
       error: tr.is_error ? formatted : undefined,
+      images: images.length > 0 ? images : part.images,
     };
     const nextParts = m.parts.slice();
     nextParts[idx] = patched;

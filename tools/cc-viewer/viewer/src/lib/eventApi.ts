@@ -115,6 +115,35 @@ export async function fetchSessionCwd(
   return match?.cwd ?? null;
 }
 
+/** One slash command from GET /admin/commands. */
+export interface CommandEntry {
+  /** Invocation token without the leading slash, e.g. "sdlc:design". */
+  name: string;
+  description: string;
+  argumentHint?: string;
+  /** Owning plugin key, or null for project-local / built-in commands. */
+  plugin: string | null;
+  kind: "command" | "skill" | "project" | "builtin";
+}
+
+/**
+ * Fetch the slash-command catalog Claude Code reads (enabled-plugin commands +
+ * user-invocable skills, plus the project's own commands when `cwd` is given).
+ * Built-in commands are not file-backed and are not included. Returns [] on
+ * error so the composer degrades to a plain input.
+ */
+export async function fetchCommands(
+  cwd?: string,
+  opts: { baseUrl?: string } = {},
+): Promise<CommandEntry[]> {
+  const base = opts.baseUrl ?? "";
+  const url = `${base}/admin/commands${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const body = (await res.json()) as { commands?: CommandEntry[] };
+  return body.commands ?? [];
+}
+
 /** Result of POST /admin/input/send. */
 export interface SendInputResult {
   ok: boolean;
