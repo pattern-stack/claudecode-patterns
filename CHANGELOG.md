@@ -5,6 +5,14 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.16] — 2026-06-13
+
+### Added — CI invariant: the plugin's own `hooks.json` can't re-register `WorktreeCreate`
+
+Companion to 0.2.15's `/sdlc:doctor`. `doctor` deliberately doesn't scan plugin-cache hooks (stale cached versions false-positive), so it can't catch the plugin re-shipping the 0.2.12 footgun. This closes that gap from the other side:
+
+- **`plugin/scripts/verify-worktree-hooks.sh`** (+ `just sdlc::verify-worktree-hooks`, added to the `verify` aggregate and wired into the `verify.yml` invariants job). Fails CI if `hooks/hooks.json` registers any `WorktreeCreate` hook — the plugin's policy is *never* register it (worktrees stay harness-managed; `WorktreeRemove` is observer-safe and allowed). Exit `0`/`1`/`2`, `jq`-gated.
+
 ## [0.2.15] — 2026-06-13
 
 ### Added — `/sdlc:doctor` config health check (+ auto-guard for the WorktreeCreate footgun)
