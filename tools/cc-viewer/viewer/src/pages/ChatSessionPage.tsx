@@ -7,6 +7,7 @@
  * AppShell main column.
  */
 
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../components/atoms/Badge";
 import { Card } from "../components/atoms/Card";
@@ -14,11 +15,29 @@ import { Spinner } from "../components/atoms/Spinner";
 import { AlertIcon } from "../components/atoms/icons";
 import { ChatPanel } from "../components/organisms/ChatPanel";
 import { useTranscript } from "../hooks/useTranscript";
+import { fetchSessionCwd } from "../lib/eventApi";
 
 export function ChatSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const decoded = sessionId ? decodeURIComponent(sessionId) : undefined;
   const { messages, loading, error, connected } = useTranscript(decoded);
+
+  // Resolve the session's cwd so the composer can target the live pane.
+  const [cwd, setCwd] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!decoded) return;
+    let alive = true;
+    fetchSessionCwd(decoded)
+      .then((c) => {
+        if (alive) setCwd(c ?? undefined);
+      })
+      .catch(() => {
+        /* composer just stays hidden if cwd can't be resolved */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [decoded]);
 
   if (!decoded) {
     return <ErrorBanner message="No session id in URL." />;
@@ -92,6 +111,7 @@ export function ChatSessionPage() {
           messages={messages}
           emptyLabel={loading ? "Loading transcript…" : "No transcript entries for this session."}
           expectingReply={connected}
+          cwd={cwd}
         />
       </div>
     </div>

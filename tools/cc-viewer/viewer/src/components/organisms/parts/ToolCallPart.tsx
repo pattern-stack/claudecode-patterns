@@ -93,6 +93,26 @@ export function ToolCallPart({ part }: ToolCallPartProps) {
               {formatResult(part.result)}
             </CodeBlock>
           )}
+          {part.images && part.images.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {part.images.map((src) => (
+                <a key={src} href={src} target="_blank" rel="noreferrer" style={{ lineHeight: 0 }}>
+                  <img
+                    src={src}
+                    alt="tool result"
+                    loading="lazy"
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: 320,
+                      objectFit: "contain",
+                      borderRadius: 6,
+                      border: "1px solid var(--border-muted)",
+                    }}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
           {part.error && (
             <CodeBlock label="error" tone="danger" copyable>
               {part.error}

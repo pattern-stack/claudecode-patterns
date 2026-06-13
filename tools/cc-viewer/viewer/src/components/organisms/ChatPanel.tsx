@@ -17,6 +17,7 @@ import { type ChatGroup, groupTurns } from "../../lib/turns";
 import type { ChatMessage } from "../../lib/transcript";
 import { Avatar } from "../molecules/Avatar";
 import { WaitingIndicator } from "../molecules/WaitingIndicator";
+import { ChatComposer } from "./ChatComposer";
 import { MessageRow } from "./MessageRow";
 import { TurnCard } from "./TurnCard";
 
@@ -26,12 +27,17 @@ interface ChatPanelProps {
   /** When true, render a waiting indicator if the thread appears to be
    * waiting on Claude (post-user-message or mid-tool). */
   expectingReply?: boolean;
+  /** Working directory of this session. When set, an input composer is
+   * rendered that injects text into the live terminal pane in this cwd
+   * (via ghostty-bridge). Omit for a purely read-only thread. */
+  cwd?: string;
 }
 
 export function ChatPanel({
   messages,
   emptyLabel = "No messages yet.",
   expectingReply = false,
+  cwd,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => groupTurns(messages), [messages]);
@@ -74,6 +80,7 @@ export function ChatPanel({
         {waitingFor && <WaitingTurn label={waitingFor} />}
         <div ref={bottomRef} />
       </div>
+      {cwd && <ChatComposer cwd={cwd} />}
     </div>
   );
 }
