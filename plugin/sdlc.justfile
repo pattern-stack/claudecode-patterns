@@ -19,9 +19,9 @@ default:
 
 # ─── Verify (SDLC config invariants) ──────────────────────────────────
 
-# verify all (canvases + tool groups + teammate tools)
+# verify all (canvases + tool groups + teammate tools + worktree hooks)
 [group('verify')]
-verify: verify-canvases verify-tool-groups verify-teammate-tools
+verify: verify-canvases verify-tool-groups verify-teammate-tools verify-worktree-hooks
 
 # verify canvas instructions.yaml schemas
 [group('verify')]
@@ -37,6 +37,11 @@ verify-tool-groups:
 [group('verify')]
 verify-teammate-tools:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-teammate-tools.sh"
+
+# verify the plugin's own hooks.json never registers a WorktreeCreate provider hook
+[group('verify')]
+verify-worktree-hooks:
+    @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-worktree-hooks.sh"
 
 # ─── Doctor (harness/config health) ───────────────────────────────────
 
