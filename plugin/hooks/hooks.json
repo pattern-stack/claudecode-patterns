@@ -104,6 +104,17 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/doctor.sh --hook UserPromptSubmit",
+            "async": false,
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
