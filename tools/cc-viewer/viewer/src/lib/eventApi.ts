@@ -90,3 +90,60 @@ export async function fetchTranscript(
   const body = (await res.json()) as TranscriptResponse;
   return body.entries ?? [];
 }
+
+/** One row from GET /admin/claude-code/sessions. */
+interface SessionSummary {
+  sessionId: string;
+  cwd: string | null;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+/**
+ * Resolve a session's working directory — the key used to match the live
+ * Ghostty terminal pane when sending input. Returns null if unknown.
+ */
+export async function fetchSessionCwd(
+  sessionId: string,
+  opts: { baseUrl?: string } = {},
+): Promise<string | null> {
+  const base = opts.baseUrl ?? "";
+  const res = await fetch(`${base}/admin/claude-code/sessions?limit=500`);
+  if (!res.ok) return null;
+  const body = (await res.json()) as { sessions?: SessionSummary[] };
+  const match = (body.sessions ?? []).find((s) => s.sessionId === sessionId);
+  return match?.cwd ?? null;
+}
+
+/** Result of POST /admin/input/send. */
+export interface SendInputResult {
+  ok: boolean;
+  terminal_id: string | null;
+  matched: number | null;
+}
+
+/**
+ * Send text into the live terminal session identified by `cwd` (proxied to
+ * ghostty-bridge). `submit` presses Enter after the paste (default true).
+ * Throws Error with the server's message on failure (e.g. no live pane).
+ */
+export async function sendAgentInput(
+  args: { cwd: string; text: string; submit?: boolean },
+  opts: { baseUrl?: string } = {},
+): Promise<SendInputResult> {
+  const base = opts.baseUrl ?? "";
+  const res = await fetch(`${base}/admin/input/send`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cwd: args.cwd, text: args.text, submit: args.submit ?? true }),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof body.error === "string" ? body.error : `send failed (HTTP ${res.status})`);
+  }
+  return {
+    ok: Boolean(body.ok),
+    terminal_id: (body.terminal_id as string | null) ?? null,
+    matched: (body.matched as number | null) ?? null,
+  };
+}
