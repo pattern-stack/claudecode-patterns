@@ -79,3 +79,6 @@ export interface TranscriptDeltaEvent extends BaseEvent {
 }
 
 export const TRANSCRIPT_DELTA_TYPE = "claude_code.transcript_delta" as const;
+
+/** Broadcast when the slash-command catalog sources change on disk. */
+export const COMMANDS_CHANGED_TYPE = "cc_viewer.commands_changed" as const;

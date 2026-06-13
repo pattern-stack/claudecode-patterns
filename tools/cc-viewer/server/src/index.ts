@@ -11,6 +11,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createServer } from "./app.js";
+import { watchCommandSources } from "./command-watcher.js";
 import { EventStore } from "./event-store.js";
 import { SSEBroadcaster } from "./sse-broadcaster.js";
 import { STATIC_BUNDLE } from "./static-bundle.js";
@@ -42,6 +43,9 @@ function resolveDbPath(): string {
 
 const persistence = resolveEventStore();
 const broadcaster = new SSEBroadcaster();
+
+// Live-update the slash-command palette when plugin config changes on disk.
+watchCommandSources(broadcaster);
 
 const app = createServer({
   eventStore: persistence.store,
