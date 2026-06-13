@@ -9,7 +9,8 @@
  */
 
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { type CommandEntry, fetchCommands, sendAgentInput } from "../../lib/eventApi";
+import { useCommandCatalog } from "../../hooks/useCommandCatalog";
+import { type CommandEntry, sendAgentInput } from "../../lib/eventApi";
 import { Button } from "../atoms/Button";
 
 export function ChatComposer({ cwd }: { cwd: string }) {
@@ -19,22 +20,21 @@ export function ChatComposer({ cwd }: { cwd: string }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   // Slash-command palette.
-  const [commands, setCommands] = useState<CommandEntry[] | null>(null);
   const [selected, setSelected] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  // Activate (fetch + live-subscribe) once the user first reaches for a command.
+  const [activated, setActivated] = useState(false);
 
   // A "command query" is a leading "/" with no whitespace yet (the first token).
   const isQuery = text.startsWith("/") && !/\s/.test(text);
   const query = isQuery ? text.slice(1).toLowerCase() : "";
 
-  // Lazy-load the catalog the first time the user reaches for a command.
   useEffect(() => {
-    if (isQuery && commands === null) {
-      fetchCommands(cwd)
-        .then(setCommands)
-        .catch(() => setCommands([]));
-    }
-  }, [isQuery, commands, cwd]);
+    if (isQuery && !activated) setActivated(true);
+  }, [isQuery, activated]);
+
+  // Catalog stays live: re-fetches when plugin config changes on disk.
+  const commands = useCommandCatalog(cwd, activated);
 
   const matches = useMemo(() => {
     if (!isQuery || !commands) return [];
