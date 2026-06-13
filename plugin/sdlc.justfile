@@ -38,6 +38,13 @@ verify-tool-groups:
 verify-teammate-tools:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-teammate-tools.sh"
 
+# ─── Doctor (harness/config health) ───────────────────────────────────
+
+# diagnose Claude Code / sdlc misconfigurations (e.g. the WorktreeCreate provider-hook footgun)
+[group('verify')]
+doctor:
+    @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/doctor.sh"
+
 # ─── Claude Code agent launchers ──────────────────────────────────────
 # One recipe per launchable Claude Code agent UX. Recipes pre-apply the
 # right --output-style so users don't have to remember flag names.

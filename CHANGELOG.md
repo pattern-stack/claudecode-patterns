@@ -5,6 +5,15 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.15] — 2026-06-13
+
+### Added — `/sdlc:doctor` config health check (+ auto-guard for the WorktreeCreate footgun)
+
+A diagnostic that catches the exact class of silent misconfiguration that 0.2.14 fixed — but in *consumer* projects, where it can't be fixed by editing the plugin.
+
+- **`/sdlc:doctor` command + `plugin/scripts/doctor.sh`** (also `just sdlc::doctor`). Read-only; reports findings with fixes. Exit `0` clean / `1` error(s) / `2` env error. First check, `worktreecreate-provider`, scans the project's `.claude/settings.json`, `.claude/settings.local.json`, `hooks/hooks.json`, and `~/.claude/settings.json` for a `WorktreeCreate` hook registered as a passive provider — `async: true`, or a telemetry emitter (`emit.sh`/`emit.mjs`) that prints no path. Both flavors break every `isolation: "worktree"` Agent spawn with `WorktreeCreate hook failed: hook succeeded but returned no worktree path`. `async`/emitter → **ERROR**; a custom sync command → **INFO** (likely a real provider, just confirm it prints the path). Plugin-cache hooks are deliberately not scanned (stale cached versions would false-positive; each plugin validates its own `hooks.json` in CI). Bash-3.2 safe; requires `jq`.
+- **`UserPromptSubmit` guard** — `doctor.sh --hook UserPromptSubmit` is wired into `hooks/hooks.json`, staying silent unless it finds an ERROR (with a fast `grep` pre-filter so it's near-free when clean). The footgun now self-surfaces instead of blocking mid-session. The check is extensible — add a `check_<name>` function in `doctor.sh`.
+
 ## [0.2.14] — 2026-06-07
 
 ### Fixed — WorktreeCreate telemetry hook broke `isolation: "worktree"` harness-wide
