@@ -69,6 +69,7 @@ Recent: !`git log --oneline -5`
    - `develop_team`: base roster
    - `task_management`, `language`, `quality_profile`: pass-through
    - `worktree.enabled`: whether to spawn the implementer in an isolated worktree (Step 5)
+   - `phase_models`: optional per-agent model overrides applied at spawn (Step 5)
 
 ### Step 2: Resolve issue (issue-key entry only)
 
@@ -123,6 +124,8 @@ Composed mode does NOT run the standalone loop's per-round user-gate — the PR-
 ### Step 5: Spawn the team
 
 `TeamCreate` with the resolved roster. Each agent becomes a teammate addressable via `SendMessage`. Hand off the issue key + **resolved spec path** to `implementer` first; the rest are co-present for ad-hoc questions and per-step verification.
+
+**Model policy** — for each teammate, resolve its model from `sdlc.yml.phase_models.<agent-name>` (bare role name, e.g. `implementer`). If set, pass `model: <value>` at spawn — the same spawn-time override channel as `isolation`. If unset (or `phase_models` absent), omit the override and let the agent's own frontmatter `model:` default stand. Never fork an agent def to change its model — that decision lives in `sdlc.yml`.
 
 **Worktree isolation** — if `sdlc.yml.worktree.enabled: true`, spawn the `implementer` with `isolation: "worktree"` so its edits land in an isolated git worktree, not the shared tree. This is the in-repo half of the isolation guarantee; for **cross-repo** work (validating against or generating into a sibling repo) see [`dual-worktree-strategy.md` § Cross-repo isolation](../../.claude/docs/dual-worktree-strategy.md) — never mutate a sibling repo's working tree another agent may own.
 

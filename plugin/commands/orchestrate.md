@@ -52,6 +52,7 @@ Recent: !`git log --oneline -5`
 Read `.claude/sdlc.yml`. Capture:
 - `orchestrate_concurrency`: max parallel coordinators
 - `quality_profile`, `language`, `task_management`: pass-through to coordinators
+- `phase_models`: optional per-agent model overrides — applied to the `coordinator` teammate here (Step 4), and passed through so each coordinator applies them to its own implementer/validator subagents
 
 ### Step 2: Resolve issue list
 
@@ -72,6 +73,7 @@ Drop any issue carrying a `needs:*` label that maps to a Topology-A-shaped agent
 
 For up to `orchestrate_concurrency` issues at a time:
 - `TeamCreate` one teammate per issue with the `coordinator` agent.
+- **Model policy**: if `sdlc.yml.phase_models.coordinator` is set, spawn the coordinator teammate with `model: <value>`; otherwise omit and let `coordinator.md`'s frontmatter default stand. The coordinator reads `sdlc.yml` itself and applies `phase_models.implementer` / `phase_models.validator` to its own subagents (see `coordinator.md` §§3–4) — no need to thread those through the handoff.
 - Hand off issue key + relevant spec path.
 
 Each coordinator runs end-to-end on its issue. Coordinators report back via the team result.

@@ -5,6 +5,16 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.17] — 2026-07-02
+
+### Added — `phase_models`: per-phase model policy as project config
+
+Model selection per SDLC phase is now a `sdlc.yml` decision, not a forked agent def. Same shape as `gate1_default` — declared in config, resolved at spawn time.
+
+- **`sdlc.example.yml` → new optional `phase_models:` block.** Maps agent role names (`implementer`, `validator`, `specifier`, `reviewer`, `coordinator`, `planner`, `understander`) to a model alias (`opus` | `sonnet` | `haiku`) or full model ID. Ships **unset** — absent/all-commented means every agent keeps its shipped frontmatter default, so existing behavior is unchanged. The block documents the single resolution rule every spawn point obeys: key set → pass `model:` as the spawn-time override (same channel as `isolation`); key unset → omit it, frontmatter default stands.
+- **Threaded into every spawn point**: `/develop` (roster teammates), `/orchestrate` (coordinator teammate) + `coordinator.md` (its implementer/validator subagents), `/design` (specifier), `/plan` (understander, planner), `/critique` + `/review` (reviewer). Each reads `phase_models` from `sdlc.yml` and applies the override at the `Agent(...)` / `TeamCreate` call.
+- **Why spawn-time, not frontmatter**: agent frontmatter is static YAML with no interpolation — it can't read `sdlc.yml`. The spawn-time `model:` arg is the only channel that can, and the harness layers it over frontmatter. So no agent def is forked or mutated; policy lives in the repo, visible and per-project.
+
 ## [0.2.16] — 2026-06-13
 
 ### Added — CI invariant: the plugin's own `hooks.json` can't re-register `WorktreeCreate`
