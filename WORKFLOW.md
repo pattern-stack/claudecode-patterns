@@ -168,6 +168,12 @@ orchestrate_concurrency: 3     # Topology B max parallel coordinators
 
 worktree:
   enabled: true                # implementer subagents run in isolated worktrees
+
+phase_models:                  # optional per-phase model policy (unset = agent frontmatter default)
+  specifier:   opus            # keys are agent role names; values are model aliases or full IDs
+  implementer: sonnet          # resolved at spawn time, layered over each agent's default —
+  reviewer:    opus            # no forked agent defs. Honored by /develop, /orchestrate (+ coordinator),
+                               # /design, /plan, /critique, /review.
 ```
 
 To swap a primitive (Linear → GitHub Issues), change one line in `sdlc.yml` and create the new primitive file. No agent edits required — agents use denylist tool inheritance and read task management tool calls through whichever MCP is connected.

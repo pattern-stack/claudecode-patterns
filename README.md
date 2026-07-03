@@ -153,9 +153,14 @@ develop_team:                  # who shows up for /develop
   - implementer
   - validator
 orchestrate_concurrency: 3     # how many issues run in parallel
+
+phase_models:                  # per-phase model policy (optional)
+  specifier:   opus            #   strongest model for the judgment-heavy phases
+  implementer: sonnet          #   cheaper model for the mechanical ones
+  reviewer:    opus
 ```
 
-Want to pin a different commit style for one project? Change one line. Add a custom validator step? Drop a primitive. The agents read the config — you don't have to fork prompt files to change behavior.
+Want to pin a different commit style for one project? Change one line. Add a custom validator step? Drop a primitive. Want a stronger model for spec-writing and a cheaper one for mechanical implementation? Set `phase_models` — it's resolved at spawn time and layered over each agent's default, so you never fork an agent def to change its model. The agents read the config — you don't have to fork prompt files to change behavior.
 
 This is what makes onboarding a team trivial — clone the repo, adjust two values, your AI behaves consistently for everyone. No "whose `~/.claude/` setup is the source of truth" debate.
 

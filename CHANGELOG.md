@@ -5,6 +5,14 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.18] — 2026-07-03
+
+### Documented — `phase_models` in the top-level config walkthroughs
+
+Follow-up to 0.2.17, which shipped the knob but only documented it inline in `sdlc.example.yml`. The two hand-authored config walkthroughs now surface it where users actually look:
+
+- **`README.md` § "Customize without editing fifteen markdown files"** and **`WORKFLOW.md` § "governed by `.claude/sdlc.yml`"** — both `sdlc.yml` knob snippets now include `phase_models`, framed as the canonical "stronger model for judgment-heavy phases, cheaper for mechanical ones — without forking an agent def" example. No behavior change; docs + version bump only.
+
 ## [0.2.17] — 2026-07-02
 
 ### Added — `phase_models`: per-phase model policy as project config
