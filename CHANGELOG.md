@@ -5,6 +5,17 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.19] — 2026-07-03
+
+### Shipped — cc-viewer dashboard: project-tree sidebar + a release binary that's current
+
+Release-only bump: cuts a fresh `cc-viewer` binary. The dashboard ships as a per-platform binary attached to the plugin's GitHub Release and version-pinned to `plugin.json`, but the last released binary was `v0.2.9` — so every cc-viewer change since late May (terminal composer, `/`-command palette, and the new sidebar) had merged to source but never reached an installed binary. The version-pinned download for the interim versions 404s and the SessionStart hook falls back to the newest *cached* binary, so `/plugin update` never refreshed the dashboard. Tagging `v0.2.19` rebuilds the binary from current `main` and republishes it; the next session self-upgrades onto it.
+
+- **New: collapsible project-tree left sidebar.** Projects group their sessions; a swarm **lead expands to its teammates**; an **All activity** entry gives the global cross-project view; search filters by session title / first prompt / id.
+- **Sessions are titled, not id'd.** A session now shows its teammate role name → swarm summary → first user prompt → worktree → short id, instead of a raw session id. Swarm leads and teammates render distinctly from ordinary chats.
+- **One session index** (fetch-once + live SSE, hook-events only) feeds the sidebar, the activity list, and the per-session related-sessions navigator. Ordering is stable under live activity (`firstSeen`).
+- To pick it up: `/plugin update`, then start a new Claude Code session — the `ensure-cc-viewer` hook downloads `cc-viewer-v0.2.19` and restarts the dashboard.
+
 ## [0.2.18] — 2026-07-03
 
 ### Documented — `phase_models` in the top-level config walkthroughs
