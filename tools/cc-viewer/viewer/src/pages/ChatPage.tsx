@@ -1,9 +1,10 @@
 /**
- * ChatPage — top-level list of Claude Code sessions, grouped by project
- * (basename of cwd). Each row is a link to the session's transcript view.
+ * ChatPage — top-level list of Claude Code sessions, grouped by the project
+ * each session was launched from. Worktree, subagent, and subdir sessions
+ * collapse onto their parent project (see `sessionProjectKey`) instead of
+ * fragmenting into separate rows. Each row links to the session's transcript.
  */
 
-import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/atoms/Badge";
 import { Card } from "../components/atoms/Card";
@@ -11,48 +12,28 @@ import { Spinner } from "../components/atoms/Spinner";
 import { StatusDot } from "../components/atoms/StatusDot";
 import { Text } from "../components/atoms/Text";
 import { Timestamp } from "../components/atoms/Timestamp";
-import { TruncateMid } from "../components/atoms/Truncate";
 import { AlertIcon } from "../components/atoms/icons";
-import { type StreamEvent, useEventStream } from "../hooks/useEventStream";
+import { RoleBadge } from "../components/molecules/RoleBadge";
+import { useSessionIndex } from "../hooks/useSessionIndex";
 import {
+  type ProjectBucket,
   type SessionState,
+  clusterProjectSessions,
   formatDuration,
-  groupClaudeCodeEvents,
+  sessionKind,
+  sessionTitle,
+  teamLabel,
+  worktreeName,
 } from "../lib/claudeCodeSessions";
-import { fetchRecentEvents } from "../lib/eventApi";
 
 const LIVE_THRESHOLD_MS = 30_000;
 
 export function ChatPage() {
-  const [initial, setInitial] = useState<StreamEvent[] | null>(null);
+  const { sessions, projects, connected, ready, error } = useSessionIndex();
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchRecentEvents({ type: "claude_code.hook" })
-      .then((rows) => {
-        if (!cancelled) setInitial(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setInitial([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (initial === null) {
+  if (!ready) {
     return <HydratingState />;
   }
-  return <ChatPageLoaded initialEvents={initial} />;
-}
-
-function ChatPageLoaded({ initialEvents }: { initialEvents: StreamEvent[] }) {
-  const { events, connected, error } = useEventStream("/admin/events/stream", {
-    initialEvents,
-  });
-
-  const sessions: SessionState[] = useMemo(() => groupClaudeCodeEvents(events), [events]);
-  const projects = useMemo(() => groupByProject(sessions), [sessions]);
 
   return (
     <div>
@@ -65,7 +46,7 @@ function ChatPageLoaded({ initialEvents }: { initialEvents: StreamEvent[] }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600 }}>Chat</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 600 }}>All activity</h1>
           {connected ? (
             <Badge tone="green" variant="outline">
               <StatusDot tone="live" size={6} />
@@ -120,44 +101,6 @@ function ChatPageLoaded({ initialEvents }: { initialEvents: StreamEvent[] }) {
   );
 }
 
-interface ProjectBucket {
-  key: string;
-  label: string;
-  cwd?: string;
-  sessions: SessionState[];
-  latestActivity: string;
-}
-
-function groupByProject(sessions: SessionState[]): ProjectBucket[] {
-  const byKey = new Map<string, ProjectBucket>();
-  for (const s of sessions) {
-    const key = s.cwd ?? "__no_cwd__";
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.sessions.push(s);
-      if (s.lastSeen > existing.latestActivity) existing.latestActivity = s.lastSeen;
-      continue;
-    }
-    byKey.set(key, {
-      key,
-      label: projectLabel(s.cwd),
-      cwd: s.cwd,
-      sessions: [s],
-      latestActivity: s.lastSeen,
-    });
-  }
-  return Array.from(byKey.values()).sort((a, b) =>
-    a.latestActivity < b.latestActivity ? 1 : -1,
-  );
-}
-
-function projectLabel(cwd: string | undefined): string {
-  if (!cwd) return "Unknown project";
-  const trimmed = cwd.replace(/\/+$/, "");
-  const last = trimmed.split("/").pop();
-  return last || cwd;
-}
-
 function ProjectGroup({ project }: { project: ProjectBucket }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -182,10 +125,38 @@ function ProjectGroup({ project }: { project: ProjectBucket }) {
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {project.sessions.map((s) => (
-          <SessionLinkRow key={s.sessionId} session={s} />
-        ))}
+        {clusterProjectSessions(project.sessions).map((row) =>
+          row.kind === "team" ? (
+            <TeamCluster key={`team:${row.teamName}`} teamName={row.teamName} sessions={row.sessions} />
+          ) : (
+            <SessionLinkRow key={row.session.sessionId} session={row.session} />
+          ),
+        )}
       </div>
+    </div>
+  );
+}
+
+function TeamCluster({ teamName, sessions }: { teamName: string; sessions: SessionState[] }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        paddingLeft: 10,
+        borderLeft: "2px solid var(--border-muted)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px" }}>
+        <Text size="xs" weight="semibold" tone="subtle">👥 {teamLabel(teamName)}</Text>
+        <Text size="xs" tone="subtle" family="mono">
+          {sessions.length} member{sessions.length === 1 ? "" : "s"}
+        </Text>
+      </div>
+      {sessions.map((s) => (
+        <SessionLinkRow key={s.sessionId} session={s} />
+      ))}
     </div>
   );
 }
@@ -193,6 +164,8 @@ function ProjectGroup({ project }: { project: ProjectBucket }) {
 function SessionLinkRow({ session }: { session: SessionState }) {
   const duration = formatDuration(session.firstSeen, session.lastSeen);
   const isLive = Date.now() - new Date(session.lastSeen).getTime() < LIVE_THRESHOLD_MS;
+  const worktree = worktreeName(session.cwd);
+  const kind = sessionKind(session);
   return (
     <Link
       to={`/chat/${encodeURIComponent(session.sessionId)}`}
@@ -214,12 +187,29 @@ function SessionLinkRow({ session }: { session: SessionState }) {
           pulse={isLive}
           title={isLive ? "Active within the last 30 seconds" : undefined}
         />
-        <Badge tone="emerald" variant="outline" title={session.sessionId}>
-          <TruncateMid value={session.sessionId} />
-        </Badge>
+        <span
+          title={session.sessionId}
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: "var(--fg-default)",
+            maxWidth: 360,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {sessionTitle(session)}
+        </span>
+        {kind !== "session" && <RoleBadge session={session} />}
         {session.source === "resume" && (
           <Badge tone="purple" variant="outline">
             resumed
+          </Badge>
+        )}
+        {worktree && (
+          <Badge tone="muted" variant="outline" title={`worktree: ${worktree}`}>
+            ⑂ {worktree}
           </Badge>
         )}
         <Badge tone="muted">{session.events.length} hooks</Badge>

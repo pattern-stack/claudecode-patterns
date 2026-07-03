@@ -7,7 +7,7 @@ export interface StreamEvent {
   timestamp: string;
 }
 
-const MAX_EVENTS = 500;
+const DEFAULT_MAX_EVENTS = 500;
 const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 30_000;
 
@@ -24,12 +24,30 @@ export interface UseEventStreamOptions {
    * REST history pass these in so the UI doesn't start empty on cold load.
    */
   initialEvents?: StreamEvent[];
+  /**
+   * Cap on the retained event buffer. A live tail view wants a small cap; the
+   * session index (which reduces the whole buffer into sessions/teammates) must
+   * keep enough history that a swarm's `TeammateIdle` tags aren't evicted, so it
+   * passes a cap above the seed size. Default 500.
+   */
+  maxEvents?: number;
+  /**
+   * SSE event names to subscribe to. Defaults to both `claude_code.hook` and
+   * `claude_code.transcript_delta`. Consumers that only reduce hook events (the
+   * session index) should pass `["claude_code.hook"]` so transcript deltas don't
+   * flood the buffer and trigger a full re-reduction per streamed line.
+   */
+  eventNames?: string[];
 }
+
+const DEFAULT_EVENT_NAMES = ["claude_code.hook", "claude_code.transcript_delta"];
 
 export function useEventStream(
   path: string,
   options: UseEventStreamOptions = {},
 ): UseEventStreamResult {
+  const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
+  const eventNames = options.eventNames ?? DEFAULT_EVENT_NAMES;
   const [events, setEvents] = useState<StreamEvent[]>(options.initialEvents ?? []);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,8 +75,6 @@ export function useEventStream(
         retryDelayRef.current = INITIAL_RETRY_MS;
       };
 
-      const NAMED_EVENTS = ["claude_code.hook", "claude_code.transcript_delta"];
-
       const ingest = (type: string, data: string) => {
         try {
           const parsed = JSON.parse(data);
@@ -70,7 +86,7 @@ export function useEventStream(
           };
           setEvents((prev) => {
             const next = [...prev, streamEvent];
-            return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;
+            return next.length > maxEvents ? next.slice(-maxEvents) : next;
           });
         } catch {
           // ignore malformed events
@@ -78,7 +94,7 @@ export function useEventStream(
       };
 
       source.onmessage = (e) => ingest(e.type || "message", e.data);
-      for (const name of NAMED_EVENTS) {
+      for (const name of eventNames) {
         source.addEventListener(name, (e) => ingest(name, (e as MessageEvent).data));
       }
 

@@ -21,7 +21,17 @@ export interface SessionState {
   firstSeen: string;
   lastSeen: string;
   cwd?: string;
+  transcriptPath?: string;
   source?: string;
+  /** When this session orchestrates a teammate swarm, the team it leads and the
+   *  distinct teammate names it manages. Derived from `TeammateIdle` hooks,
+   *  which fire in the *lead's* session (the `teammate_name` names a child, so
+   *  this marks the session as a LEAD, never as a teammate itself). */
+  teamName?: string;
+  teammates?: string[];
+  /** The session's first user prompt — used as a human-readable title, the way
+   *  chat tools name a conversation by its opening message. */
+  firstPrompt?: string;
   events: SessionEvent[];
   counts: Record<string, number>;
 }
@@ -52,8 +62,14 @@ export function groupClaudeCodeEvents(events: StreamEvent[]): SessionState[] {
     const toolName = str(data.tool_name) ?? str(data.toolName);
     const toolUseId = str(data.tool_use_id) ?? str(data.toolUseId);
     const cwd = str(data.cwd);
+    const transcriptPath = str(data.transcript_path) ?? str(data.transcriptPath);
     const timestamp = event.timestamp;
     const runnerCorrelationId = str(data.runner_correlation_id) ?? str(data.runnerCorrelationId);
+    // Teammate identity lives in the nested hook payload, not the envelope top level.
+    const payload = (data.payload ?? {}) as Record<string, unknown>;
+    const teammateName = str(data.teammate_name) ?? str(payload.teammate_name);
+    const teamName = str(data.team_name) ?? str(payload.team_name);
+    const prompt = hookName === "UserPromptSubmit" ? str(payload.prompt) ?? str(data.prompt) : undefined;
 
     let session = byId.get(sessionId);
     if (!session) {
@@ -65,10 +81,20 @@ export function groupClaudeCodeEvents(events: StreamEvent[]): SessionState[] {
         counts: {},
       };
       if (cwd) session.cwd = cwd;
+      if (transcriptPath) session.transcriptPath = transcriptPath;
       byId.set(sessionId, session);
     }
 
     if (!session.cwd && cwd) session.cwd = cwd;
+    if (!session.transcriptPath && transcriptPath) session.transcriptPath = transcriptPath;
+    if (teamName) session.teamName = teamName;
+    if (teammateName) {
+      (session.teammates ??= []).includes(teammateName) ||
+        session.teammates.push(teammateName);
+    }
+    // Keep the earliest prompt as the session's title. Events arrive ascending,
+    // so the first one we see wins.
+    if (prompt && !session.firstPrompt) session.firstPrompt = prompt;
     if (hookName === "SessionStart") {
       const source = str(data.source);
       if (source) session.source = source;
@@ -90,8 +116,204 @@ export function groupClaudeCodeEvents(events: StreamEvent[]): SessionState[] {
     session.counts[hookName] = (session.counts[hookName] ?? 0) + 1;
   }
 
-  return Array.from(byId.values()).sort((a, b) =>
-    a.lastSeen < b.lastSeen ? 1 : a.lastSeen > b.lastSeen ? -1 : 0,
+  // Order by creation time (firstSeen), NOT lastSeen: a session's position must
+  // stay put as live events stream in, otherwise the list reshuffles constantly.
+  // Newest-created first; sessionId as a stable tie-break.
+  return Array.from(byId.values()).sort((a, b) => {
+    if (a.firstSeen !== b.firstSeen) return a.firstSeen < b.firstSeen ? 1 : -1;
+    return a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0;
+  });
+}
+
+/**
+ * A Claude Code session's cwd drifts over its lifetime: subagents report their
+ * own cwd, `isolation: "worktree"` spawns run under `.claude/worktrees/<name>`,
+ * and the user may `cd` into subdirs. Grouping on the raw cwd therefore scatters
+ * one logical project across many rows. These helpers collapse a session back to
+ * the project it was *launched* from.
+ *
+ * The authoritative signal is `transcriptPath`: Claude Code keys each session's
+ * transcript directory to its launch cwd and never moves it, so every session
+ * launched from a repo shares one transcript project dir — even the ones whose
+ * live cwd is a worktree or subdir. cwd is the display-friendly fallback.
+ */
+
+const WORKTREE_SEG = /\/\.claude\/worktrees\/[^/]+(?:\/.*)?$/;
+
+/**
+ * Collapse a `.../.claude/worktrees/<name>/...` path back to its repo root.
+ * Leaves non-worktree paths untouched.
+ */
+export function stripWorktree(path: string): string {
+  return path.replace(WORKTREE_SEG, "");
+}
+
+/** The worktree name if `cwd` lives inside one, else undefined. */
+export function worktreeName(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  const m = cwd.match(/\/\.claude\/worktrees\/([^/]+)/);
+  return m ? m[1] : undefined;
+}
+
+/**
+ * What role a session played, inferred from its hook trail:
+ *  - `lead`     — orchestrates a teammate swarm (emits ≥2 distinct teammate names)
+ *  - `teammate` — a single swarm member (self-reports one teammate name)
+ *  - `session`  — an ordinary top-level chat
+ *
+ * Note: there is deliberately no `subagent` kind. A `.claude/worktrees/agent-*`
+ * cwd is just Claude Code's default worktree naming (regular chats, teammates,
+ * and Agent spawns all land there), so it can't classify a session — and true
+ * Agent-tool subagents share their parent's `session_id` and never appear as a
+ * separate session anyway.
+ */
+export type SessionKind = "lead" | "teammate" | "session";
+
+export function sessionKind(session: SessionState): SessionKind {
+  const n = session.teammates?.length ?? 0;
+  if (n >= 2) return "lead";
+  if (n === 1) return "teammate";
+  return "session";
+}
+
+/** The teammate role name when this session is a single swarm member. */
+export function teammateName(session: SessionState): string | undefined {
+  return session.teammates?.length === 1 ? session.teammates[0] : undefined;
+}
+
+/**
+ * Human title for a session, best-available first:
+ *   teammate role name → swarm summary → first user prompt → worktree → short id.
+ * This is what shows in the sidebar and lists instead of a raw session id.
+ */
+export function sessionTitle(session: SessionState): string {
+  const mate = teammateName(session);
+  if (mate) return mate;
+  const n = session.teammates?.length ?? 0;
+  if (n >= 2) return `swarm · ${n} agents`;
+  if (session.firstPrompt) return truncate(session.firstPrompt, 52);
+  const wt = worktreeName(session.cwd);
+  if (wt) return wt.replace(/^agent-/, "");
+  return session.sessionId.slice(0, 8);
+}
+
+function truncate(s: string, max: number): string {
+  const clean = s.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+/** A human team label — swarms keyed as `session-<id>` read as "swarm". */
+export function teamLabel(teamName: string | undefined): string | undefined {
+  if (!teamName) return undefined;
+  return teamName.startsWith("session-") ? "swarm" : teamName;
+}
+
+/** Basename of a project path, for display. */
+export function projectLabel(cwd: string | undefined): string {
+  if (!cwd) return "Unknown project";
+  const trimmed = cwd.replace(/\/+$/, "");
+  return trimmed.split("/").pop() || cwd;
+}
+
+export interface ProjectBucket {
+  key: string;
+  label: string;
+  cwd?: string;
+  sessions: SessionState[];
+  /** Newest session-creation time in the bucket. Immutable per session, so a
+   *  project's list position doesn't churn as live events arrive. */
+  newestCreated: string;
+}
+
+/**
+ * Group sessions by their launch project (`sessionProjectKey`). Worktree/subdir
+ * sessions collapse onto the repo root. Ordered by newest-created session,
+ * which is stable under live activity (firstSeen never changes).
+ */
+export function groupByProject(sessions: SessionState[]): ProjectBucket[] {
+  const byKey = new Map<string, ProjectBucket>();
+  for (const s of sessions) {
+    const key = sessionProjectKey(s);
+    const root = s.cwd ? stripWorktree(s.cwd) : undefined;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.sessions.push(s);
+      if (s.firstSeen > existing.newestCreated) existing.newestCreated = s.firstSeen;
+      // Prefer the shortest root seen — closest to the true repo root.
+      if (root && (!existing.cwd || root.length < existing.cwd.length)) {
+        existing.cwd = root;
+        existing.label = projectLabel(root);
+      }
+      continue;
+    }
+    byKey.set(key, {
+      key,
+      label: projectLabel(root),
+      cwd: root,
+      sessions: [s],
+      newestCreated: s.firstSeen,
+    });
+  }
+  return Array.from(byKey.values()).sort((a, b) =>
+    a.newestCreated < b.newestCreated ? 1 : a.newestCreated > b.newestCreated ? -1 : 0,
+  );
+}
+
+export type ProjectRow =
+  | { kind: "session"; session: SessionState; activity: string }
+  | { kind: "team"; teamName: string; sessions: SessionState[]; activity: string };
+
+/**
+ * Within a project, fold a swarm (sessions sharing a `team_name` — lead plus its
+ * teammates) into one cluster; standalone sessions stay flat. Stable
+ * creation-time order (newest first), never reshuffling on live activity.
+ */
+export function clusterProjectSessions(sessions: SessionState[]): ProjectRow[] {
+  const teams = new Map<string, SessionState[]>();
+  const rows: ProjectRow[] = [];
+  for (const s of sessions) {
+    if (s.teamName) {
+      (teams.get(s.teamName) ?? teams.set(s.teamName, []).get(s.teamName)!).push(s);
+    } else {
+      rows.push({ kind: "session", session: s, activity: s.firstSeen });
+    }
+  }
+  for (const [teamName, members] of teams) {
+    members.sort((a, b) => (a.firstSeen < b.firstSeen ? 1 : -1));
+    rows.push({ kind: "team", teamName, sessions: members, activity: members[0]?.firstSeen ?? "" });
+  }
+  return rows.sort((a, b) => (a.activity < b.activity ? 1 : a.activity > b.activity ? -1 : 0));
+}
+
+/** True if the session emitted activity within `ms` of now. */
+export function isSessionLive(session: SessionState, ms = 30_000): boolean {
+  return Date.now() - new Date(session.lastSeen).getTime() < ms;
+}
+
+/**
+ * The flattened project directory Claude Code stores a session's transcript
+ * under (the segment beneath `.claude/projects/`), normalized so a session
+ * launched *inside* a worktree (`<proj>--claude-worktrees-<name>`) folds back
+ * onto its parent project. Returns undefined if the path isn't recognizable.
+ */
+export function projectKeyFromTranscript(transcriptPath: string | undefined): string | undefined {
+  if (!transcriptPath) return undefined;
+  const m = transcriptPath.match(/\/\.claude\/projects\/([^/]+)\//);
+  const dir = m?.[1];
+  if (!dir) return undefined;
+  const w = dir.indexOf("--claude-worktrees-");
+  return w >= 0 ? dir.slice(0, w) : dir;
+}
+
+/**
+ * Stable grouping key for the project a session belongs to. Prefers the
+ * transcript-derived key (survives cwd drift into worktrees/subdirs); falls
+ * back to the worktree-stripped cwd when no transcript path is known.
+ */
+export function sessionProjectKey(session: SessionState): string {
+  return (
+    projectKeyFromTranscript(session.transcriptPath) ??
+    (session.cwd ? stripWorktree(session.cwd) : "__no_cwd__")
   );
 }
 
