@@ -58,13 +58,13 @@ To override the resolved mode for a specific issue, apply `gate:auto` or `gate:h
 
 ### Step 1: Resolve config
 
-Read `.claude/sdlc.yml` for `language`, `task_management`, `team_key`. No decisions here — pass through.
+Read `.claude/sdlc.yml` for `language`, `task_management`, `team_key`. No decisions here — pass through. Also capture `phase_models` for the spawn override in Step 2.
 
 ### Step 2: Strategize
 
 > **Delegate, or author directly?** `specifier` is the **default**, not a mandate. The context-budget tradeoff applies: author the spec directly when you already hold the context and a human gate is next; delegate to conserve the main window in a long autonomous run. See [`sdlc-loop` § Delegate or author directly](../skills/sdlc-loop/SKILL.md#delegate-or-author-directly).
 
-**Delegate to**: `specifier` agent
+**Delegate to**: `specifier` agent — when `sdlc.yml.phase_models.specifier` is set, spawn it with `model: <value>`; otherwise omit the override and let `specifier.md`'s frontmatter default stand.
 
 **Mission**:
 - **Objective**: Produce per-issue implementation strategy, commit it on the impl branch, and post a permalink-linked tracker comment for human review

@@ -90,6 +90,38 @@ develop_team:
   - implementer
   - validator
 
+# === Per-phase model policy ===
+# Optional. Overrides the model each phase agent is spawned with, resolved at
+# spawn time by the command/coordinator that spawns it. Keys are agent role
+# names — as they appear in rosters and `subagent_type`, minus any `sdlc:`
+# prefix (`implementer`, not `sdlc:implementer`). Values are model aliases
+# (`opus` | `sonnet` | `haiku`) or full model IDs (e.g. `claude-opus-4-8`).
+#
+# Resolution rule (single source of truth — every spawn point obeys this):
+#   phase_models.<agent> set   → pass `model: <value>` at spawn, the same
+#                                spawn-time override channel as `isolation`.
+#   phase_models.<agent> unset → omit the override; the agent's own frontmatter
+#                                `model:` default stands.
+#
+# Model policy becomes a per-project config decision, visible in the repo — no
+# forked agent definitions. Same pattern as `gate1_default`: declared here,
+# resolved at spawn time. Spawn points that honor it: /develop, /orchestrate
+# (+ the coordinator, which passes it down to its implementer/validator
+# subagents), /design (specifier), /plan (understander, planner), and
+# /critique + /review (reviewer).
+#
+# Leave the block absent (or all keys commented) to use every agent's shipped
+# default — that's the ship-as default below. Example: cheapest model for the
+# mechanical phases, strongest for the judgment-heavy ones:
+# phase_models:
+#   understander: sonnet
+#   planner:      opus
+#   specifier:    opus
+#   reviewer:     opus
+#   implementer:  sonnet
+#   validator:    sonnet
+#   coordinator:  opus
+
 # === Loop iteration caps + Gate-1 timeout ===
 # Consumed by the coordinator-driven impl⇄val loop (issue #44 wires these in).
 # Today they are dormant — no agent reads them yet — but they ship now so the
