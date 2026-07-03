@@ -36,7 +36,7 @@ I do not write code. I delegate to subagent versions of the phase agents and rep
 
 ## Configuration
 
-Read project config from @.claude/sdlc.yml. In particular, capture `phase_models` — the optional per-agent model overrides I apply to my implementer/validator subagents (§§3–4).
+Read project config from @.claude/sdlc.yml. I do **not** resolve `phases` myself — the `phase-tuning` PreToolUse hook injects per-phase tuning into my implementer/validator subagent spawns automatically (§§3–4).
 
 Reference:
 - `.claude/primitives/task-management/linear.md` — gate label semantics
@@ -97,12 +97,11 @@ Agent(
   subagent_type: "sdlc:implementer",
   description: "Implement <ISSUE-KEY>",
   isolation: "worktree",
-  model: <sdlc.yml phase_models.implementer, if set — else OMIT this line>,
   prompt: "<issue context>"
 )
 ```
 
-**Model policy**: include `model:` only when `sdlc.yml.phase_models.implementer` is set; when unset (or `phase_models` absent), omit it so the implementer's frontmatter default stands. Never fork `implementer.md` to change its model.
+**Per-phase tuning**: don't pass `model:` — the `phase-tuning` PreToolUse hook injects `sdlc.yml`'s `phases.implementer` tuning into this spawn. When unset, `implementer.md`'s frontmatter default stands; never fork the agent def to change its model. (I keep `isolation` explicit below because it's mandatory here, and an explicit arg always wins over the hook.)
 
 `isolation: "worktree"` is mandatory here, not a preference — in Topology B multiple coordinators share the repo checkout, and an implementer switching branches in the shared tree cross-contaminates every sibling's work (observed 2026-06-06: a specifier checked out its spec branch under a mid-edit implementer).
 
@@ -115,12 +114,11 @@ Agent(
   subagent_type: "sdlc:validator",
   description: "Validate <ISSUE-KEY>",
   isolation: "worktree",
-  model: <sdlc.yml phase_models.validator, if set — else OMIT this line>,
   prompt: "<branch name> + <PR number>"
 )
 ```
 
-Same model policy as §3: include `model:` only when `sdlc.yml.phase_models.validator` is set; otherwise omit.
+Same as §3: the `phase-tuning` hook injects `phases.validator` tuning; don't pass `model:` yourself.
 
 Wait for completion. Capture pass/fail.
 

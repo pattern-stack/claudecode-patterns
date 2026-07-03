@@ -5,6 +5,27 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.20] — 2026-07-03
+
+### Added — `phase-tuning` hook: per-phase spawn tuning becomes deterministic control flow
+
+Supersedes the 0.2.17 `phase_models` design, which resolved model policy as **prose** — each command's markdown told the spawning model to read `phase_models` and pass `model:` at spawn. That was soft: a long-context spawner could forget, and the override silently wouldn't apply. This ships a hook that takes the model out of the loop.
+
+- **New `plugin/hooks/phase-tuning.sh` (+ `phase-tuning.py`)** — a `PreToolUse` hook (matcher `Agent|TeamCreate`, registered in `hooks.json`) that reads `sdlc.yml` on every spawn and rewrites the tool arguments via `hookSpecificOutput.updatedInput`. Deterministic, per-project, resolved at the spawn boundary — the command prose no longer has to remember.
+- **New grouped `phases:` schema** — every knob for a role lives together under `phases.<role>` (block or inline-map form):
+  - `model` → `model`, `effort` → `effort` (`low`…`max`), `max_turns` → `maxTurns`, `worktree` → `isolation: "worktree"`.
+  - Reads cleaner than four parallel by-knob maps: `phases: { coordinator: { model: opus, effort: high } }`.
+  - The legacy global `worktree.enabled` is honored as an alias for `phases.implementer.worktree`, so all worktree policy resolves in one place.
+- **Backward-compat**: the flat 0.2.17 keys `phase_models` / `phase_effort` / `phase_max_turns` / `phase_worktree` are still honored as a fallback; a grouped `phases.<role>.<knob>` wins over its flat twin. Existing configs keep working untouched.
+- **Precedence preserved**: an argument the spawner set explicitly always wins; an unconfigured role is untouched, so its frontmatter default stands. Ships with the block commented → **zero behavior change**.
+- **Fails open**: no python3, no `sdlc.yml`, unparseable input, or any error → the spawn runs exactly as issued. A tuning layer must never wedge a spawn. Covered by `phase-tuning.test.sh` (21 cases).
+- **Command/agent prose simplified**: `/develop`, `/orchestrate` + `coordinator`, `/design`, `/plan`, `/critique`, `/review` no longer carry manual `phase_models` resolution steps — they point at the hook.
+- **Verified vs experimental**: `model` proven; `effort` accepted at spawn (honoring test pending); `maxTurns` spawn-arg key best-effort; `isolation:"worktree"` proven.
+
+### Added — active model in the shipped statusline
+
+`plugin/scripts/statusline.sh` now leads its line with the active model's display name (from CC's statusline payload), falling back to the model id, and dropping out cleanly when absent.
+
 ## [0.2.19] — 2026-07-03
 
 ### Shipped — cc-viewer dashboard: project-tree sidebar + a release binary that's current

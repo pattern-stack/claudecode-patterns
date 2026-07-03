@@ -43,7 +43,7 @@ Author or iterate a YAML issue plan via the `planner` agent. Implements **Gate 0
 
 If no `.ai-docs/research/<slug>.md` exists for the topic and the request is non-trivial, delegate to `understander` first. Skip if the user's brief is already concrete or an artifact exists.
 
-**Delegate to**: `understander` agent — when `sdlc.yml.phase_models.understander` is set, spawn with `model: <value>`; otherwise omit and let the agent's frontmatter default stand.
+**Delegate to**: `understander` agent — spawn plainly; the `phase-tuning` hook applies `sdlc.yml`'s `phases.understander` tuning at the spawn boundary (frontmatter default stands when unset).
 
 **Mission**:
 - **Objective**: Produce understanding artifact + condensed summary for this request
@@ -56,7 +56,7 @@ If no `.ai-docs/research/<slug>.md` exists for the topic and the request is non-
 
 > **Delegate, or author directly?** `planner` is the **default**, not a mandate. If you already hold the synthesis (e.g. you just ran the research) and the next stop is human review, authoring the YAML yourself is often faster and higher-fidelity — and a Gate-0 chat loop is easier to tune when you own the file. Delegate to conserve the main window when this is part of a long autonomous run. See [`sdlc-loop` § Delegate or author directly](../skills/sdlc-loop/SKILL.md#delegate-or-author-directly).
 
-**Delegate to**: `planner` agent — when `sdlc.yml.phase_models.planner` is set, spawn with `model: <value>`; otherwise omit and let the agent's frontmatter default stand.
+**Delegate to**: `planner` agent — spawn plainly; the `phase-tuning` hook applies `sdlc.yml`'s `phases.planner` tuning at the spawn boundary (frontmatter default stands when unset).
 
 **Mission**:
 - **Objective**: Decompose the request into PR-sized issues; iterate the YAML at `.ai-docs/plans/<slug>.yaml` against human feedback
