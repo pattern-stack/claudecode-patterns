@@ -7,20 +7,24 @@
  * AppShell main column.
  */
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../components/atoms/Badge";
 import { Card } from "../components/atoms/Card";
 import { Spinner } from "../components/atoms/Spinner";
 import { AlertIcon } from "../components/atoms/icons";
+import { Text } from "../components/atoms/Text";
 import { ChatPanel } from "../components/organisms/ChatPanel";
+import { useRelatedSessions } from "../hooks/useRelatedSessions";
 import { useTranscript } from "../hooks/useTranscript";
+import { type SessionState, sessionKind, sessionTitle } from "../lib/claudeCodeSessions";
 import { fetchSessionCwd } from "../lib/eventApi";
 
 export function ChatSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const decoded = sessionId ? decodeURIComponent(sessionId) : undefined;
   const { messages, loading, error, connected } = useTranscript(decoded);
+  const { siblings } = useRelatedSessions(decoded);
 
   // Resolve the session's cwd so the composer can target the live pane.
   const [cwd, setCwd] = useState<string | undefined>(undefined);
@@ -106,6 +110,8 @@ export function ChatSessionPage() {
 
       {error && <ErrorBanner message={error} />}
 
+      {siblings.length > 0 && <RelatedSessions siblings={siblings} currentId={decoded} />}
+
       <div style={{ flex: 1, minHeight: 0 }}>
         <ChatPanel
           messages={messages}
@@ -114,6 +120,91 @@ export function ChatSessionPage() {
           cwd={cwd}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Compact navigator for the sessions related to this one — the swarm lead, its
+ * teammates, and other overlapping chats. Grouped by role so a busy run reads as
+ * structure. Each chip is titled by role name / first prompt, never a raw id.
+ */
+const OTHER_CAP = 14;
+
+function RelatedSessions({ siblings }: { siblings: SessionState[]; currentId: string }) {
+  const leads: SessionState[] = [];
+  const teammates: SessionState[] = [];
+  const others: SessionState[] = [];
+  for (const s of siblings) {
+    const kind = sessionKind(s);
+    if (kind === "lead") leads.push(s);
+    else if (kind === "teammate") teammates.push(s);
+    else others.push(s);
+  }
+
+  return (
+    <Card padded={false} style={{ padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+        <Text size="xs" weight="semibold" tone="subtle">RELATED SESSIONS</Text>
+        <Text size="xs" tone="subtle" family="mono">{siblings.length}</Text>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <ChipSection label="Lead" sessions={leads} />
+        <ChipSection label="Teammates" sessions={teammates} />
+        <ChipSection label="Other" sessions={others} cap={OTHER_CAP} muted />
+      </div>
+    </Card>
+  );
+}
+
+function ChipSection({
+  label,
+  sessions,
+  muted,
+  cap,
+}: {
+  label: string;
+  sessions: SessionState[];
+  muted?: boolean;
+  cap?: number;
+}) {
+  if (sessions.length === 0) return null;
+  const shown = cap ? sessions.slice(0, cap) : sessions;
+  const overflow = sessions.length - shown.length;
+  return (
+    <ChipRow label={label}>
+      {shown.map((s) => (
+        <Link
+          key={s.sessionId}
+          to={`/chat/${encodeURIComponent(s.sessionId)}`}
+          style={{ textDecoration: "none", opacity: muted ? 0.8 : 1 }}
+          title={`${sessionTitle(s)} · ${s.sessionId}`}
+        >
+          <Badge tone={muted ? "muted" : undefined} variant="outline">
+            {sessionTitle(s)}
+          </Badge>
+        </Link>
+      ))}
+      {overflow > 0 && (
+        <Text size="xs" tone="subtle" style={{ paddingTop: 4 }}>
+          +{overflow} more
+        </Text>
+      )}
+    </ChipRow>
+  );
+}
+
+function ChipRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <Text
+        size="xs"
+        tone="subtle"
+        style={{ minWidth: 74, paddingTop: 3, flexShrink: 0, textAlign: "right" }}
+      >
+        {label}
+      </Text>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>
     </div>
   );
 }

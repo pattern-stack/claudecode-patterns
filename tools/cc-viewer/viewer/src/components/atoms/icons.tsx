@@ -25,6 +25,14 @@ function base({ size = 16, strokeWidth = 1.75, ...rest }: IconProps) {
   };
 }
 
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <svg {...base(props)} aria-hidden="true">
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
 export function SendIcon(props: IconProps) {
   return (
     <svg {...base(props)} aria-hidden="true">

@@ -1,60 +1,19 @@
 /**
- * AppShell template — fixed left sidebar with nav, scrollable main area.
+ * AppShell template — fixed collapsible project-tree sidebar + scrollable main.
  *
- * Two routes today: /logs (hook trace viewer) and /chat (transcript
- * replay). Active link is highlighted with the accent color.
+ * The sidebar (SessionSidebar) is the primary navigator: projects group their
+ * sessions, swarm leads expand to teammates, and an "All activity" entry gives
+ * the global cross-project view. Session data comes from SessionIndexProvider.
  */
 
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
-
-const navItems = [
-  { to: "/logs", label: "Logs" },
-  { to: "/chat", label: "Chat" },
-];
+import { SessionSidebar } from "../organisms/SessionSidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      <nav
-        style={{
-          width: 220,
-          background: "var(--bg-surface)",
-          borderRight: "1px solid var(--border)",
-          padding: "20px 0",
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            padding: "0 20px 24px",
-            fontSize: 15,
-            fontWeight: 600,
-            color: "var(--fg-default)",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          cc-viewer
-        </div>
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            style={({ isActive }) => ({
-              display: "block",
-              padding: "8px 20px",
-              fontSize: 14,
-              color: isActive ? "var(--fg-default)" : "var(--fg-muted)",
-              background: isActive ? "var(--bg-surface-hover)" : "transparent",
-              borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
-              textDecoration: "none",
-            })}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
-      <main style={{ flex: 1, padding: 24, overflow: "auto" }}>{children}</main>
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      <SessionSidebar />
+      <main style={{ flex: 1, padding: 24, overflow: "auto", minWidth: 0 }}>{children}</main>
     </div>
   );
 }
