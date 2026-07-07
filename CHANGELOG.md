@@ -5,6 +5,20 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.21] — 2026-07-07
+
+### Changed — `/sync-issues` now sets true GitHub issue dependencies
+
+Previously the GitHub adapter's `set-blocking` operation only appended a `Depends on: #N` line to the issue body — a mention cross-link, not a real relationship. It did not populate GitHub's native **"Blocked by" / "Blocks"** relations, so the "Blocked" board icon never lit up and project automations that gate on dependencies couldn't see them.
+
+- **`plugin/scripts/sync-github.py`** — `depends_on` now creates native dependencies via the GraphQL `addBlockedBy(input:{issueId, blockingIssueId})` mutation (`gh` has no CLI flag for it as of 2.82). New helpers: `node_id` (cached node-ID resolver, also reused by the sub-issue wiring), `blocked_by_numbers` (pre-fetches existing relations so re-runs are idempotent without relying on error text), `add_blocked_by`, and `append_depends_line` (the degraded fallback).
+- **Graceful degradation** — if the mutation is unavailable (older repo, missing scope), it falls back to the previous `Depends on: #N` body line and reports the count. Sync never hard-fails on a dependency.
+- **Docs** — `primitives/task-management/github.md` and `README.md` now document `set-blocking` as a native relation with the fallback; `d6_gaps` no longer applies for GitHub.
+
+### Changed — reference form is now surface-aware (issue/PR previews)
+
+`canvases/github/CONVENTIONS.md` §2 previously mandated wrapping every reference as a `[text](url)` markdown link ("URL-everywhere"). On GitHub-native surfaces that **suppresses** the reference preview chip (state icon + hovercard). The policy is now surface-aware: **bare `#N` / `owner/repo#N` on GitHub-native surfaces** (issue/PR bodies + comments) to get the live preview; **full markdown links** only for cross-posted/exported surfaces (Slack, email, docs). Closing keywords (§1) remain bare-only for the close-hook parser.
+
 ## [0.2.20] — 2026-07-03
 
 ### Added — `phase-tuning` hook: per-phase spawn tuning becomes deterministic control flow
