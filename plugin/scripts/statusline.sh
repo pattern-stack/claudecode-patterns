@@ -3,7 +3,7 @@
 #
 # Renders one centered line, in CC's default dim style:
 #
-#   <TEAM>-N  ·  branch  ·  st <stack>  ·  PR #N <state>  ·  CI <rollup>  ·  ● dashboard
+#   <model>  ·  <TEAM>-N  ·  branch  ·  st <stack>  ·  PR #N <state>  ·  CI <rollup>  ·  ● dashboard
 #
 # Every segment is independent — each drops out cleanly when its source
 # is absent (no ticket in branch, no `st`, no `gh`, no `ap`, etc.).
@@ -110,6 +110,11 @@ fi
 
 project="$(basename "$cwd")"
 
+# Active model, from the statusline payload CC provides on stdin. Prefer the
+# human label (`Opus 4.8`), fall back to the raw id. Empty when absent.
+model_name="$(jqr '.model.display_name')"
+[[ -z "$model_name" ]] && model_name="$(jqr '.model.id')"
+
 # `st` stack info. Skip on main/master and when no tracked stack.
 stack=""
 if [[ -n "$branch" && "$branch" != "main" && "$branch" != "master" ]] && have st; then
@@ -214,6 +219,8 @@ fi
 # ----------------------------------------------------------------------------
 
 segments=()
+# Active model leads the line so it's always visible regardless of repo state.
+[[ -n "$model_name" ]] && segments+=("$model_name")
 # Show project name when there's no ticket — otherwise the ticket implies repo context.
 [[ -z "$ticket" && -n "$project" ]] && segments+=("$project")
 [[ -n "$ticket"    ]] && segments+=("$ticket")

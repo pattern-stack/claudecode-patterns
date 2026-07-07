@@ -50,7 +50,7 @@ Optional second argument: `--lens=<lens>` to override the default `mixed` lens. 
 
 ### Step 1: Resolve config
 
-Read `.claude/sdlc.yml`. Capture `task_management`, `quality_profile`, and `phase_models` (for the reviewer spawn override in Step 4).
+Read `.claude/sdlc.yml`. Capture `task_management` and `quality_profile`. You do **not** need `phases` — the `phase-tuning` PreToolUse hook applies per-phase model/effort/turn tuning to the reviewer spawn in Step 4 automatically.
 
 ### Step 2: Resolve issue + spec
 
@@ -78,7 +78,6 @@ The reviewer halts on re-run unless explicitly told `rerun: true` — this comma
 Agent({
   subagent_type: "reviewer",          # plugin agent registered as bare name (no `sdlc:` prefix)
   description: "Critique <$1> spec (mixed lens)",
-  model: <sdlc.yml phase_models.reviewer, if set — else OMIT this line>,
   prompt: "
 target: <resolved-spec-path>
 against: cited-code
@@ -90,7 +89,7 @@ rerun: <true if Step 3 detected prior content; false otherwise>
 })
 ```
 
-**Model policy**: include `model:` only when `sdlc.yml.phase_models.reviewer` is set; otherwise omit it and let `reviewer.md`'s frontmatter default stand.
+**Per-phase tuning**: don't pass `model:` yourself — the `phase-tuning` PreToolUse hook injects `sdlc.yml`'s `phases.reviewer` tuning (model / effort / …) at the spawn boundary. When unset, `reviewer.md`'s frontmatter default stands.
 
 Reviewer runs the critique discipline (`skills/critique/SKILL.md`), writes findings to the spec's Spec Review phase section (overwriting prior verdict on re-run), posts a tracker envelope, returns.
 

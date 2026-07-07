@@ -59,7 +59,7 @@ Flags:
 
 ### Step 1: Resolve config + issue + spec + diff
 
-Read `.claude/sdlc.yml`. Resolve the spec path per `artifact_paths` (stack-co-located preferred). If no spec exists, halt. Also capture `phase_models` — its `reviewer` entry (when set) is passed as the `model:` override to both reviewer spawns in Step 3.
+Read `.claude/sdlc.yml`. Resolve the spec path per `artifact_paths` (stack-co-located preferred). If no spec exists, halt. You do **not** need to read `phases` — the `phase-tuning` PreToolUse hook applies per-phase model/effort/turn tuning to both reviewer spawns in Step 3 automatically.
 
 Resolve the diff ref:
 - Default: `git diff main...HEAD` on the current branch
@@ -81,13 +81,12 @@ Pass `rerun: <true|false>` per-reviewer to the spawned agents in Steps 3a/3b.
 
 Both reviewers Edit the same spec file (different sections, but same file). The Claude Code harness does not guarantee atomic Edit serialization across parallel subagents, so spawn **sequentially** to avoid TOCTOU races — Adherence first, then Quality:
 
-Both spawns take the same **model policy**: include `model: <sdlc.yml phase_models.reviewer>` only when that key is set; otherwise omit it and let `reviewer.md`'s frontmatter default stand.
+**Per-phase tuning**: don't pass `model:` on either spawn — the `phase-tuning` PreToolUse hook injects `sdlc.yml`'s `phases.reviewer` tuning (model / effort / …) at the spawn boundary (frontmatter default stands when unset).
 
 ```
 Agent A (first; await completion before spawning B):
   subagent_type: "reviewer"
   description: "Adherence review on <$1> diff"
-  model: <phase_models.reviewer, if set — else omit>
   prompt: "
 target: <diff-ref>
 against: <resolved-spec-path>
@@ -101,7 +100,6 @@ rerun: <per Step 2 detection for adherence section>
 Agent B (after A returns):
   subagent_type: "reviewer"
   description: "Quality review on <$1> diff"
-  model: <phase_models.reviewer, if set — else omit>
   prompt: "
 target: <diff-ref>
 against: quality-canvas             # symbolic; reviewer resolves to canvas file
@@ -123,7 +121,6 @@ rerun: <per Step 2 detection for quality section>
 Agent({
   subagent_type: "reviewer",
   description: "Review on <$1> diff (<lens>)",
-  model: <sdlc.yml phase_models.reviewer, if set — else OMIT this line>,
   prompt: "
 target: <diff-ref>
 against: <--against value, or default for lens>

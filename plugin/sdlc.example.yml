@@ -90,37 +90,57 @@ develop_team:
   - implementer
   - validator
 
-# === Per-phase model policy ===
-# Optional. Overrides the model each phase agent is spawned with, resolved at
-# spawn time by the command/coordinator that spawns it. Keys are agent role
-# names — as they appear in rosters and `subagent_type`, minus any `sdlc:`
-# prefix (`implementer`, not `sdlc:implementer`). Values are model aliases
-# (`opus` | `sonnet` | `haiku`) or full model IDs (e.g. `claude-opus-4-8`).
+# === Per-phase spawn tuning (model / effort / turns / worktree) ===
+# Optional. Tunes HOW each phase agent is spawned, per-project, from config —
+# no forked agent definitions. Keys are agent role names as they appear in
+# `subagent_type` / rosters, minus any `sdlc:` prefix (`implementer`, not
+# `sdlc:implementer`). A role not listed keeps its shipped frontmatter default.
 #
-# Resolution rule (single source of truth — every spawn point obeys this):
-#   phase_models.<agent> set   → pass `model: <value>` at spawn, the same
-#                                spawn-time override channel as `isolation`.
-#   phase_models.<agent> unset → omit the override; the agent's own frontmatter
-#                                `model:` default stands.
+# HOW IT'S APPLIED — deterministic, not prose:
+#   The `phase-tuning` PreToolUse hook (plugin/hooks/phase-tuning.sh) intercepts
+#   every `Agent` / `TeamCreate` call, reads THIS file, and rewrites the spawn
+#   arguments before the tool runs. It fires regardless of whether any command's
+#   markdown remembered to apply the override — the model is out of the loop.
 #
-# Model policy becomes a per-project config decision, visible in the repo — no
-# forked agent definitions. Same pattern as `gate1_default`: declared here,
-# resolved at spawn time. Spawn points that honor it: /develop, /orchestrate
-# (+ the coordinator, which passes it down to its implementer/validator
-# subagents), /design (specifier), /plan (understander, planner), and
-# /critique + /review (reviewer).
+#   Precedence: an argument the spawner set EXPLICITLY always wins; the hook only
+#   fills a key left unset. Un-configured roles are untouched → frontmatter
+#   default stands. So the blocks below ship commented = zero behavior change.
 #
-# Leave the block absent (or all keys commented) to use every agent's shipped
-# default — that's the ship-as default below. Example: cheapest model for the
-# mechanical phases, strongest for the judgment-heavy ones:
-# phase_models:
-#   understander: sonnet
-#   planner:      opus
-#   specifier:    opus
-#   reviewer:     opus
-#   implementer:  sonnet
-#   validator:    sonnet
-#   coordinator:  opus
+#   (Earlier versions — 0.2.17 — did this as prose in each command telling the
+#   model to read `phase_models` and pass `model:`. That was soft; the hook is
+#   the deterministic successor. The prose now just points at the hook.)
+#
+# Knobs per role, and how proven each is:
+#   model     → spawn `model`      (proven: Agent accepts + honors it)
+#   effort     → spawn `effort`     (low|medium|high|xhigh|max; accepted at spawn
+#                                    2026-07-03, honoring unproven — treat as beta)
+#   max_turns  → spawn `maxTurns`   (integer; hard turn cap / runaway guard)
+#   worktree   → spawn `isolation:"worktree"` (proven channel; see `worktree:` below)
+#
+# Group every knob for a role together under `phases.<role>` — strongest model +
+# effort where judgment lives, cheaper/capped for mechanical phases. Uncomment to
+# use; block-map or inline-map form both work.
+# phases:
+#   understander:
+#     model:  sonnet
+#     effort: low
+#   planner:
+#     model: opus
+#   specifier: { model: opus, effort: high }
+#   reviewer:  { model: opus, effort: high }
+#   implementer:
+#     model:     sonnet
+#     max_turns: 60
+#     worktree:  true          # per-role isolation; ADDS only, explicit spawn arg wins
+#   validator:
+#     model:     sonnet
+#     max_turns: 40
+#   coordinator:
+#     model: opus
+#
+# Backward-compat: the flat 0.2.17 keys `phase_models:` / `phase_effort:` /
+# `phase_max_turns:` / `phase_worktree:` (each a `<role>: <value>` map) are still
+# honored as a fallback. A grouped `phases.<role>.<knob>` wins over its flat twin.
 
 # === Loop iteration caps + Gate-1 timeout ===
 # Consumed by the coordinator-driven impl⇄val loop (issue #44 wires these in).
@@ -171,9 +191,11 @@ coordinator_specifier_timeout_seconds: null
 # === Topology B — /orchestrate concurrency ===
 orchestrate_concurrency: 3
 
-# === Worktree isolation ===
+# === Worktree isolation (global default for the implementer) ===
 # When enabled, the spawning command (/develop or coordinator under /orchestrate)
-# passes `isolation: "worktree"` to the Agent tool when spawning implementer.
+# spawns the implementer with `isolation: "worktree"`. For per-role control over
+# ANY phase agent, set `phases.<role>.worktree: true` above — the same
+# phase-tuning hook applies it, and either source enabling it → worktree.
 worktree:
   enabled: true
 
