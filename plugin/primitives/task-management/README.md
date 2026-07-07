@@ -20,7 +20,7 @@ All operations are documented adapter-neutrally. Adapter files (`{task_managemen
 | `create-issue` | `{ title, body, labels[] }` | `{ key, url }` | Idempotent only when caller pre-checks via `find-by-marker`. |
 | `update-issue` | `key`, `{ title?, body?, addLabels?, removeLabels? }` | `void` | Preserves labels not mentioned. |
 | `add-comment` | `key`, `body` | `void` | Used for posting strategy comments and progress notes. |
-| `set-blocking` | `blocked_by_key`, `blocks_key` | `void` | Adapter may approximate (e.g. GitHub uses `Depends on: #N` body line; Linear uses native blocks relation). |
+| `set-blocking` | `blocked_by_key`, `blocks_key` | `void` | Creates a **first-class "blocked by" dependency**: `blocks_key` becomes blocked by `blocked_by_key`. GitHub uses the native `addBlockedBy` GraphQL mutation; Linear uses its native `blocks` relation. Adapters SHOULD prefer the native relation and MAY fall back to a `Depends on: #N` body mention only where native dependencies are unavailable. |
 | `find-by-marker` | `marker_string` | `key \| null` | Locates an issue whose body contains the given idempotence marker. Used by `/sync-issues`. |
 | `add-sub-issue` | `parent_key`, `child_key` | `void` | Creates a parent → child issue relationship. Used by `/sync-issues` to wire epic parents to leaf issues. Adapter MAY approximate (e.g. tracker without native sub-issues uses tasklist syntax in body). |
 | `set-type` | `key`, `type: 'project' \| 'epic' \| 'task'` | `void` | Tags an issue with its hierarchical type. Adapter chooses representation: native Issue Types (where supported) or `type:*` labels as a fallback. The three port-level type names are canonical; adapters MAY add more. |

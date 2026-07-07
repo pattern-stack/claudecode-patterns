@@ -79,6 +79,59 @@ def update_issue(repo, num, title, body):
     gh("issue", "edit", str(num), "--repo", repo, "--title", title, "--body", body)
 
 
+# --- Issue dependencies (native "blocked by" relations) -----------------------
+#
+# GitHub's Issues sidebar exposes first-class "Blocked by" / "Blocks" relations
+# (GraphQL: `addBlockedBy`, and the `blockedBy` connection on Issue). These are
+# true dependencies — they render the "Blocked" board icon and gate project
+# automations — unlike a `Depends on: #N` body line, which is only a mention.
+# `gh` has no CLI flag for them (as of 2.82), so we go through `gh api graphql`.
+
+_NODE_CACHE = {}
+
+
+def node_id(repo, num):
+    """Resolve an issue's global node ID (cached for the run)."""
+    if num not in _NODE_CACHE:
+        _NODE_CACHE[num] = gh_json("issue", "view", str(num), "--repo", repo, "--json", "id")["id"]
+    return _NODE_CACHE[num]
+
+
+def blocked_by_numbers(repo, num):
+    """Set of issue numbers `num` is already blocked by (empty if the feature or
+    scope is unavailable — callers then attempt the add and fall back on error)."""
+    owner, name = repo.split("/", 1)
+    try:
+        data = gh_json(
+            "api", "graphql",
+            "-f", ("query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r)"
+                   "{issue(number:$n){blockedBy(first:100){nodes{number}}}}}"),
+            "-F", f"o={owner}", "-F", f"r={name}", "-F", f"n={num}",
+        )
+        return {n["number"] for n in data["data"]["repository"]["issue"]["blockedBy"]["nodes"]}
+    except (subprocess.CalledProcessError, KeyError, TypeError):
+        return set()
+
+
+def add_blocked_by(repo, blocked_num, blocking_num):
+    """Mark `blocked_num` as blocked by `blocking_num` via native GraphQL."""
+    gh("api", "graphql",
+       "-f", ("query=mutation($b:ID!,$k:ID!){addBlockedBy(input:{issueId:$b,blockingIssueId:$k})"
+              "{issue{number}}}"),
+       "-F", f"b={node_id(repo, blocked_num)}", "-F", f"k={node_id(repo, blocking_num)}")
+
+
+def append_depends_line(repo, blocked_num, blocking_num):
+    """Fallback when native dependencies are unavailable: append an idempotent
+    `Depends on: #N` line. Renders a cross-link (with hovercard + state icon),
+    not a true relation — degraded but better than nothing."""
+    dep_line = f"Depends on: #{blocking_num}"
+    cur_body = gh_json("issue", "view", str(blocked_num), "--repo", repo, "--json", "body")["body"]
+    if dep_line not in cur_body:
+        gh("issue", "edit", str(blocked_num), "--repo", repo,
+           "--body", cur_body.rstrip() + f"\n\n{dep_line}\n")
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("Usage: sync-github.py <plan.yaml>")
@@ -130,36 +183,46 @@ def main():
         key_to_num[key] = num
 
     # --- Sub-issues via GraphQL addSubIssue ---
-    epic_node = gh_json("issue", "view", str(epic_num), "--repo", repo, "--json", "id")["id"]
+    epic_node = node_id(repo, epic_num)
     wired = 0
     for num in key_to_num.values():
-        child_node = gh_json("issue", "view", str(num), "--repo", repo, "--json", "id")["id"]
         try:
             gh("api", "graphql",
                "-f", "query=mutation($p:ID!,$c:ID!){addSubIssue(input:{issueId:$p,subIssueId:$c}){issue{id}}}",
-               "-F", f"p={epic_node}", "-F", f"c={child_node}")
+               "-F", f"p={epic_node}", "-F", f"c={node_id(repo, num)}")
             wired += 1
         except subprocess.CalledProcessError:
             pass  # idempotent — already wired (GraphQL returns error on duplicate)
     print(f"\nSub-issues wired: {wired}/{len(key_to_num)}")
 
-    # --- depends_on (append "Depends on: #N, #N" to body, idempotent) ---
-    dep_count = 0
+    # --- depends_on → native "blocked by" dependencies (idempotent) ---
+    # issue <blocked> depends on <blocker>  ⇒  <blocked> is blocked by <blocker>.
+    # Pre-fetch existing relations so re-runs don't error; degrade to a body
+    # mention line only if the native mutation is unavailable.
+    applied = skipped = fallback = 0
     for issue in plan["issues"]:
         deps = issue.get("depends_on") or []
         if not deps:
             continue
-        num = key_to_num[issue["key"]]
-        dep_nums = [key_to_num[d] for d in deps if d in key_to_num]
-        if not dep_nums:
+        blocked = key_to_num[issue["key"]]
+        blockers = [key_to_num[d] for d in deps if d in key_to_num]
+        if not blockers:
             continue
-        dep_line = "Depends on: " + ", ".join(f"#{n}" for n in dep_nums)
-        cur_body = gh_json("issue", "view", str(num), "--repo", repo, "--json", "body")["body"]
-        if dep_line not in cur_body:
-            new_body = cur_body.rstrip() + f"\n\n{dep_line}\n"
-            gh("issue", "edit", str(num), "--repo", repo, "--body", new_body)
-            dep_count += 1
-    print(f"Blocking relations applied: {dep_count}")
+        already = blocked_by_numbers(repo, blocked)
+        for blocker in blockers:
+            if blocker in already:
+                skipped += 1
+                continue
+            try:
+                add_blocked_by(repo, blocked, blocker)
+                applied += 1
+            except subprocess.CalledProcessError:
+                append_depends_line(repo, blocked, blocker)  # native unavailable → mention
+                fallback += 1
+    summary = f"Blocking relations: {applied} added, {skipped} already set"
+    if fallback:
+        summary += f", {fallback} via body-mention fallback (native dependencies unavailable)"
+    print(summary)
 
     print(f"\nDone. Next: /design <issue-key>")
 

@@ -59,9 +59,19 @@ For stacked PRs in particular: list every `Closes #N` in the **leaf PR body BEFO
 
 ---
 
-## 2. URL-everywhere policy
+## 2. Reference form policy (surface-aware)
 
-Every reference to an issue, PR, commit, comment, or branch — wherever it appears in a canvas-rendered artifact — is a **markdown link with the full URL inline**.
+Two goals pull against each other. GitHub renders a **bare** `#N` / `owner/repo#N` reference as a **live preview chip** — an open/closed/merged state icon plus a hovercard showing the title — but a bare reference loses its meaning the moment the text is read off GitHub (Slack, email, an exported doc). So pick the form by **where the artifact is read**, not by habit.
+
+**GitHub-native surfaces — issue bodies, PR bodies, issue/PR comments, review comments.**
+Use the **bare autolink**: `#N` same-repo, `owner/repo#N` cross-repo. This is what produces the preview the reader expects on GitHub. Wrapping it as a markdown link — `[#N](url)` — *suppresses* the chip: it renders as ordinary link text with no state icon. (A bare full URL also collapses to a chip, but the short form reads cleaner.)
+
+```markdown
+Blocked by #364 · supersedes owner/repo#60 · shipped in #372
+```
+
+**Cross-posted / exported surfaces — Slack, email, external docs, anything that may be copied off GitHub.**
+Use the **full markdown link with the URL inline**, so the reference survives the move:
 
 ```markdown
 …shipped via [PR #364](https://github.com/pattern-stack/codegen-patterns/pull/364) …
@@ -69,9 +79,9 @@ Every reference to an issue, PR, commit, comment, or branch — wherever it appe
 …tracked in [#60](https://github.com/pattern-stack/dealbrain-integrations/issues/60) …
 ```
 
-Bare `#N` references work in some surfaces (PR/issue bodies in the same repo) but break the moment the artifact is cross-posted (Slack, email, another repo, an exported doc). Always-link is the only rule that works across every surface.
+Rule of thumb: **posted onto GitHub → bare autolink (you get the preview); may be read off GitHub → link it in full.** When you can't tell, the full link is the safe default — it never breaks; it only forgoes the inline chip.
 
-For cross-repo references, the bare form `owner/repo#N` GitHub auto-links — but still wrap it as a markdown link with full URL so it survives cross-posting.
+> **Closing keywords (§1) are exempt from this choice** — `Closes #N` / `Closes owner/repo#N` MUST use the bare reference form regardless of surface, because the close-hook parser only recognizes the bare ref (a `[#N](url)` markdown link does not fire it).
 
 ---
 
