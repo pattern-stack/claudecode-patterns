@@ -14,6 +14,7 @@ description: Per-issue coordinator for Topology B parallel orchestration. Spawne
 # tracker-agnostic — swapping trackers requires zero changes here.
 tools: Read, Glob, Grep, Bash, SendMessage, Agent(sdlc:implementer, sdlc:validator)
 model: opus
+effort: high
 permissionMode: default
 status: skeleton
 topology: [B]

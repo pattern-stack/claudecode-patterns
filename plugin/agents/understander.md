@@ -4,6 +4,7 @@ description: Produces a detailed understanding artifact for downstream agents AN
 # tool_group: research_writer (allowlist; + SendMessage so a teammate slot can report up)
 tools: Read, Write, Glob, Grep, WebFetch, WebSearch, SendMessage
 model: opus
+effort: xhigh
 permissionMode: default
 status: active
 topology: [A, B]

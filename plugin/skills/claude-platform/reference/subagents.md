@@ -22,7 +22,7 @@ When the same name exists at multiple scopes, higher priority wins.
 | `description` | yes | When Claude should delegate to it |
 | `tools` | no | Allowlist; comma-separated. Inherits all tools if omitted |
 | `disallowedTools` | no | Denylist; applied first, then `tools` resolved against the remainder |
-| `model` | no | `sonnet` / `opus` / `haiku` / full ID / `inherit`. Default `inherit` |
+| `model` | no | `fable` / `opus` / `sonnet` / `haiku` / full ID / `inherit`. Default `inherit` |
 | `permissionMode` | no | `default` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` / `plan`. **Ignored for plugin subagents** |
 | `maxTurns` | no | Hard cap on agentic turns |
 | `skills` | no | Skills to **preload** (full content injected at startup, not just description) |
