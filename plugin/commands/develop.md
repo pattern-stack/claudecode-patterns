@@ -134,6 +134,12 @@ Composed mode does NOT run the standalone loop's per-round user-gate — the PR-
 
 Print the team handle and the addressable teammate names. The human and the orchestrator (this session) drive the loop from here — there is no further automation in this command.
 
+### Step 7: Reap the team when the issue is done
+
+By harness default teammates stay alive but **idle** once their work completes — the lead does not originate shutdowns unless granted permission, and Topology A deliberately keeps the team co-present for human-in-the-loop iteration. So while you are actively working *this* issue, leave the team up.
+
+But **the moment this issue reaches a terminal state (validator green + PR open for Gate 2, or a halt the human has acknowledged) and you move on to a different issue, shut this issue's teammates down (the `SendMessage` shutdown handshake) rather than carrying them idle.** One issue's `implementer`/`validator` must not survive into the next issue's team — spawn fresh, since a reused teammate drags the prior issue's context into the new one. This is what keeps a long multi-issue session from accumulating a wall of idle `implementer-*` / `validator-*` teammates.
+
 ## What this command automates — and what it does not
 
 So the audit-trail / tracker expectations are honest (no silent gaps):

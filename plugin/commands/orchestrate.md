@@ -78,6 +78,14 @@ For up to `orchestrate_concurrency` issues at a time:
 
 Each coordinator runs end-to-end on its issue. Coordinators report back via the team result.
 
+### Step 4a: Reap coordinators on completion
+
+By harness default a finished teammate stays alive but **idle** — the lead does not originate shutdowns unless granted permission (killing a peer agent is a hard-to-reverse action the harness confirms first). Over a long batch this accumulates idle `coordinator-*` teammates against the team-slot cap.
+
+**This command grants that permission: the moment a coordinator returns its issue envelope in a terminal state, shut it down (the `SendMessage` shutdown handshake) before pulling the next queued issue into the freed slot.** Reap per-issue as each finishes — do not wait for the whole batch to drain.
+
+First confirm the envelope is genuinely terminal (`status: completed` / `failed` with a plausible body — **not** an empty result or an `Overloaded`-shaped transport error masquerading as completion; see the same caveat `/develop` documents). A false completion means **re-spawn, not reap**.
+
 ### Step 5: Return
 
 Print the team handle and the per-issue coordinator names. The coordinators are working headless from here — the human can `SendMessage` to a coordinator to query status, but per-step interaction is not the point of this topology.
