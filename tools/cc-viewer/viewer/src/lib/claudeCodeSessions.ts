@@ -26,9 +26,19 @@ export interface SessionState {
   /** When this session orchestrates a teammate swarm, the team it leads and the
    *  distinct teammate names it manages. Derived from `TeammateIdle` hooks,
    *  which fire in the *lead's* session (the `teammate_name` names a child, so
-   *  this marks the session as a LEAD, never as a teammate itself). */
+   *  this marks the session as a LEAD, never as a teammate itself).
+   *  LEGACY: `team_name` is deprecated upstream (CC 2.1.178+); prefer
+   *  `parentSessionId` for nesting and keep these only as a fallback. */
   teamName?: string;
   teammates?: string[];
+  /** Set on a TEAMMATE session: the lead (parent) session it was spawned under.
+   *  The authoritative nesting signal — minted by cc-bridge from the on-disk
+   *  `<lead>/subagents/` layout, so it survives the `team_name` deprecation. */
+  parentSessionId?: string;
+  /** A teammate's agent type / role, e.g. "sdlc:implementer" (from its sidecar). */
+  role?: string;
+  /** A teammate's display name, e.g. "implementer-118" (from its sidecar). */
+  label?: string;
   /** The session's first user prompt — used as a human-readable title, the way
    *  chat tools name a conversation by its opening message. */
   firstPrompt?: string;
@@ -69,6 +79,10 @@ export function groupClaudeCodeEvents(events: StreamEvent[]): SessionState[] {
     const payload = (data.payload ?? {}) as Record<string, unknown>;
     const teammateName = str(data.teammate_name) ?? str(payload.teammate_name);
     const teamName = str(data.team_name) ?? str(payload.team_name);
+    // Teammate nesting fields, minted by cc-bridge on a synthetic SessionStart.
+    const parentSessionId = str(data.parent_session_id) ?? str(payload.parent_session_id);
+    const teammateRole = str(data.teammate_role) ?? str(payload.teammate_role);
+    const teammateLabel = str(data.teammate_label) ?? str(payload.teammate_label);
     const prompt = hookName === "UserPromptSubmit" ? str(payload.prompt) ?? str(data.prompt) : undefined;
 
     let session = byId.get(sessionId);
@@ -88,6 +102,9 @@ export function groupClaudeCodeEvents(events: StreamEvent[]): SessionState[] {
     if (!session.cwd && cwd) session.cwd = cwd;
     if (!session.transcriptPath && transcriptPath) session.transcriptPath = transcriptPath;
     if (teamName) session.teamName = teamName;
+    if (parentSessionId) session.parentSessionId = parentSessionId;
+    if (teammateRole) session.role = teammateRole;
+    if (teammateLabel) session.label = teammateLabel;
     if (teammateName) {
       (session.teammates ??= []).includes(teammateName) ||
         session.teammates.push(teammateName);
@@ -170,6 +187,9 @@ export function worktreeName(cwd: string | undefined): string | undefined {
 export type SessionKind = "lead" | "teammate" | "session";
 
 export function sessionKind(session: SessionState): SessionKind {
+  // Explicit parent link is authoritative (survives the team_name deprecation).
+  if (session.parentSessionId) return "teammate";
+  // Legacy: infer from self-reported teammate names on TeammateIdle hooks.
   const n = session.teammates?.length ?? 0;
   if (n >= 2) return "lead";
   if (n === 1) return "teammate";
@@ -187,6 +207,8 @@ export function teammateName(session: SessionState): string | undefined {
  * This is what shows in the sidebar and lists instead of a raw session id.
  */
 export function sessionTitle(session: SessionState): string {
+  // A teammate's own sidecar label is the best name we have for it.
+  if (session.label) return session.label;
   const mate = teammateName(session);
   if (mate) return mate;
   const n = session.teammates?.length ?? 0;
@@ -261,27 +283,65 @@ export function groupByProject(sessions: SessionState[]): ProjectBucket[] {
 
 export type ProjectRow =
   | { kind: "session"; session: SessionState; activity: string }
-  | { kind: "team"; teamName: string; sessions: SessionState[]; activity: string };
+  | { kind: "team"; teamName: string; leadId?: string; sessions: SessionState[]; activity: string };
 
 /**
- * Within a project, fold a swarm (sessions sharing a `team_name` — lead plus its
- * teammates) into one cluster; standalone sessions stay flat. Stable
- * creation-time order (newest first), never reshuffling on live activity.
+ * Within a project, fold a swarm — a lead plus its teammates — into one cluster;
+ * standalone sessions stay flat. Nesting is by the explicit `parentSessionId`
+ * link (a teammate points at its lead), which replaces the deprecated
+ * `team_name` heuristic; `team_name` grouping is kept only as a fallback for
+ * pre-fix sessions that predate the parent link. Stable creation-time order
+ * (newest first), never reshuffling on live activity.
  */
 export function clusterProjectSessions(sessions: SessionState[]): ProjectRow[] {
-  const teams = new Map<string, SessionState[]>();
-  const rows: ProjectRow[] = [];
+  const byId = new Map(sessions.map((s) => [s.sessionId, s] as const));
+  const claimed = new Set<string>();
+
+  // Primary: group teammates under the lead they name via parentSessionId.
+  const groups = new Map<string, { lead?: SessionState; members: SessionState[] }>();
   for (const s of sessions) {
-    if (s.teamName) {
-      (teams.get(s.teamName) ?? teams.set(s.teamName, []).get(s.teamName)!).push(s);
-    } else {
-      rows.push({ kind: "session", session: s, activity: s.firstSeen });
+    if (!s.parentSessionId) continue;
+    const g = groups.get(s.parentSessionId) ?? { members: [] };
+    g.members.push(s);
+    groups.set(s.parentSessionId, g);
+    claimed.add(s.sessionId);
+  }
+  for (const [leadId, g] of groups) {
+    const lead = byId.get(leadId);
+    if (lead) {
+      g.lead = lead;
+      claimed.add(lead.sessionId);
     }
   }
-  for (const [teamName, members] of teams) {
+
+  const rows: ProjectRow[] = [];
+  for (const [leadId, g] of groups) {
+    const members = g.members.slice().sort((a, b) => (a.firstSeen < b.firstSeen ? 1 : -1));
+    const ordered = g.lead ? [g.lead, ...members] : members;
+    const teamName = g.lead?.teamName ?? members.find((m) => m.teamName)?.teamName ?? leadId;
+    const activity = ordered.reduce((a, s) => (s.firstSeen > a ? s.firstSeen : a), ordered[0]?.firstSeen ?? "");
+    rows.push({ kind: "team", teamName, leadId: g.lead ? leadId : undefined, sessions: ordered, activity });
+  }
+
+  // Legacy fallback: sessions with a team_name but no parent link (pre-fix
+  // swarms) still fold by team_name.
+  const legacy = new Map<string, SessionState[]>();
+  for (const s of sessions) {
+    if (claimed.has(s.sessionId) || !s.teamName) continue;
+    (legacy.get(s.teamName) ?? legacy.set(s.teamName, []).get(s.teamName)!).push(s);
+    claimed.add(s.sessionId);
+  }
+  for (const [teamName, members] of legacy) {
     members.sort((a, b) => (a.firstSeen < b.firstSeen ? 1 : -1));
     rows.push({ kind: "team", teamName, sessions: members, activity: members[0]?.firstSeen ?? "" });
   }
+
+  // Standalone sessions.
+  for (const s of sessions) {
+    if (claimed.has(s.sessionId)) continue;
+    rows.push({ kind: "session", session: s, activity: s.firstSeen });
+  }
+
   return rows.sort((a, b) => (a.activity < b.activity ? 1 : a.activity > b.activity ? -1 : 0));
 }
 

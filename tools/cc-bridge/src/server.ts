@@ -32,7 +32,8 @@ export function createServer(tailer: Tailer): Hono {
     if (!sessionId || !transcriptPath) {
       return c.json({ error: "missing session_id or transcript_path" }, 400);
     }
-    await tailer.register(sessionId, transcriptPath);
+    const cwd = typeof body.cwd === "string" ? body.cwd : undefined;
+    await tailer.register(sessionId, transcriptPath, cwd);
     return c.json({ ok: true });
   });
 
