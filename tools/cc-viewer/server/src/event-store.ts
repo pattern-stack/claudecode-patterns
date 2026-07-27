@@ -107,6 +107,7 @@ export class EventStore {
   private readonly _deleteByCapStmt: Statement;
   private readonly _appendTranscriptStmt: Statement;
   private readonly _transcriptForSessionStmt: Statement;
+  private readonly _transcriptTailStmt: Statement;
 
   constructor(opts: EventStoreOptions) {
     this._db = new Database(opts.path);
@@ -168,6 +169,17 @@ export class EventStore {
       SELECT * FROM transcript_entries
       WHERE session_id = ?
       ORDER BY line_index ASC
+    `);
+    // Tail variant: take the newest N lines (chat reads newest-first), then
+    // re-sort ascending so the caller still gets line_index order. Covered by
+    // idx_transcript_session_index. Keeps the cold-load payload bounded.
+    this._transcriptTailStmt = this._db.prepare(`
+      SELECT * FROM (
+        SELECT * FROM transcript_entries
+        WHERE session_id = ?
+        ORDER BY line_index DESC
+        LIMIT ?
+      ) ORDER BY line_index ASC
     `);
 
     if (opts.retentionDays !== undefined) this.purgeOlderThanDays(opts.retentionDays);
@@ -254,8 +266,12 @@ export class EventStore {
     return Number(info.changes) > 0;
   }
 
-  transcriptForSession(sessionId: string): PersistedTranscriptEntry[] {
-    const rows = this._transcriptForSessionStmt.all(sessionId) as RawTranscriptRow[];
+  transcriptForSession(sessionId: string, limit?: number): PersistedTranscriptEntry[] {
+    const rows = (
+      limit && limit > 0
+        ? this._transcriptTailStmt.all(sessionId, limit)
+        : this._transcriptForSessionStmt.all(sessionId)
+    ) as RawTranscriptRow[];
     return rows.map(rowToTranscriptEntry);
   }
 
