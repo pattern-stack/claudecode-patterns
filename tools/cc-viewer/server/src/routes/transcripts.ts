@@ -81,9 +81,18 @@ export function transcriptRoutes(
       return c.json({ error: "persistence not configured" }, 503);
     }
     const sessionId = c.req.param("sessionId");
-    const entries = store.transcriptForSession(sessionId);
+    // Bound the cold-load payload to the newest N lines. Absent/invalid → full
+    // transcript (back-compat). Chat renders newest-first, so the tail is what
+    // paints; older lines can be paged in later.
+    const limitRaw = c.req.query("limit");
+    const parsed = limitRaw ? Number.parseInt(limitRaw, 10) : Number.NaN;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 10000) : undefined;
+    const entries = store.transcriptForSession(sessionId, limit);
     return c.json({
       session_id: sessionId,
+      // True when we returned a bounded tail that filled the limit, i.e. older
+      // lines exist that weren't sent. Lets the client show "showing last N".
+      truncated: limit !== undefined && entries.length >= limit,
       entries: entries.map((e) => ({
         line_uuid: e.lineUuid,
         line_index: e.lineIndex,

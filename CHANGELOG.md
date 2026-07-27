@@ -5,6 +5,34 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.22] — 2026-07-26
+
+### Changed — per-role model + effort baseline
+
+Every SDLC phase agent now ships an explicit `model` **and** `effort` in its frontmatter. Previously only `model` was set, effort was never declared, and `implementer` — the role that writes the most code — ran on `sonnet`.
+
+| role | model | effort | was |
+|---|---|---|---|
+| `understander` | `opus` | `xhigh` | `opus` |
+| `coordinator` | `opus` | `high` | `opus` |
+| `implementer` | `opus` | `low` | **`sonnet`** |
+| `planner` | `fable` | `xhigh` | `opus` |
+| `specifier` | `fable` | `xhigh` | `opus` |
+| `reviewer` | `fable` | `xhigh` | `opus` |
+| `validator` | `fable` | `medium` | `opus` |
+
+The split: `opus` where judgment is open-ended (research, routing, code-writing), `fable` where the work is authoring/critique against a known frame, or mechanical gate-running.
+
+- **`sdlc.example.yml`'s `phases:` sample now restates this baseline** rather than the old sonnet/opus split, so the documented override sample and the shipped defaults agree. It still ships commented → zero behavior change on its own.
+- **`fable` confirmed as a model alias** — verified empirically to resolve to `claude-fable-5` through the spawn-argument path the `phase-tuning` hook writes to. `reference/subagents.md` listed only `sonnet`/`opus`/`haiku` and has been corrected.
+- **Note on `/orchestrate`**: its *lead* is the operator's own main session, not a spawned agent. It has no role key and is unreachable by the hook — set it with `/model`.
+
+### Known-unverified
+
+- `effort` honoring remains **beta** (accepted at spawn 2026-07-03; honoring untested) — unchanged from 0.2.20.
+- The `fable` alias is proven on the **spawn-argument** path (`sdlc.yml` → `phase-tuning` hook). Resolution of a `model:` alias declared in **frontmatter** could not be re-verified in-session, because the running plugin is served from `~/.claude/plugins/cache/` and the agent registry loads at session start. Confirm after a `/plugin update` + restart.
+- `implementer` pairs `opus` with `effort: low` while `sdlc.example.yml` still suggests `max_turns: 60`. Low effort on the heaviest code-writing role may need more turns to converge; raise the cap if it under-converges.
+
 ## [0.2.20] — 2026-07-03
 
 ### Added — `phase-tuning` hook: per-phase spawn tuning becomes deterministic control flow

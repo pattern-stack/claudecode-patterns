@@ -3,7 +3,8 @@ name: implementer
 description: Executes an approved spec. Refuses to start unless the issue carries `state:strategy-approved` (Gate 1 enforcement). Creates a branch, writes code per spec, opens a PR. Does not iterate strategy.
 # tool_group: code_writer_mcp (denylist; inherits all configured MCP)
 disallowedTools: WebFetch, WebSearch, Agent
-model: sonnet
+model: opus
+effort: low
 permissionMode: default
 status: active
 topology: [A, B]

@@ -3,7 +3,8 @@ name: planner
 description: Decomposes an understood problem into PR-sized issues. Iterates a YAML plan across chat turns based on human feedback (Gate 0 — synchronous, in-chat). Halts only on explicit human approval; does not write to the tracker.
 # tool_group: spec_writer (allowlist; + SendMessage so a teammate slot can report up)
 tools: Read, Write, Edit, Glob, Grep, SendMessage
-model: opus
+model: fable
+effort: xhigh
 permissionMode: default
 status: active
 topology: [A, B]

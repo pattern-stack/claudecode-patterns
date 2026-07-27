@@ -30,6 +30,14 @@ interface DeltaPayload {
   entry?: Record<string, unknown>;
 }
 
+/**
+ * Cold-load ceiling on transcript lines. Chat renders newest-first, so we fetch
+ * the most recent N lines to keep first paint fast; live deltas append on top.
+ * Comfortably covers ordinary sessions — only pathologically long ones truncate
+ * their oldest lines from the snapshot.
+ */
+const COLD_LOAD_LIMIT = 1000;
+
 export function useTranscript(sessionId: string | undefined): UseTranscriptResult {
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +54,7 @@ export function useTranscript(sessionId: string | undefined): UseTranscriptResul
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchTranscript(sessionId)
+    fetchTranscript(sessionId, { limit: COLD_LOAD_LIMIT })
       .then((rows) => {
         if (cancelled) return;
         setEntries(rows);

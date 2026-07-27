@@ -36,12 +36,19 @@ export function useRelatedSessions(sessionId: string | undefined): RelatedSessio
     const self = sessions.find((s) => s.sessionId === sessionId);
     if (!self) return { ready: true, siblings: [] };
     const key = sessionProjectKey(self);
-    const siblings = sessions.filter(
-      (s) =>
-        s.sessionId !== sessionId &&
-        sessionProjectKey(s) === key &&
-        (overlaps(s, self) || (!!self.teamName && s.teamName === self.teamName)),
-    );
+    // A session's "team key" is its lead's id: the lead itself uses its own id,
+    // a teammate uses its parentSessionId. Two sessions on the same team key are
+    // lead↔teammate or teammate↔teammate — the authoritative relation.
+    const selfTeamKey = self.parentSessionId ?? self.sessionId;
+    const siblings = sessions.filter((s) => {
+      if (s.sessionId === sessionId || sessionProjectKey(s) !== key) return false;
+      const sameTeam = (s.parentSessionId ?? s.sessionId) === selfTeamKey;
+      return (
+        sameTeam ||
+        overlaps(s, self) ||
+        (!!self.teamName && s.teamName === self.teamName)
+      );
+    });
     // groupClaudeCodeEvents already returns newest-created-first; filter preserves it.
     return { ready: true, self, siblings };
   }, [sessions, sessionId, ready]);

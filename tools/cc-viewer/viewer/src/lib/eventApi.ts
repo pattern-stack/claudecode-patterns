@@ -71,19 +71,26 @@ export interface TranscriptEntry {
 
 interface TranscriptResponse {
   session_id: string;
+  /** True when a bounded tail filled `limit` — older lines exist server-side
+   *  that weren't sent. Declared so the wire contract matches the route; no UI
+   *  surfaces it yet ("showing last N" is a follow-up). */
+  truncated?: boolean;
   entries: TranscriptEntry[];
 }
 
 /**
  * Fetch the cold-loaded transcript snapshot for a single Claude Code
- * session. Entries are returned pre-ordered by `line_index`.
+ * session. Entries are returned pre-ordered by `line_index`. When `limit` is
+ * given the server returns only the newest N lines (bounded cold-load payload);
+ * omit it to fetch the full transcript.
  */
 export async function fetchTranscript(
   sessionId: string,
-  opts: { baseUrl?: string } = {},
+  opts: { baseUrl?: string; limit?: number } = {},
 ): Promise<TranscriptEntry[]> {
   const base = opts.baseUrl ?? "";
-  const url = `${base}/admin/claude-code/sessions/${encodeURIComponent(sessionId)}/transcript`;
+  const query = opts.limit ? `?limit=${opts.limit}` : "";
+  const url = `${base}/admin/claude-code/sessions/${encodeURIComponent(sessionId)}/transcript${query}`;
   const res = await fetch(url);
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`fetchTranscript: HTTP ${res.status}`);

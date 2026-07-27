@@ -4,7 +4,8 @@ description: Verifies an implementation against the configured quality profile a
 # tool_group: custom (validator_mcp denies Edit; validator needs Edit to write
 # `## Live Validate` per canvas v2). Keeps Bash + Read/Glob/Grep + Edit; drops Write.
 disallowedTools: Write, WebFetch, WebSearch, Agent
-model: opus
+model: fable
+effort: medium
 permissionMode: default
 status: active
 topology: [A, B]

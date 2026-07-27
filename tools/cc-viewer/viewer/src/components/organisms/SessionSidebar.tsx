@@ -220,7 +220,12 @@ function ProjectNode({
         <div style={{ marginLeft: 6, borderLeft: "1px solid var(--border-muted)", paddingLeft: 6 }}>
           {rows.map((row) =>
             row.kind === "team" ? (
-              <SwarmNode key={`team:${row.teamName}`} sessions={row.sessions} activeId={activeId} />
+              <SwarmNode
+                key={`team:${row.teamName}`}
+                sessions={row.sessions}
+                leadId={row.leadId}
+                activeId={activeId}
+              />
             ) : (
               <SessionRow key={row.session.sessionId} session={row.session} activeId={activeId} />
             ),
@@ -232,8 +237,21 @@ function ProjectNode({
 }
 
 /** A swarm cluster: the lead row expands to reveal its teammates. */
-function SwarmNode({ sessions, activeId }: { sessions: SessionState[]; activeId?: string }) {
-  const lead = sessions.find((s) => sessionKind(s) === "lead") ?? sessions[0];
+function SwarmNode({
+  sessions,
+  leadId,
+  activeId,
+}: {
+  sessions: SessionState[];
+  leadId?: string;
+  activeId?: string;
+}) {
+  // Prefer the explicit lead from the parent-link grouping; fall back to the
+  // legacy heuristic, then to the first session (orphaned teammates → no lead).
+  const lead =
+    (leadId ? sessions.find((s) => s.sessionId === leadId) : undefined) ??
+    sessions.find((s) => sessionKind(s) === "lead") ??
+    sessions[0];
   const activeInside = sessions.some((s) => s.sessionId === activeId);
   const [open, setOpen] = useState(activeInside);
   useEffect(() => {
@@ -246,6 +264,7 @@ function SwarmNode({ sessions, activeId }: { sessions: SessionState[]; activeId?
     <div>
       <SessionRow
         session={lead}
+        kind="lead"
         activeId={activeId}
         expandable={members.length > 0}
         open={open}
@@ -261,6 +280,7 @@ function SwarmNode({ sessions, activeId }: { sessions: SessionState[]; activeId?
 
 function SessionRow({
   session,
+  kind: kindOverride,
   activeId,
   indent,
   expandable,
@@ -268,13 +288,14 @@ function SessionRow({
   onExpand,
 }: {
   session: SessionState;
+  kind?: SessionKind;
   activeId?: string;
   indent?: boolean;
   expandable?: boolean;
   open?: boolean;
   onExpand?: () => void;
 }) {
-  const kind = sessionKind(session);
+  const kind = kindOverride ?? sessionKind(session);
   const active = session.sessionId === activeId;
   const live = isSessionLive(session);
   const title = sessionTitle(session);

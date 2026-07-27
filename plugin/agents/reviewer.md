@@ -4,7 +4,8 @@ description: Runtime role for the critique skill. Reads a target artifact (spec 
 # tool_group: custom (validator_mcp denies Edit; reviewer needs Edit to append
 # to spec phase sections per canvas v2). Inherits all MCP + Bash + Read/Edit/Glob/Grep.
 disallowedTools: Write, WebFetch, WebSearch, Agent
-model: opus
+model: fable
+effort: xhigh
 permissionMode: default
 status: active
 topology: [A, B]

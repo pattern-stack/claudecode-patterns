@@ -120,23 +120,38 @@ develop_team:
 # Group every knob for a role together under `phases.<role>` — strongest model +
 # effort where judgment lives, cheaper/capped for mechanical phases. Uncomment to
 # use; block-map or inline-map form both work.
+#
+# The block below RESTATES the shipped frontmatter defaults, so
+# uncommenting it as-is is a no-op — it's here as a starting point to edit, and as
+# the one place the whole per-role policy is legible at a glance:
+#
+#   opus  where the judgment is open-ended (understander research, coordinator
+#         routing, implementer code-writing)
+#   fable where the work is authoring/critique against a known frame (planner,
+#         specifier, reviewer) or mechanical gate-running (validator)
+#
 # phases:
 #   understander:
-#     model:  sonnet
-#     effort: low
-#   planner:
-#     model: opus
-#   specifier: { model: opus, effort: high }
-#   reviewer:  { model: opus, effort: high }
+#     model:  opus
+#     effort: xhigh
+#   planner:   { model: fable, effort: xhigh }
+#   specifier: { model: fable, effort: xhigh }
+#   reviewer:  { model: fable, effort: xhigh }
 #   implementer:
-#     model:     sonnet
+#     model:     opus
+#     effort:    low           # cheap-but-strong; raise max_turns if it under-converges
 #     max_turns: 60
 #     worktree:  true          # per-role isolation; ADDS only, explicit spawn arg wins
 #   validator:
-#     model:     sonnet
+#     model:     fable
+#     effort:    medium
 #     max_turns: 40
 #   coordinator:
-#     model: opus
+#     model:  opus
+#     effort: high
+#
+# NOTE: `/orchestrate`'s LEAD is your own main session, not a spawned agent — it has
+# no role key here and is not reachable by the hook. Set it with `/model`.
 #
 # Backward-compat: the flat 0.2.17 keys `phase_models:` / `phase_effort:` /
 # `phase_max_turns:` / `phase_worktree:` (each a `<role>: <value>` map) are still
