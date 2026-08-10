@@ -5,6 +5,60 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.25] — 2026-08-10
+
+### Added — `driving-mode`: hands-free voice, one message at a time
+
+A per-turn spoken-summary protocol for a user who **cannot look at the screen** — driving, walking, running Claude Code by voice from a phone. Every turn opens by speaking a 2–3 sentence summary aloud; the written response becomes an archive nobody reads until later. Ported from a project-local `tts` skill that ran live for several hours on 2026-08-10, and generalized so it works in every project.
+
+| Added | What |
+|---|---|
+| `plugin/scripts/driving-mode.mjs` | the engine — OpenAI `tts-1`/`nova` → `afplay`, macOS `say` fallback, playback mutex |
+| `plugin/scripts/driving-mode` | bash shim (prefers `bun`, falls back to `node`) for projects that vendor it locally |
+| `plugin/skills/driving-mode/SKILL.md` | activation phrases, the per-turn protocol, summary rules, key resolution, known limits |
+| `plugin/sdlc.justfile` | `just sdlc::say "…"` |
+
+**Zero npm dependencies** — nothing outside `node:` builtins, same rule as `guided-tour`.
+
+### The two rules the live session bought
+
+**1. One message at a time — playback is serialized by a mutex.** The old guidance was "background it with `&`, never block": correct for one message per turn, wrong across rapid consecutive turns. **Three voice messages played simultaneously** and the listener understood none of them. Audio has no scrollback, so a message lost to overlap is lost for good.
+
+The fix is not "stop backgrounding it" — blocking would stall the turn for the length of the audio. The script splits the job instead: **synthesis stays parallel** (it's the slow network half), **playback serializes**. Messages queue and play back-to-back with no dead air — three simultaneous fires measured 10s instead of ~4s, i.e. queued rather than stalled.
+
+The lock is an atomic `mkdir` in the temp dir with a stale-lock reclaim (5 min — a killed process can't strand the queue), a hard wait ceiling (10 min — it can never deadlock), and `SIGINT`/`SIGTERM`/`SIGHUP` handlers that release on the way out. Escape hatches: `TTS_NO_QUEUE=1` skips the queue, `TTS_INTERRUPT=1` kills playback and jumps it. **The mutex is load-bearing and the script says so in a DO-NOT-REMOVE comment** — a future author "simplifying" it away reintroduces the exact bug.
+
+**2. Announce, then wait.** The user listens to music while driving, so a long report that starts unannounced is half-missed before they realize it's for them. When there's something substantial, speak a short ping — *"I've got the review results ready, say when you're ready"* — then **stop and end the turn**, and deliver on the next one. Short acknowledgements and status lines still go immediately; only long reports need the handshake. This is a first-class section of the skill, not a footnote.
+
+### Generalized out of its origin project
+
+- **Key resolution carries no project path**: `OPENAI_API_KEY` → `TTS_KEY_FILE` → `~/.config/claude-tts/key`. The old project-named location keeps working via `TTS_KEY_FILE`; the skill documents both the copy and the point-at-it migration.
+- **Lock file renamed** to a neutral `claude-driving-mode.lock`. Consequence, documented: a leftover project-local copy of the old script has its *own* lock and will talk over this one — delete it.
+- `TTS_MODEL` / `TTS_VOICE` overrides preserved (defaults `tts-1` / `nova`), as is the `say -v Samantha -r 195` fallback for a machine with no key.
+- **Path resolution is version-pinned, not globbed.** Several plugin versions coexist in the cache, so the skill resolves the newest `driving-mode.mjs` once at activation (`ls -d … | sort -V | tail -1`) and reuses the literal path — a bare `*` glob can pick a stale version, and extra matches would be *read aloud as text*.
+
+### Carried over unchanged
+
+Activation phrases ("driving mode", "tts on", "I'm driving", "walking", "read it to me", "hands-free"; exits on "tts off", "I'm parked"), **confirm activation by speaking it, not printing it**, and the summary rules: ≤75 words, 2–3 sentences, lead with the takeaway, no code/paths/URLs/markdown, `Heads up:` prefix for errors, decisions phrased as spoken questions. Plus the two operating facts: **never spawn a subagent per utterance** (~6–7s wake cost for no benefit — invoke directly via Bash), and **written prose is invisible while active**, so any question needing an answer must be asked aloud.
+
+### Changed vs the script it was ported from
+
+Behavior is otherwise identical. Three deliberate differences:
+
+- `acquireLock()` is now **reentrant** — the fallback path can ask for a lock it already holds. Previously that would have spun for the full 10-minute ceiling in silence before recovering.
+- `TTS_INTERRUPT=1` also `pkill`s `say`, not just `afplay` — the interrupt was a no-op when running on the fallback voice.
+- Added a `--help`/no-arg usage line.
+
+### Known limits (documented in the skill, not fixed here)
+
+- **macOS only.** `afplay` for playback, `say` for fallback; no Linux/Windows path.
+- The mutex is per-machine **per script copy** — a differently-named copy has its own lock.
+- `TTS_INTERRUPT=1` is process-wide `pkill`; it stops unrelated `afplay`/`say` audio too.
+- Stale-lock reclaim is time-based, not PID-based.
+- **No text sanitation** — whatever is passed is spoken, markdown included. Keeping it clean is the summary rules' job, not the script's.
+- Every utterance is a billed network call; a dead zone silently degrades to the system voice.
+- **Nothing enforces the mode** — staying in it is model discipline across turns, with no hook to fail a turn that forgot to speak.
+
 ## [0.2.24] — 2026-08-09
 
 ### Added — `guided-tour`: one tour definition, a demo and a check
