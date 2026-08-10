@@ -52,19 +52,32 @@ jobs:
           test -f plugin/sdlc.example.yml
           echo "✅ Plugin structure complete"
 
-      - name: Validate plugin.json hooks all reference existing scripts
+      - name: Validate hooks.json commands all reference existing scripts
         run: |
-          set -e
-          # Each hook command should be `node ${CLAUDE_PLUGIN_DIR}/hooks/<file>.mjs <event>`
-          # Extract the file part and check it exists at plugin/hooks/<file>.mjs
-          jq -r '.components.hooks | to_entries[] | .value[].hooks[].command' plugin/.claude-plugin/plugin.json \
-            | grep -oE '\${CLAUDE_PLUGIN_DIR}/hooks/[^ ]+' \
-            | sed 's|${CLAUDE_PLUGIN_DIR}/||' \
-            | sort -u \
-            | while read p; do
-                test -f "plugin/$p" || { echo "❌ Missing plugin/$p (referenced in plugin.json hooks)"; exit 1; }
-              done
-          echo "✅ All hook scripts present"
+          set -euo pipefail
+          # Hooks live in plugin/hooks/hooks.json (the plugin's DEFAULT hook-config
+          # location) — not in plugin.json. Commands reference scripts as
+          # `${CLAUDE_PLUGIN_ROOT}/<path>`; extract each path and assert it exists.
+          #
+          # This check previously read `.components.hooks` out of plugin.json with
+          # `${CLAUDE_PLUGIN_DIR}` — wrong file AND wrong variable — so it matched
+          # nothing and passed vacuously for its whole life. Keep it honest: the
+          # count assertion below fails loudly if the extraction ever goes empty.
+          jq -r '.hooks | to_entries[] | .value[].hooks[].command' plugin/hooks/hooks.json \
+            | grep -oE '\$\{CLAUDE_PLUGIN_ROOT\}/[^ ]+' \
+            | sed 's|${CLAUDE_PLUGIN_ROOT}/||' \
+            | sort -u > /tmp/hook-scripts.txt
+
+          count=$(wc -l < /tmp/hook-scripts.txt | tr -d ' ')
+          test "$count" -gt 0 || { echo "❌ Extracted 0 hook script paths — the check is broken, not the hooks"; exit 1; }
+
+          missing=0
+          while read -r p; do
+            [ -n "$p" ] || continue
+            test -f "plugin/$p" || { echo "❌ Missing plugin/$p (referenced in hooks.json)"; missing=1; }
+          done < /tmp/hook-scripts.txt
+          test "$missing" -eq 0 || exit 1
+          echo "✅ All $count hook scripts present"
 
       - name: Simulate fresh-project install (cp plugin → ~/.claude/plugins/sdlc)
         run: |

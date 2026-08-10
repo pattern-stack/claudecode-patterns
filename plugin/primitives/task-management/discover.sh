@@ -9,7 +9,7 @@
 #   linear → Linear team workflow states + label palette  [TODO: stub]
 #   jira   → not implemented
 #
-# Wired into plugin.json `components.hooks.SessionStart`. Writes output to
+# Wired into `plugin/hooks/hooks.json` → `hooks.SessionStart`. Writes output to
 # `${CLAUDE_PROJECT_DIR}/.claude/.session/tracker-context.md`. Agents read that
 # file via `@`-mention so they don't need to know about the discovery
 # mechanism.

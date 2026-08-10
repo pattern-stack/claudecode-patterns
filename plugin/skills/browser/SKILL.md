@@ -29,7 +29,7 @@ Unified browser interaction for development: see what the user sees (their sessi
 
 ## The three MCP servers (plugin-shipped)
 
-Declared in `plugin.json → components.mcpServers`; they register on every session of every consuming project. Tool names are **plugin-namespaced** (`mcp__plugin_sdlc_<server>__…`) — when in doubt, discover them with ToolSearch (`"chrome-devtools list pages"`, `"browser navigate"`, `"lighthouse audit"`).
+Declared as top-level `mcpServers` in `plugin.json`; they register on every session of every consuming project. Tool names are **plugin-namespaced** (`mcp__plugin_sdlc_<server>__…`) — when in doubt, discover them with ToolSearch (`"chrome-devtools list pages"`, `"browser navigate"`, `"lighthouse audit"`).
 
 | Server | Purpose | When to use |
 |--------|---------|-------------|

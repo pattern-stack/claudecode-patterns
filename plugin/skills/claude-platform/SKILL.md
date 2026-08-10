@@ -1,6 +1,6 @@
 ---
 name: claude-platform
-description: Authoritative reference and authoring guide for the Claude platform — both the Claude Code `.claude/` config layer (skills, subagents, output styles, hooks, plugins, settings) and the Anthropic Agent SDK (Managed Agents API: agents, sessions, threads, multiagent, skills). Use when authoring a skill / subagent / output style / hook / plugin manifest, when designing a multi-agent system, or when comparing CLI vs SDK and translating between them.
+description: "Authoritative reference and authoring guide for the Claude platform — both the Claude Code `.claude/` config layer (skills, subagents, output styles, hooks, plugins, settings) and the Anthropic Agent SDK (Managed Agents API: agents, sessions, threads, multiagent, skills). Use when authoring a skill / subagent / output style / hook / plugin manifest, when designing a multi-agent system, or when comparing CLI vs SDK and translating between them."
 when_to_use: User asks about `.claude/` structure, "how do I write a skill", "how do hooks work", "should this be a skill or subagent", "how do I ship a plugin", "what's the SDK equivalent", "translate this agent definition to the API", or otherwise wants canonical authoring guidance.
 allowed-tools: Read, Glob, Grep
 user-invocable: true

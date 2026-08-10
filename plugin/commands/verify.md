@@ -1,6 +1,6 @@
 ---
 description: Run visual QA on a URL — screenshot, console, network, performance
-argument-hint: [url] [--perf]
+argument-hint: "[url] [--perf]"
 ---
 
 # /verify — Visual QA

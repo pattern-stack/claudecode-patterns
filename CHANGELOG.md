@@ -5,6 +5,46 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.23] — 2026-08-09
+
+### Fixed — the plugin manifest declared everything under a field Claude Code ignores
+
+`plugin.json` nested all of its component fields under a `"components": { … }` wrapper. **`components` is not a field in the plugin manifest schema** — `skills`, `commands`, `agents`, `outputStyles`, `hooks` and `mcpServers` are all *top-level* keys. Claude Code silently ignores unrecognized top-level fields, so everything inside the wrapper was a no-op. `claude plugin validate` says so plainly: `components: Unknown field 'components'. Claude Code ignores it at load time.`
+
+**Why nobody noticed for 12 releases:** `skills/`, `commands/`, `agents/` and `output-styles/` are scanned by **default**. They loaded the whole time, wrapper or not. Only `mcpServers` has no default location — so it, alone, silently vanished.
+
+**User-visible effect:** the three browser MCP servers this plugin ships — `chrome-devtools`, `playwright`, `lighthouse` — **never registered on any consuming session**, in any project, since they were introduced in 0.2.11. Confirmed on a live install: `claude mcp list` showed no trace of them with `sdlc@claudecode-patterns` enabled. Everything downstream of them was dead on arrival:
+
+- `/browse` and `/verify` — no browser tools to drive
+- `browser-pilot` — the 0.2.11 entry below claims its dead MCP config was *fixed* by moving the servers to plugin level. That fix never landed; it moved them into the ignored wrapper.
+- `design-grader` / `design-builder` — the design loop's evidence-capture step could not run
+- `browser` skill — its "The plugin ships the three MCP servers this skill drives… no per-project setup" was, until now, false
+
+All three now sit at the top level with **pinned versions and args unchanged** (`chrome-devtools-mcp@1.1.1 --browserUrl http://127.0.0.1:9222`, `@playwright/mcp@0.0.75 --headless --isolated`, `@danielsogl/lighthouse-mcp@1.3.0`). After `/plugin update` + a session restart they register for real.
+
+The four path fields were **dropped rather than hoisted**, because each named its own default location and buys nothing at the top level: `skills` *adds to* the default scan (redeclaring it scans `skills/` twice), `commands`/`agents`/`outputStyles` *replace* it with itself, and `agents` rejects a directory outright — the schema takes individual `.md` files there, so the honest top-level spelling would be an enumeration of every agent file that drifts the moment one is added. Component loading is unchanged; it was always the default scan doing the work.
+
+### Fixed — three components were loading with all frontmatter silently dropped
+
+`claude plugin validate` reported `YAML frontmatter failed to parse` on three files, meaning Claude Code loaded each with **empty metadata** — no `description`, no `allowed-tools`, no `argument-hint`:
+
+- `commands/verify.md` and `commands/review.md` — `argument-hint: [url] [--perf]` parses as a YAML flow sequence followed by a second, unexpected flow sequence. Both hints are now quoted.
+- `skills/claude-platform/SKILL.md` — the unquoted `description` contained `Managed Agents API: agents, …`; a colon-space inside a plain scalar ends the key. Now quoted.
+
+Values are unchanged in all three — this is quoting only. Practical effect: `/sdlc:verify` and `/sdlc:review` recover their descriptions and argument hints, and the `claude-platform` skill recovers its `description`/`when_to_use` — which is what the model matches on to decide whether to load it, so the skill was effectively undiscoverable by description.
+
+### Added — `claude plugin validate` runs in CI
+
+`verify.yml` now installs the Claude Code CLI (pinned, `2.1.226`) and runs `claude plugin validate ./plugin` inside the existing required `invariants` job. It needs no credentials — a pure local parse. This is precisely the check that would have caught both bugs above on the day they shipped; the wrapper had been in the manifest since the plugin's first release.
+
+### Fixed — the hook-existence CI check had been passing vacuously
+
+`plugin-drift-test.yml`'s "hooks all reference existing scripts" step read `.components.hooks` from `plugin.json` and grepped for `${CLAUDE_PLUGIN_DIR}` — the wrong file *and* the wrong variable. Hooks live in `plugin/hooks/hooks.json` and reference `${CLAUDE_PLUGIN_ROOT}`. `jq` matched nothing, the un-`pipefail`'d pipeline swallowed the error, and the step printed its ✅ regardless. It now reads the right file, and asserts a non-zero extraction count so it can never again pass by matching nothing. It verifies 11 scripts.
+
+### Changed — authoring docs no longer teach the bug
+
+`skills/claude-platform` was the source of the wrong shape: its `templates/plugin-manifest.json` and `reference/plugins.md` both modeled the `components` wrapper. Both now show the flat schema, and `plugins.md` gains a per-field table covering the adds-to/replaces distinction, the `agents`-takes-files rule, the `./` path requirement, and an explicit warning that a wrapped manifest *looks* like it works because the default scans mask it. In-repo references to `plugin.json → components.mcpServers` (`browser-pilot`, `browser`, `browser-driver`) are corrected.
+
 ## [0.2.22] — 2026-07-26
 
 ### Changed — per-role model + effort baseline

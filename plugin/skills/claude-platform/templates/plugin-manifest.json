@@ -6,30 +6,27 @@
   "homepage": "https://github.com/you/my-plugin",
   "license": "MIT",
 
-  "components": {
-    "skills": "skills/",
-    "commands": "commands/",
-    "agents": "agents/",
-    "outputStyles": "output-styles/",
-    "hooks": {
-      "SessionStart": [
-        {
-          "matcher": "",
-          "hooks": [
-            {
-              "type": "command",
-              "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-session-start.sh"
-            }
-          ]
-        }
-      ]
-    },
-    "mcpServers": {
-      "my-server": {
-        "type": "stdio",
-        "command": "npx",
-        "args": ["-y", "@example/my-mcp-server"]
+  "_comment_defaults": "skills/, commands/, agents/, output-styles/ and hooks/hooks.json are scanned by DEFAULT — do not declare them unless you are pointing at a NON-default path. There is no `components` wrapper: every component field is top-level. See reference/plugins.md.",
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/on-session-start.sh"
+          }
+        ]
       }
+    ]
+  },
+
+  "mcpServers": {
+    "my-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/my-mcp-server"]
     }
   }
 }
