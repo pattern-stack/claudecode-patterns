@@ -5,6 +5,60 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.24] — 2026-08-09
+
+### Added — `guided-tour`: one tour definition, a demo and a check
+
+A frontend UI-validation capability. A tour is a plain data module describing a path through the app — go here, click that, expect this text — and it runs two ways:
+
+- **narrate** — drives the user's **real** browser (Arc/Chrome) over raw CDP. A cursor glides to each target, a ring highlights it, a click leaves a ripple, a caption trails the pointer, and a banner narrates each step. For demos and human-watchable walkthroughs.
+- **verify** — same steps, no theatre and no dwell time. Captures screenshots + console errors + failed/4xx requests, evaluates `expect` assertions, writes `report.json`, exits non-zero on failure.
+
+Write it once for the demo, keep it as the check.
+
+| Added | What |
+|---|---|
+| `plugin/scripts/guided-tour.mjs` | the engine — exports `runTour(tour, opts)`, plus a CLI entrypoint |
+| `plugin/skills/guided-tour/SKILL.md` | both modes, tour authoring, step vocabulary, selector forms, known limits |
+| `plugin/skills/guided-tour/examples/example-tour.mjs` | annotated reference tour (placeholder URLs only) |
+| `plugin/sdlc.justfile` | `just sdlc::tour` / `just sdlc::tour-verify` |
+
+**Step vocabulary:** `goto`, `say`, `click` (+`label`), `fill`, `expect`, `waitFor`, `shot`, `dwell`, `optional` — executed in that fixed order within a step. **Selectors:** `text=` (shortest leaf match), `css=`, or raw CSS.
+
+**Tours live in the consuming project** at `.claude/tours/<name>.mjs` — the engine ships with the plugin, the tour ships with the app it describes. They are agent-authored, committed, and reviewed in PR like any other source file. Base URL resolves from `.claude/sdlc.yml → browser.frontend_url` and is passed as `--base-url`; no project URL or port is hardcoded anywhere in the skill or engine. No `tours_dir` config key — the path is a fixed convention, and a knob for it would only be a way for the two to disagree.
+
+**Zero npm dependencies.** Node 22+ ships a global `WebSocket`, so the engine imports nothing outside `node:` builtins and needs no install in any project, in any language.
+
+`browser-pilot` gains the skill and a "promote a settled path to a tour" operating pattern. `design-grader` was deliberately **not** wired — it grades static surfaces against a design reference; flows aren't its job.
+
+### Added — the Arc + Playwright finding, recorded in the `browser` skill
+
+`skills/browser/SKILL.md` recommended Playwright paths that **hang** against Arc. Its "Arc specifics (hard-won)" section now records the finding:
+
+> Playwright's `chromium.connectOverCDP()` hangs against Arc — the websocket connects, then the handshake never completes and dies on the 30s timeout. Verified 2026-08-10 against Arc on Chrome/149.0.7827.156. Raw CDP against the *exact same endpoint* works perfectly (`Target.getTargets`, `Browser.getVersion`, `Target.createTarget`, `Input.dispatchMouseEvent`).
+
+With the practical consequences spelled out: the `playwright` MCP server is unaffected (it runs `--headless --isolated` against its own browser — the hang only bites code that *attaches* Playwright to the user's Arc); to drive the user's Arc, use the `chrome-devtools` MCP server or speak CDP directly; not known to affect Chrome/Brave/Edge. This is why `guided-tour.mjs` is raw CDP rather than Playwright.
+
+### Known limits (documented in the skill, not fixed here)
+
+Ported faithfully from a v1 proven live — it passed 4/4 assertions against a real app and caught 4 real HTTP 404s the UI was swallowing. Shipping it now, iterating later. The honest inventory:
+
+- **`verify` is not yet a CI gate.** Both modes need a CDP browser on :9222; verify is a local check today. Headless-in-CI (launch Chromium, point `--cdp` at it) is untested.
+- `fill` goes through `HTMLInputElement.prototype`'s value setter — no `<textarea>`, `<select>` or contenteditable.
+- `expect` only sees `document.body.innerText` — no attribute/count/style/shadow-DOM assertions.
+- `text=` can match the wrong element on pages with repeated labels; use `css=` + `data-testid` when precision matters.
+- Fixed timings (`waitFor` 15s, nav ~22s, CDP calls 30s), no iframe support.
+- `consoleErrors` / `failedRequests` are reported but **do not** fail the run — promoting them is a per-project decision.
+
+### Changed vs the v1 it was ported from
+
+Behavior of every step, the overlay, the resolver and the report shape is unchanged. The differences:
+
+- **CLI entrypoint added.** v1 duplicated the runner boilerplate (argv parsing, report printing, `process.exit`) in every tour file; it now lives in the engine and tour files are pure `export default { … }` data. `runTour` is still exported for programmatic use.
+- **`--base-url` override**, so callers resolve the URL from `sdlc.yml` instead of a tour pinning one machine's ports.
+- **Preflight guards**: a named error when the CDP endpoint is unreachable (v1 threw a bare `fetch failed`), and when `WebSocket` is missing (Node < 22).
+- **Websocket-open no longer hangs on failure** — v1 awaited `ws.onopen` alone, so a socket error waited forever; it now rejects on error and after 15s.
+
 ## [0.2.23] — 2026-08-09
 
 ### Fixed — the plugin manifest declared everything under a field Claude Code ignores

@@ -10,6 +10,7 @@ disallowedTools: Write, Edit, NotebookEdit, Agent
 model: opus
 skills:
   - browser
+  - guided-tour
 status: beta
 topology: [design-loop, A]
 consumes: [url, theme, viewport]
@@ -84,6 +85,14 @@ Use for performance, accessibility, SEO, and best practices auditing.
    - Capture interactive states (hover, selected, active, disabled) via `browser_evaluate` to apply state, then screenshot.
 2. Measure WCAG AA contrast for every text element via `browser_evaluate` with a contrast helper.
 3. Return screenshot paths to `design-auditor` for grading + posting.
+
+### Repeatable walkthroughs (guided tours)
+
+When the path through the UI is **known and worth repeating** — demoing a feature, walking someone through a flow, or proving a change end-to-end — write a tour instead of clicking through with MCP tools. One file, two modes: `narrate` drives the user's real browser with a visible cursor and captions; `verify` re-runs the same steps as a check with screenshots, assertions and a non-zero exit. See the [`guided-tour` skill](../skills/guided-tour/SKILL.md).
+
+- Tours live in the **consuming project** at `.claude/tours/<name>.mjs`, and are committed + reviewed like any other source file.
+- Resolve the base URL from `sdlc.yml → browser.frontend_url` and pass it as `--base-url` — never hardcode it into a tour.
+- Use MCP tools (above) for **exploration**; promote to a tour once the path is settled.
 
 ### API Verification
 
@@ -179,3 +188,4 @@ When the report includes any `Open questions`, `Design questions for user`, or `
 - [`image-posting` primitive](../primitives/image-posting/README.md) — how I post screenshots
 - [`design-auditor`](./design-auditor.md) — primary consumer
 - [`browser` skill](../skills/browser/SKILL.md) — domain knowledge: CDP connection recipes (incl. Arc), URL resolution from `sdlc.yml`, the headless-auth ladder
+- [`guided-tour` skill](../skills/guided-tour/SKILL.md) — scripted walkthroughs that double as verification (narrate / verify)

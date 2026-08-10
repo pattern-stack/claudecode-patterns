@@ -64,6 +64,21 @@ canvas-dev:
 canvas-seller:
     claude --agent canvas-author --output-style canvas-flow-seller
 
+# ─── Guided tours (UI walkthrough + verification) ─────────────────────
+# Tour definitions live in THIS project at `.claude/tours/<name>.mjs`;
+# the engine ships with the plugin. Both need a Chromium-based browser
+# exposing CDP on :9222 — see the `browser` skill for launch commands.
+
+# narrate a tour in the user's browser (cursor, highlights, captions)
+[group('browser')]
+tour tour_file *args:
+    @cd .. && node "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/guided-tour.mjs" {{tour_file}} {{args}}
+
+# run a tour as a check — screenshots + assertions + report.json, non-zero exit on failure
+[group('browser')]
+tour-verify tour_file *args:
+    @cd .. && node "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/guided-tour.mjs" {{tour_file}} --verify {{args}}
+
 # ─── Canvas reconciliation ────────────────────────────────────────────
 
 # list canvases vs sdlc.yml.canvases
