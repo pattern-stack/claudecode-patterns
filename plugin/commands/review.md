@@ -1,6 +1,6 @@
 ---
 description: Gate 2.5 — paired-lens post-implementation diff review. Spawns two reviewer agents in parallel (lens=adherence + lens=quality), each writing to its own spec phase section. Joins verdicts; the lower wins. Verdict PASS/PASS_WITH_NOTES clears Gate 2.5; REVISE triggers implementer fix.
-argument-hint: [issue-key] [--lens=<single>] [--against=<ref>]
+argument-hint: "[issue-key] [--lens=<single>] [--against=<ref>]"
 allowed-tools: Read, Bash, Agent
 primitives:
   required:

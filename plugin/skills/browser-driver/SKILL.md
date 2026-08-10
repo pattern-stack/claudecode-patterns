@@ -89,7 +89,7 @@ Used by `/design-loop` at start.
 
 ## Mode: user-browser (chrome-devtools)
 
-Owned by the [`browser`](../browser/SKILL.md) skill — the plugin ships a `chrome-devtools` MCP server (plugin.json → components.mcpServers) that connects to the user's own browser on CDP :9222. See that skill for launch recipes (incl. Arc's flag-loss quirks) and the connection-check protocol. This skill stays the scripted headless path.
+Owned by the [`browser`](../browser/SKILL.md) skill — the plugin ships a `chrome-devtools` MCP server (top-level `mcpServers` in plugin.json) that connects to the user's own browser on CDP :9222. See that skill for launch recipes (incl. Arc's flag-loss quirks) and the connection-check protocol. This skill stays the scripted headless path.
 
 ## Constraints
 

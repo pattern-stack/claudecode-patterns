@@ -40,6 +40,19 @@ jobs:
         with:
           bun-version: 1.3.9
 
+      # Static schema check on the plugin itself: manifest fields, component
+      # frontmatter, hook/MCP config shape. Catches the class of bug where a
+      # component is declared under a field Claude Code silently ignores at
+      # load time (e.g. the pre-0.2.23 `components` wrapper, which no-op'd the
+      # three browser MCP servers for every consumer). Needs no credentials —
+      # it is a pure local parse. Pinned like every other tool here; bump
+      # deliberately when adopting new manifest schema.
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.226
+
+      - name: Validate plugin manifest + components
+        run: claude plugin validate ./plugin
+
       - name: Verify tool groups
         run: just sdlc::verify-tool-groups
 

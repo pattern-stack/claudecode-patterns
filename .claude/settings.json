@@ -1,3 +1,3 @@
 {
-  "_comment": "Hooks now declared in plugin/.claude-plugin/plugin.json (components.hooks). Project-level overrides go here when needed."
+  "_comment": "Hooks are declared in plugin/hooks/hooks.json (the plugin's default hook-config location). Project-level overrides go here when needed."
 }

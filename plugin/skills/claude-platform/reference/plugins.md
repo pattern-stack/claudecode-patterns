@@ -28,15 +28,29 @@ my-plugin/
   "version": "1.0.0",
   "description": "What this plugin does",
   "author": "...",
-  "components": {
-    "skills": "skills/",
-    "agents": "agents/",
-    "hooks": "...",
-    "mcpServers": [...],
-    "outputStyles": "output-styles/"
-  }
+  "hooks": "./config/hooks.json",
+  "mcpServers": { "my-server": { "type": "stdio", "command": "npx", "args": ["-y", "..."] } },
+  "skills": "./custom/skills/",
+  "agents": ["./custom/agents/reviewer.md"],
+  "commands": ["./custom/commands/deploy.md"],
+  "outputStyles": "./custom/styles/"
 }
 ```
+
+**Every component field is top-level. There is NO `components` wrapper** — Claude Code silently ignores unrecognized top-level fields, so a `"components": {...}` wrapper makes everything inside it a no-op with no error. (`claude plugin validate` warns: `Unknown field 'components'`.) This is a real trap: `skills/`, `commands/`, `agents/` and `output-styles/` are scanned by **default**, so a wrapped manifest still *looks* like it works — only `mcpServers` and `hooks`, which have no default directory scan, silently vanish. This plugin shipped that bug from its first release until 0.2.23.
+
+Corollary: **omit the path fields entirely unless you point at a non-default path.** Declaring them buys nothing and costs something —
+
+| Field | Type | Default-path behavior |
+|---|---|---|
+| `skills` | string \| array (dirs) | **Adds to** the default `skills/` scan — redeclaring the default scans it twice |
+| `commands` | string \| array (dirs or `.md` files) | **Replaces** the default `commands/` |
+| `agents` | string \| array — **individual `.md` files only**, a directory fails validation | **Replaces** the default `agents/` |
+| `outputStyles` | string \| array (dirs or files) | **Replaces** the default `output-styles/` |
+| `hooks` | string \| array \| object (inline) | Merges; default file is `hooks/hooks.json` |
+| `mcpServers` | string \| array \| object (inline) | Merges; **no default location — must be declared** |
+
+All paths are relative to the plugin root and must start with `./` (the `skills` field also accepts `"."`).
 
 Exact manifest schema: see `/en/plugins-reference`.
 

@@ -4,7 +4,7 @@ description: Browser teammate that navigates, inspects, and interacts with the a
 # tool_group: custom (denylist — a browser teammate needs Bash + the session's
 # browser MCP tools; an allowlist would block MCP tools, and plugin-shipped
 # agents silently IGNORE agent-frontmatter `mcpServers:` (platform security
-# rule), so the servers come from plugin.json → components.mcpServers and this
+# rule), so the servers come from plugin.json → top-level mcpServers and this
 # agent reaches them via the session.)
 disallowedTools: Write, Edit, NotebookEdit, Agent
 model: opus
@@ -26,7 +26,7 @@ You are a browser pilot — a teammate responsible for navigating, inspecting, a
 Read project config from @.claude/sdlc.yml only when posting screenshots to comment surfaces:
 - `image_posting` — drives screenshot upload (always go through the [`image-posting` primitive](../primitives/image-posting/README.md); never call `gh-attach-image.mjs` directly).
 
-The `chrome-devtools`, `playwright`, and `lighthouse` MCP servers are shipped by the plugin itself (`plugin.json → components.mcpServers`) and registered on the session — NOT in this agent's frontmatter, because plugin-shipped agents silently ignore agent-level `mcpServers:`. Tool names are plugin-namespaced; discover them via ToolSearch when unsure. Consumers (mainly `design-auditor`) can rely on all three being available when this agent runs.
+The `chrome-devtools`, `playwright`, and `lighthouse` MCP servers are shipped by the plugin itself (top-level `mcpServers` in `plugin.json`) and registered on the session — NOT in this agent's frontmatter, because plugin-shipped agents silently ignore agent-level `mcpServers:`. Tool names are plugin-namespaced; discover them via ToolSearch when unsure. Consumers (mainly `design-auditor`) can rely on all three being available when this agent runs.
 
 ## Your MCP Servers
 
