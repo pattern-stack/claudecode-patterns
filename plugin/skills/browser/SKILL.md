@@ -26,6 +26,7 @@ Unified browser interaction for development: see what the user sees (their sessi
 | The **user's** browser — their auth/session, "what's on my screen", interactive prod debugging | **this skill** (chrome-devtools over CDP) |
 | Independent headless check without disturbing the user | **this skill** (playwright server) |
 | Scripted evidence capture for design loops — screenshots, selector probes, saved-auth headless runs | [`browser-driver`](../browser-driver/SKILL.md) (`design.ts capture/inspect/verify`) |
+| A repeatable walkthrough of a known path — demo it for a human, then re-run the same file as a check | [`guided-tour`](../guided-tour/SKILL.md) (`guided-tour.mjs`, narrate/verify) |
 
 ## The three MCP servers (plugin-shipped)
 
@@ -68,6 +69,14 @@ If Arc still ignores the flag, make it sticky, then relaunch:
 ```bash
 defaults write company.thebrowser.Browser EnableRemoteDebugging -bool true
 ```
+
+**Playwright's `connectOverCDP()` hangs against Arc — use raw CDP instead.** The websocket connects and then the handshake never completes; it dies on Playwright's 30s timeout. Verified 2026-08-10 against Arc on Chrome/149.0.7827.156. Raw CDP against the *exact same endpoint* works perfectly — `Target.getTargets`, `Browser.getVersion`, `Target.createTarget` and `Input.dispatchMouseEvent` all respond normally.
+
+Practical consequences:
+
+- The `playwright` MCP server here runs `--headless --isolated` — **its own** browser, never Arc — so it is unaffected. The hang only bites code that tries to *attach* Playwright to the user's Arc.
+- Do not write `chromium.connectOverCDP('http://127.0.0.1:9222')` against Arc in a script. To drive the user's Arc, either use the `chrome-devtools` MCP server (already CDP-native) or speak CDP directly over a `WebSocket` — Node 22+ has one globally, so that path needs no dependencies. `scripts/guided-tour.mjs` is the worked example; see the [`guided-tour` skill](../guided-tour/SKILL.md).
+- Not known to affect Chrome/Brave/Edge — this is an Arc-specific handshake failure.
 
 ### Per-dev browser preference
 
