@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Shim for driving-mode.mjs — prefers bun (faster cold start), falls back to node.
+# Both work; the script imports nothing outside `node:` builtins.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if command -v bun >/dev/null 2>&1; then
+  exec bun "$SCRIPT_DIR/driving-mode.mjs" "$@"
+else
+  exec node "$SCRIPT_DIR/driving-mode.mjs" "$@"
+fi

@@ -79,6 +79,19 @@ tour tour_file *args:
 tour-verify tour_file *args:
     @cd .. && node "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/guided-tour.mjs" {{tour_file}} --verify {{args}}
 
+# ─── Driving mode (hands-free spoken summaries) ───────────────────────
+# Speaks a line aloud, one message at a time — the script holds a playback
+# mutex so rapid consecutive messages queue instead of overlapping. See the
+# `driving-mode` skill for the per-turn protocol. macOS only today.
+#
+# In driving mode itself, prefer calling scripts/driving-mode.mjs directly:
+# this recipe adds just's startup to every utterance.
+
+# speak a line aloud (backgrounded — queues behind anything already playing)
+[group('voice')]
+say text:
+    @cd .. && node "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/driving-mode.mjs" {{quote(text)}} &
+
 # ─── Canvas reconciliation ────────────────────────────────────────────
 
 # list canvases vs sdlc.yml.canvases
