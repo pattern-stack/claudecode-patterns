@@ -161,6 +161,74 @@ The engine speaks the Chrome DevTools Protocol directly over a WebSocket rather 
 
 A useful side effect: Node 22+ ships a global `WebSocket`, so **the engine has zero npm dependencies** — nothing to install, in any project, in any language. Keep it that way; it must not import outside `node:` builtins.
 
+## Desktop capture (when the browser isn't the whole story)
+
+A tour records what happens *inside* a page. Some proof lives outside it — a CLI
+that changes what the app shows, real window switching, anything where "two apps
+agree" is the claim. Compositing separate browser and terminal recordings does not
+work: with no windows and no app switching it reads as a mock-up, and a reviewer
+will say so.
+
+The shape that does work: **drive the desktop with `osascript`, capture it with
+`ffmpeg`.**
+
+```bash
+ffmpeg -f avfoundation -list_devices true -i ""   # find "Capture screen N"
+ffmpeg -y -f avfoundation -capture_cursor 1 -framerate 30 -i "4:none" -t 50 raw.mov
+```
+
+**Screen Recording permission is per-binary.** `screencapture` being denied says
+nothing about `ffmpeg` — it gets its own TCC entry and its own prompt. A denial is
+*silent*: no file, no stderr, exit 0. Always assert the file exists and has real
+pixels before trusting a take.
+
+### Rules the failures taught
+
+- **One wrapper, one approval.** Every `osascript` and capture call otherwise
+  prompts separately, and each prompt steals focus and ruins the take. Put prep +
+  record + drive behind a single script so the harness asks once. This is also why
+  the prompt must resolve *before* recording starts.
+- **Prep before the recorder rolls.** Reset state, `clear` the terminal, pin the
+  target tab, warm the page. Anything done after `ffmpeg` starts is in the video —
+  including the operator's editor with the whole conversation in it.
+- **Pin the tab explicitly.** The operator's browser drifts. A take was lost to
+  ⌘R reloading a GitHub PR because that was simply what was in front. Bring the
+  intended page to front over CDP as part of prep.
+- **Guard every focus change.** `activate`, then poll `frontmost` until it matches,
+  then type. Abort loudly instead of typing into the wrong window. Note the app
+  name and the process name differ for some apps (Ghostty reports lowercase
+  `ghostty`), so they are separate knobs.
+- **Default to Terminal and Google Chrome** — every mac has both, and Chrome
+  avoids the `connectOverCDP`-hangs-against-Arc trap in *Known limits* below.
+  Override via `TERM_APP` / `TERM_PROC` / `BROWSER_APP` / `BROWSER_PROC`.
+- **Put the waiting where it looks intentional.** Tab out ~1s after committing a
+  command; the work finishes while the browser is on screen, which reads as a
+  person waiting to refresh rather than as dead air on a terminal.
+- **Budget for the framework's repaint.** A Vite dev reload needs ~4-5s before the
+  page is anything but white. Three seconds captured a blank frame twice.
+- **Arrow keys beat typed filters** for showing a picker. Fuzzy input also
+  surprises: typing `sd` selected `sdr`.
+- **Verify with a contact sheet, never the file size.**
+  `ffmpeg -i out.mp4 -vf "fps=1/3,scale=430:-1,tile=4x3" -frames:v 1 sheet.png`,
+  then actually look at it. Every bad take here was caught this way and no other.
+- **Natural speed. Cut content, never playback rate** — a `setpts` speed-up reads
+  as "toooo fast." Shorten by tightening the script, not the tape.
+
+### Encoding for a PR
+
+```bash
+ffmpeg -y -ss 1.0 -to "$END" -i raw.mov \
+  -vf "scale=1440:-2,fps=30,format=yuv420p" -an \
+  -c:v libx264 -preset slow -crf 24 -movflags +faststart out.mp4
+```
+
+Retina capture is ~3600px wide; 1440 keeps terminal text legible at a fraction of
+the size (a 27s take lands ~1.3MB). GitHub's composer takes the upload — see the
+attachment recipe in the project's own notes: click the comment field *first*, then
+`setInputFiles` its paired `#fc-` input, poll for the asset URL, clear the draft,
+and patch the body separately via the API. Upload and posting stay decoupled so an
+accidental submit is impossible.
+
 ## Known limits
 
 Honest inventory. This is a proven v1, not a finished product.
