@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: End-of-session ceremony — articulate what's next, write `.ai-docs/handoff.md`, update memory, update CLAUDE.md if structural decisions landed, verify clean working tree. Symmetric counterpart to `/prime`. Use when wrapping up a session, before clearing context, or whenever the user signals they want to save state.
+description: End-of-session ceremony — articulate what's next, write `.ai-docs/handoff.md` (or update the destination it points to), update memory, update CLAUDE.md if structural decisions landed, verify clean working tree. Symmetric counterpart to `/prime`. Use when wrapping up a session, before clearing context, or whenever the user signals they want to save state.
 when_to_use: User says "let's handoff", "wrap up", "ending session", "save state", "/handoff", "before I clear context", "summarize what we did and prep next session".
 allowed-tools: Read, Write, Bash, Glob, Grep
 user-invocable: true
@@ -59,7 +59,18 @@ Format:
 <optional: anything the next session needs that doesn't fit above>
 ```
 
-Overwrite the existing `handoff.md` if present. Previous version is in git history.
+**Read the existing `handoff.md` before overwriting it.** Two cases where overwriting is wrong:
+
+- **It declares that the handoff lives elsewhere.** A project may keep its running state in a
+  published artifact, a tracker epic, or a shared doc, leaving this file as a *pointer* to it. If the
+  file says so — a "do not overwrite" marker, or a link presented as the source of truth — update
+  that destination instead and leave the pointer alone. Say in chat which destination you updated.
+- **`.ai-docs/` is not tracked by git.** It is commonly gitignored, and then there is no previous
+  version to recover: the overwrite is permanent. Check with
+  `git ls-files --error-unmatch .ai-docs/handoff.md` before replacing a file you did not write, and
+  when it is untracked, keep whatever the old file carried that your new one does not.
+
+Otherwise overwrite it — when the file is tracked, the previous version is in git history.
 
 ### 3. Update memory
 
@@ -123,5 +134,7 @@ Wait for the user to confirm before they clear context.
 - Read-only on git history. Never `git reset`, `git rebase`, force-push, or amend during handoff.
 - Never auto-commit. The user owns commit decisions.
 - Don't write speculative memory entries. If nothing new and durable was learned this session, write none.
+- **Never clobber a handoff you did not write.** If the file points at another destination, update that
+  destination; if `.ai-docs/` is untracked, an overwrite cannot be undone. See step 2.
 - The handoff is for the **next session of this project**, not a generic AI. Reference paths, branch names, and tracker keys directly — assume the reader is starting cold but in this repo.
 - Articulate-first ordering is non-negotiable. Skipping straight to file writes loses the reflection that surfaces missing items.

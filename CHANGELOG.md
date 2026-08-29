@@ -5,6 +5,30 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.26] — 2026-08-29
+
+### Fixed — `/handoff` no longer clobbers a handoff it did not write
+
+Step 2 said *"Overwrite the existing `handoff.md` if present. Previous version is in git history."*
+Both halves fail in practice, and the failure is silent and unrecoverable:
+
+- **`.ai-docs/` is commonly untracked**, so there is no git history to fall back on. The overwrite is
+  permanent.
+- **A project may keep its running state elsewhere** — a published artifact, a tracker epic, a shared
+  doc — leaving `handoff.md` as a *pointer* to it. Found live: a project moved its handoff to a
+  living artifact and left a pointer behind carrying the protocol, the local decision record, and the
+  plan; the next `/handoff` following step 2 literally would have replaced all of it with a five-line
+  stub, with nothing in git to restore.
+
+`/handoff` now reads the file before replacing it, honors a declared "the handoff lives elsewhere"
+pointer by updating that destination instead, and checks `git ls-files --error-unmatch` before
+overwriting a file it did not write. The constraint is restated in **Constraints** so it survives a
+skimming read.
+
+| Changed | What |
+|---|---|
+| `plugin/skills/handoff/SKILL.md` | step 2 read-before-overwrite + the untracked caveat; frontmatter description; a new **Constraints** bullet |
+
 ## [0.2.25] — 2026-08-10
 
 ### Added — `driving-mode`: hands-free voice, one message at a time
