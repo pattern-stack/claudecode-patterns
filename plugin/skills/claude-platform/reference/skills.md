@@ -42,7 +42,7 @@ Run shell commands and inject output into the prompt before Claude reads the bod
 Inline form:
 ```markdown
 ## Current diff
-!`git diff HEAD`
+!`git diff HEAD 2>/dev/null || echo "(no diff — not a git repository?)"`
 ```
 
 Multi-line fenced form:
@@ -50,13 +50,13 @@ Multi-line fenced form:
 ## Environment
 ```!
 node --version
-git status --short
+git status --short 2>/dev/null || echo "(not a git repository)"
 ```
 ````
 
 Each command is preprocessing: Claude sees the rendered output, never executes the command itself. Disable globally with `"disableSkillShellExecution": true` in settings.
 
-A command that exits non-zero **aborts the whole invocation**: the body never reaches Claude and the user sees `Shell command failed for pattern "..."`. Guard anything that can fail — `git` and `gh` both exit non-zero outside a repository — with a fallback, e.g. `git branch --show-current 2>/dev/null || echo "(not a git repository)"`.
+A command that exits non-zero **aborts the whole invocation**: the body never reaches Claude and the user sees `Shell command failed for pattern "..."`. Guard anything that can fail — `git` and `gh` both exit non-zero outside a repository — with a fallback, e.g. `git branch --show-current 2>/dev/null || echo "(not a git repository)"`. A fenced block runs as one script, so its last command's exit is the one that counts. The inline form only fires at line start or after whitespace, so a backtick-quoted `` `!` `` in prose is inert — but a code fence is not: the pattern runs inside one.
 
 ## Lifecycle: what loads when
 

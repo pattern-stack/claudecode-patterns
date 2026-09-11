@@ -25,16 +25,18 @@ names the state so Claude can act on it. `/prime` and `/handoff` handle "not a g
 explicitly: they still read the handoff and skip the branch-ticket, board and working-tree steps out
 loud instead of failing.
 
-To keep it fixed, `verify-preflight-shell` (in `just sdlc::verify` and CI) fails on any unguarded
-pre-render the plugin ships, and `claude-platform/reference/skills.md` records the abort rule.
+To keep it fixed, `verify-preflight-shell` (in `just sdlc::verify` and CI) fails on any unguarded `!`
+pre-render in the skills, commands, agents and templates the plugin ships — the last command of each
+must carry a ` || ` fallback, using the same match rule as the runtime — and
+`claude-platform/reference/skills.md` records the abort rule.
 
 | Changed | What |
 |---|---|
 | `plugin/skills/{prime,handoff}/SKILL.md` | guarded pre-renders; explicit non-git path |
-| `plugin/commands/{develop,orchestrate,review,critique}.md` | guarded pre-renders |
+| `plugin/commands/{develop,orchestrate,review,critique,canvas}.md` | guarded pre-renders (`canvas` was safe by accident — its pipeline ends in `sort`) |
 | `plugin/agents/canvas-author.md` | guarded `list-canvases.sh` pre-render |
-| `plugin/skills/skill-authoring/{SKILL.md,templates/command.md}`, `plugin/skills/claude-platform/templates/skill-rich.md` | teach the guarded form |
-| `plugin/skills/claude-platform/reference/skills.md` | a non-zero exit aborts the invocation |
+| `plugin/skills/skill-authoring/{SKILL.md,templates/command.md}`, `plugin/skills/claude-platform/{templates/skill-rich.md,cookbooks/workflow-with-fork.md}` | teach the guarded form |
+| `plugin/skills/claude-platform/reference/skills.md` | a non-zero exit aborts the invocation; guarded examples |
 | `plugin/scripts/verify-preflight-shell.sh`, `plugin/sdlc.justfile`, `.github/workflows/verify.yml` | new invariant, wired into `verify` + CI |
 
 ## [0.2.26] — 2026-08-29

@@ -26,7 +26,7 @@ Author / tune / validate / reverse-engineer / explain a canvas. Delegates to the
 ## Pre-rendered context
 
 Existing canvases:
-!`ls -1 .claude/canvases/*/README.md 2>/dev/null | sed 's|.claude/canvases/||; s|/README.md||' | sort`
+!`ls -1 .claude/canvases/*/README.md 2>/dev/null | sed 's|.claude/canvases/||; s|/README.md||' | sort || echo "(no canvases found)"`
 
 ## Launchers
 
