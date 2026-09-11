@@ -26,9 +26,9 @@ Use for AFK throughput across a batch of issues that are already through Gate 1.
 
 ## Working tree state (pre-rendered)
 
-Branch: !`git branch --show-current`
-Status: !`git status --short`
-Recent: !`git log --oneline -5`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
+Status: !`git status --short 2>/dev/null || echo "(not a git repository)"`
+Recent: !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 
 ## Usage
 

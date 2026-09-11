@@ -19,9 +19,9 @@ default:
 
 # ─── Verify (SDLC config invariants) ──────────────────────────────────
 
-# verify all (canvases + tool groups + teammate tools + worktree hooks)
+# verify all (canvases + tool groups + teammate tools + worktree hooks + preflight shell)
 [group('verify')]
-verify: verify-canvases verify-tool-groups verify-teammate-tools verify-worktree-hooks
+verify: verify-canvases verify-tool-groups verify-teammate-tools verify-worktree-hooks verify-preflight-shell
 
 # verify canvas instructions.yaml schemas
 [group('verify')]
@@ -42,6 +42,11 @@ verify-teammate-tools:
 [group('verify')]
 verify-worktree-hooks:
     @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-worktree-hooks.sh"
+
+# verify every `!` pre-render in skills/commands/agents has a `||` fallback (non-zero exit aborts the invocation)
+[group('verify')]
+verify-preflight-shell:
+    @cd .. && bash "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/scripts/verify-preflight-shell.sh"
 
 # ─── Doctor (harness/config health) ───────────────────────────────────
 

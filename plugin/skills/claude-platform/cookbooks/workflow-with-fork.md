@@ -50,9 +50,9 @@ allowed-tools: Bash(gh *)
 ---
 
 ## Pull request context
-- Diff: !`gh pr diff`
-- Comments: !`gh pr view --comments`
-- Files: !`gh pr diff --name-only`
+- Diff: !`gh pr diff 2>/dev/null || echo "(no PR for this branch)"`
+- Comments: !`gh pr view --comments 2>/dev/null || echo "(no PR for this branch)"`
+- Files: !`gh pr diff --name-only 2>/dev/null || echo "(no PR for this branch)"`
 
 ## Your task
 Summarize this PR in 3 bullets. Flag anything risky.
@@ -80,7 +80,7 @@ allowed-tools: Read, Grep, Glob, Bash(git *)
 ---
 
 ## Diff
-!`git diff $ARGUMENTS`
+!`git diff $ARGUMENTS 2>/dev/null || echo "(no diff — not a git repository?)"`
 
 Review against ${CLAUDE_SKILL_DIR}/checklist.md. Report findings with severity and remediation.
 ```
@@ -109,7 +109,7 @@ description: Run a security audit against the current PR
 context: fork
 agent: security-auditor
 ---
-!`gh pr diff`
+!`gh pr diff 2>/dev/null || echo "(no PR for this branch)"`
 
 Audit this PR for security risks. Report critical / warning / suggestion.
 ```

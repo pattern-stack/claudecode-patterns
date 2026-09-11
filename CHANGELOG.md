@@ -5,6 +5,40 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.27] — 2026-09-11
+
+### Fixed — `/prime` (and six siblings) no longer abort outside a git repository
+
+Running `/prime` from a folder that is not a git repository failed before the skill loaded:
+
+```
+Shell command failed for pattern "!`git branch --show-current`": [stderr]
+fatal: not a git repository (or any of the parent directories): .git
+```
+
+A `!`…`` pre-render that exits non-zero aborts the whole invocation, and outside a repository every
+`git` / `gh` / `st` command does (exit 128 / 1 / 2). The unguarded form was in seven files because the
+`skill-authoring` §7 example and command template taught it — and since the pattern runs inside code
+fences too, §7's example broke `skill-authoring` itself. Every pre-render now carries the
+`2>/dev/null || echo "(…)"` fallback `/prime` already used for `st status`, with fallback text that
+names the state so Claude can act on it. `/prime` and `/handoff` handle "not a git repository"
+explicitly: they still read the handoff and skip the branch-ticket, board and working-tree steps out
+loud instead of failing.
+
+To keep it fixed, `verify-preflight-shell` (in `just sdlc::verify` and CI) fails on any unguarded `!`
+pre-render in the skills, commands, agents and templates the plugin ships — the last command of each
+must carry a ` || ` fallback, using the same match rule as the runtime — and
+`claude-platform/reference/skills.md` records the abort rule.
+
+| Changed | What |
+|---|---|
+| `plugin/skills/{prime,handoff}/SKILL.md` | guarded pre-renders; explicit non-git path |
+| `plugin/commands/{develop,orchestrate,review,critique,canvas}.md` | guarded pre-renders (`canvas` was safe by accident — its pipeline ends in `sort`) |
+| `plugin/agents/canvas-author.md` | guarded `list-canvases.sh` pre-render |
+| `plugin/skills/skill-authoring/{SKILL.md,templates/command.md}`, `plugin/skills/claude-platform/{templates/skill-rich.md,cookbooks/workflow-with-fork.md}` | teach the guarded form |
+| `plugin/skills/claude-platform/reference/skills.md` | a non-zero exit aborts the invocation; guarded examples |
+| `plugin/scripts/verify-preflight-shell.sh`, `plugin/sdlc.justfile`, `.github/workflows/verify.yml` | new invariant, wired into `verify` + CI |
+
 ## [0.2.26] — 2026-08-29
 
 ### Fixed — `/handoff` no longer clobbers a handoff it did not write

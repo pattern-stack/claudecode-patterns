@@ -180,14 +180,18 @@ Don't write step-by-step recipes inside command bodies — that belongs in the a
 
 ### 7. Pre-render with `!`...`` where it pays
 
-Slash commands and skills can pre-render shell output before Claude reads the body. Use it for working-tree state, recent commits, or any cheap context the workflow always needs:
+Slash commands and skills can pre-render shell output before Claude reads the body. Use it for working-tree state, recent commits, or any cheap context the workflow always needs.
+
+**Every pre-render needs a `||` fallback.** A pre-render that exits non-zero aborts the whole invocation — Claude never sees the body, and the user gets only `Shell command failed for pattern ...`. `git`, `gh` and `st` all exit non-zero outside a repository, and skills like `/prime` are routinely run from folders that aren't one. Send stderr to `/dev/null` and echo a fallback that names the state, since the fallback is what Claude reads:
 
 ```markdown
 ## Working tree state
-Branch: !`git branch --show-current`
-Status: !`git status --short`
-Recent: !`git log --oneline -5`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
+Status: !`git status --short 2>/dev/null || echo "(not a git repository)"`
+Recent: !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 ```
+
+The pattern runs wherever it appears in the body — inside a code fence too, so an unguarded example is a live bug. `just sdlc::verify-preflight-shell` enforces the fallback across the plugin.
 
 Skip pre-rendering when the value is session-state-dependent (`$CLAUDE_SESSION_ID` semantics) or when the cost of running unconditionally exceeds the value.
 

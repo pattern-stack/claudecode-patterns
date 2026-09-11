@@ -51,8 +51,8 @@ shell: bash                                 # bash | powershell
 {One paragraph. The body lives in context for the rest of the session once invoked — every line is recurring tokens.}
 
 ## Dynamic context
-- Diff: !`git diff $branch`
-- Status: !`git status --short`
+- Diff: !`git diff $branch 2>/dev/null || echo "(no diff — not a git repository?)"`
+- Status: !`git status --short 2>/dev/null || echo "(not a git repository)"`
 
 ## Instructions
 1. {standing instruction}
