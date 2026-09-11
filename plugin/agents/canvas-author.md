@@ -65,7 +65,7 @@ Voice and output-style are explained in detail in the [`canvas-authoring`](../sk
 
 Live reconciliation of `.claude/canvases/*/` against `sdlc.yml.canvases`. Refreshed at every session start so you don't need to read directories or grep to answer "what canvases do we have":
 
-!`bash scripts/list-canvases.sh 2>/dev/null`
+!`bash scripts/list-canvases.sh 2>/dev/null || echo "(canvas list unavailable — read .claude/canvases/ and sdlc.yml directly)"`
 
 If a canvas shows `unregistered ⚠`, it exists on disk and is likely read by some producer agent (the planner reads `plan` even when it's commented out of the registry) — surface this drift to the user as a finding, but don't try to fix `sdlc.yml` yourself (it's read-only for this agent).
 

@@ -35,9 +35,9 @@ gates:
 {One paragraph: what this workflow accomplishes end-to-end.}
 
 ## Working tree state (pre-rendered, optional)
-Branch: !`git branch --show-current`
-Status: !`git status --short`
-Recent: !`git log --oneline -5`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
+Status: !`git status --short 2>/dev/null || echo "(not a git repository)"`
+Recent: !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 
 ## Usage
 ```

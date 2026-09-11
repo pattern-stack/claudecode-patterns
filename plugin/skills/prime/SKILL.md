@@ -15,10 +15,10 @@ This is a working spike for what `DocumentationToolbox` will eventually formaliz
 
 ## Pre-rendered context
 
-Branch: !`git branch --show-current`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
 
 Recent commits:
-!`git log --oneline -5`
+!`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 
 Graphite stack:
 !`st status 2>/dev/null || echo "(st not available or no stack)"`
@@ -26,6 +26,8 @@ Graphite stack:
 ## Instructions
 
 Run these in parallel where independent, then summarize. Do NOT silently skip steps; if something fails or is missing, say so.
+
+**Outside a git repository** the Branch line above reads `(not a git repository)`. That is a normal place to run this skill, not an error: still do step 1, skip steps 3 and 4 (there is no branch to parse, and `gh` needs a repo) and say so, and render Ticket / Board / Branch / Recent commits as `n/a — not a git repository`. Don't re-run git to double-check.
 
 1. **Handoff** — `Read .ai-docs/handoff.md` if it exists. If missing, note that and continue.
 2. **Branch + stack + log** — already pre-rendered above. Reference those values; do not re-run the commands.

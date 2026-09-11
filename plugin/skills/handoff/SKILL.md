@@ -18,13 +18,13 @@ The ordering is **load-bearing**: articulating "what's next" first surfaces forg
 
 ## Pre-rendered context
 
-Branch: !`git branch --show-current`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
 
 Status:
-!`git status --short`
+!`git status --short 2>/dev/null || echo "(not a git repository)"`
 
 Recent commits:
-!`git log --oneline -5`
+!`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 
 Graphite stack:
 !`st status 2>/dev/null || echo "(st not available or no stack)"`
@@ -68,7 +68,8 @@ Format:
 - **`.ai-docs/` is not tracked by git.** It is commonly gitignored, and then there is no previous
   version to recover: the overwrite is permanent. Check with
   `git ls-files --error-unmatch .ai-docs/handoff.md` before replacing a file you did not write, and
-  when it is untracked, keep whatever the old file carried that your new one does not.
+  when it is untracked, keep whatever the old file carried that your new one does not. Outside a git
+  repository (Branch above reads `(not a git repository)`) nothing is tracked — treat it as untracked.
 
 Otherwise overwrite it — when the file is tracked, the previous version is in git history.
 
@@ -107,7 +108,9 @@ Don't duplicate content that lives in skills, primitives, or RFCs — link to th
 
 ### 6. Verify clean working tree
 
-Run:
+If Branch above reads `(not a git repository)`, skip this step and say so — there is no working tree to verify.
+
+Otherwise run:
 ```bash
 git status
 st status 2>/dev/null || true

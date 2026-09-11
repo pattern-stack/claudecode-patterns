@@ -24,8 +24,8 @@ This gate sits between `/design` (specifier writes spec; sets `state:awaiting-st
 
 ## Working tree state (pre-rendered)
 
-Branch: !`git branch --show-current`
-Status: !`git status --short`
+Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"`
+Status: !`git status --short 2>/dev/null || echo "(not a git repository)"`
 
 ## Usage
 

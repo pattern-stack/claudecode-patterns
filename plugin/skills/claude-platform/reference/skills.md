@@ -56,6 +56,8 @@ git status --short
 
 Each command is preprocessing: Claude sees the rendered output, never executes the command itself. Disable globally with `"disableSkillShellExecution": true` in settings.
 
+A command that exits non-zero **aborts the whole invocation**: the body never reaches Claude and the user sees `Shell command failed for pattern "..."`. Guard anything that can fail — `git` and `gh` both exit non-zero outside a repository — with a fallback, e.g. `git branch --show-current 2>/dev/null || echo "(not a git repository)"`.
+
 ## Lifecycle: what loads when
 
 | Phase | What loads |
