@@ -1,0 +1,25 @@
+# Ctrl+click the statusline's working directory → split a pane rooted there.
+#
+# herdr routes Ctrl+click (never Cmd — terminal mouse reports cannot carry it)
+# to link handlers, and only reaches this when the pane's app is not capturing
+# the mouse itself. The action runs the DirLink binary, which owns every action
+# and knows how to read the token file the link points at.
+# Linked by ../install.sh from a stable copy, not from the versioned plugin cache.
+
+id = "ccp.dir-link"
+name = "Dir link"
+version = "0.2.0"
+min_herdr_version = "0.9.0"
+description = "Ctrl+click the Claude Code statusline directory to split a pane there"
+platforms = ["macos"]
+
+[[actions]]
+id = "split"
+title = "Split pane at directory"
+command = ["/bin/sh", "-c", 'exec "$HOME/Applications/CCP Dir Link.app/Contents/MacOS/DirLink" --split-url "$HERDR_PLUGIN_CLICKED_URL"']
+
+[[link_handlers]]
+id = "dir"
+title = "Split pane at directory"
+pattern = "^(ccp-dir://|file://.*\\.ccpdir$)"
+action = "split"

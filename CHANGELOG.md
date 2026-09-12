@@ -5,6 +5,34 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.28] — 2026-09-11
+
+### Added — the statusline's project name links to its working directory
+
+The project segment (shown whenever the branch carries no ticket) becomes a link on macOS once
+`bash plugin/scripts/dir-link/install.sh` builds and registers the helper:
+
+- **Cmd+click** copies the directory path, with a herdr toast
+- **Cmd+Shift+click** splits the herdr pane the session runs in, rooted at that directory
+- **Ctrl+click** does the same split through herdr's own link handler
+
+Cmd is the floor, not a choice: Ghostty opens an OSC 8 link only when the mouse modifiers equal Cmd
+(`Surface.zig`, `mouse_mods.equal(input.ctrlOrSuper(.{}))`), and an unmodified click never reaches the
+terminal at all — Claude Code captures the mouse in its own pane, opening `http(s)` itself, revealing
+`file:` URLs in Finder, and ignoring every other scheme. That last behaviour is also why the link uses
+the helper's own `ccp-dir://` scheme: a custom scheme can only ever launch its registered handler, while
+a `file:` URL gets revealed instead of run. Since no terminal reports Cmd in a mouse click, the
+modifier cannot travel in the URL either — `CCP Dir Link.app` (built from `DirLink.swift`) reads the
+live keyboard state as the URL arrives, and stays resident so a cold launch cannot outlast the
+keypress. herdr routes only Ctrl+left-down to plugin link handlers and opens only `http`/`https` itself
+(`safe_web_url`), so the `ccp.dir-link` plugin hands that lane back to the same helper via
+`--split-url`.
+
+For a split without clicking, herdr's `new_cwd = "follow"` means **Cmd+D** already opens a split in the
+pane's own directory. Each invocation is logged to `~/.cache/ccp-dir-link/dirlink.log`. Without the
+helper the name stays plain text. `install.sh --uninstall` removes the app, the registration and the
+herdr plugin.
+
 ## [0.2.27] — 2026-09-11
 
 ### Fixed — `/prime` (and six siblings) no longer abort outside a git repository
