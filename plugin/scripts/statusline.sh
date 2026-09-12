@@ -110,6 +110,19 @@ fi
 
 project="$(basename "$cwd")"
 
+# The project name links to the working directory once the dir-link helper is
+# installed (scripts/dir-link/install.sh). The link uses the helper's own URL
+# scheme: a custom scheme can only launch its registered handler, while a file:
+# URL gets revealed in Finder instead of run. Terminals open an OSC 8 link on
+# Cmd+click only. Without the helper the name stays plain text.
+project_seg="$project"
+if [[ -n "$project" && -d "$HOME/Applications/CCP Dir Link.app" ]] && have jq; then
+  dir_query="$(jq -rn --arg p "$cwd" --arg w "${HERDR_PANE_ID:-}" \
+    '"path=\($p|@uri)" + (if $w == "" then "" else "&pane=\($w|@uri)" end)' 2>/dev/null)"
+  [[ -n "$dir_query" ]] && printf -v project_seg '\033]8;;ccp-dir://open?%s\033\\%s\033]8;;\033\\' \
+    "$dir_query" "$project"
+fi
+
 # Active model, from the statusline payload CC provides on stdin. Prefer the
 # human label (`Opus 4.8`), fall back to the raw id. Empty when absent.
 model_name="$(jqr '.model.display_name')"
@@ -222,7 +235,7 @@ segments=()
 # Active model leads the line so it's always visible regardless of repo state.
 [[ -n "$model_name" ]] && segments+=("$model_name")
 # Show project name when there's no ticket — otherwise the ticket implies repo context.
-[[ -z "$ticket" && -n "$project" ]] && segments+=("$project")
+[[ -z "$ticket" && -n "$project" ]] && segments+=("$project_seg")
 [[ -n "$ticket"    ]] && segments+=("$ticket")
 [[ -n "$branch"    ]] && segments+=("$branch")
 [[ -n "$stack"     ]] && segments+=("$stack")

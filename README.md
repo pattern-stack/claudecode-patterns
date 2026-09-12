@@ -71,6 +71,7 @@ npm i -g @agentic-patterns/cli
 
 The plugin ships `plugin/scripts/statusline.sh` — a centered, ANSI-dim line surfacing the active ticket + branch + stack + PR + CI rollup + dashboard pill. Each segment auto-detects its source and drops out silently when absent:
 
+- **Project** — the working directory's name, shown when the branch carries no ticket. On macOS, `bash plugin/scripts/dir-link/install.sh` makes it a link: **Cmd+click copies the path**, **Cmd+Shift+click splits a herdr pane there**. A plain click is not available — Claude Code captures the mouse in its own pane and handles unmodified clicks itself, opening only `http(s)`. herdr's **Cmd+D** splits into the same directory without any link.
 - **Ticket** — parsed from the branch using `team_key` from `.claude/sdlc.yml` (e.g. `AP-16`, `PSC-42`).
 - **Branch** — current branch name (suppressed on `main` / `master`).
 - **Stack** — first line of `st status` when [graphite-cli `st`](https://graphite.dev) reports a tracked stack.
