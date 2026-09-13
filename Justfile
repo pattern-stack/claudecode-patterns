@@ -60,6 +60,11 @@ clean-worktrees:
 #                        tools/cc-viewer/build/
 mod viewer 'tools/cc-viewer/viewer.justfile'
 
+# herd — find, create and attach herdr sessions across machines (tools/herd/).
+# `just herd`          — session picker
+# `just herd::install` — put `herd` on your PATH (~/.local/bin)
+mod herd 'tools/herd/herd.justfile'
+
 # Plugin-supplied recipes — namespaced under
 # `sdlc::`. `.claude/sdlc.justfile` is a
 # symlink → `${CLAUDE_PLUGIN_DIR}/sdlc.justfile`
