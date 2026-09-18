@@ -33,6 +33,8 @@ The phone reads a whole turn as one message, including every note written betwee
 
    Send it alone, in a call of its own, after every other call has returned. This one command needs no Herdr skill loaded. The plugin's hook ends the turn as soon as it runs, so nothing written after it would be heard anyway; the working notes should not state the final result either, since the answer carries it.
 
+The answer opens by pushing its headline to the phone, where Siri reads it aloud without a tap (see the answer command). A reply that skips the split sends the same push first when it answers something the user asked while driving.
+
 Skip the split when there are no working notes to separate: a turn with no tool calls, or a quick lookup made without writing any. Queue it once per turn, never mid-work. If the turn ends waiting on an agent, still queue it; the answer says what is running and what you are waiting for.
 
 Without Herdr the split is not possible. Keep the notes between tool calls to a minimum, and make the last paragraph of the turn the complete answer.
