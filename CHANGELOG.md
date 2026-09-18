@@ -5,6 +5,18 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.32] — 2026-09-18
+
+### Changed — driving-mode agents start with Remote Control off
+
+With Remote Control on for every session, each Claude agent the Driving style starts in a Herdr tab
+also shows up in the phone's session list, beside the two or three orchestrators the user actually moves
+between. The style now starts every Claude agent with
+`-- --settings '{"remoteControlAtStartup": false, "remoteControlEnabled": false}'`. Both keys, because
+either can switch auto-connect on in user settings. Measured on 2.1.277, two sessions launched side by
+side in Herdr: the one with default settings was already connected, and the one with the override was
+not. The style also warns that `/remote-control` connects a session that is not connected.
+
 ## [0.2.31] — 2026-09-18
 
 ### Fixed — the working message no longer repeats the answer
