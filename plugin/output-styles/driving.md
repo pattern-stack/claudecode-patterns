@@ -28,8 +28,10 @@ The phone reads a whole turn as one message, including every note written betwee
 2. **The answer.** When the work is finished, make the last tool call of the turn queue the answer command on this session:
 
    ```bash
-   herdr pane send-text "$HERDR_PANE_ID" "/sdlc:answer" && herdr pane send-keys "$HERDR_PANE_ID" enter
+   herdr pane send-text "$HERDR_PANE_ID" $'\e[O' && sleep 0.3 && herdr pane send-text "$HERDR_PANE_ID" "/sdlc:answer" && herdr pane send-keys "$HERDR_PANE_ID" enter
    ```
+
+   The first part sends the terminal's focus-out signal. Claude Code holds back phone pushes while it believes its terminal is focused, and switching Herdr tabs does not tell it otherwise: measured, the headline push reported "terminal is active" until this signal was sent, then went through.
 
    Send it alone, in a call of its own, after every other call has returned. This one command needs no Herdr skill loaded. The plugin's hook ends the turn as soon as it runs, so nothing written after it would be heard anyway; the working notes should not state the final result either, since the answer carries it.
 

@@ -11,6 +11,8 @@ check() { # $1=command $2=expect(stop|go) $3=label
 }
 check 'herdr pane send-text "$HERDR_PANE_ID" "/sdlc:answer" && herdr pane send-keys "$HERDR_PANE_ID" enter' stop 'the answer queue → stop'
 check 'herdr pane send-text w11:p3 "/sdlc:answer"' stop 'queue on an explicit pane → stop'
+check $'herdr pane send-text "$HERDR_PANE_ID" $\'\\e[O\' && sleep 0.3 && herdr pane send-text "$HERDR_PANE_ID" "/sdlc:answer" && herdr pane send-keys "$HERDR_PANE_ID" enter' stop 'focus-out then the queue → stop'
+check $'herdr pane send-text "$HERDR_PANE_ID" $\'\\e[O\'' go 'focus-out alone → carry on'
 check 'herdr pane send-text w11:p3 "/reload-plugins"' go 'other text into a pane → carry on'
 check 'herdr agent prompt builder "run the tests"' go 'driving another agent → carry on'
 check 'echo /sdlc:answer' go 'mentioning the command without herdr → carry on'
