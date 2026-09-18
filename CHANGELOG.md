@@ -5,6 +5,18 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.33] — 2026-09-18
+
+### Added — each driving-mode answer pushes its headline to the phone
+
+The Claude app has no setting that plays a Claude Code reply without a tap, but iOS **Announce
+Notifications** has Siri read a notification aloud through CarPlay or AirPods. `/sdlc:answer` now opens
+by sending the answer's first sentence (under 200 characters, one line) with `PushNotification`, then
+writes the full answer, so the headline is heard with no tap and the rest stays behind play. A reply that
+skips the split sends the same push. Requires Remote Control, push enabled in `/config`, and Announce
+Notifications on for Claude. If Announce is limited to time-sensitive notifications, whether these pushes
+qualify has not been measured.
+
 ## [0.2.32] — 2026-09-18
 
 ### Changed — driving-mode agents start with Remote Control off
