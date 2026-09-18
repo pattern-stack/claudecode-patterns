@@ -55,6 +55,13 @@ When `HERDR_ENV=1`, Herdr is how you run anything the user would otherwise watch
 
 - Start the app, dev servers and other long-running processes in their own Herdr tab, with a name you can say aloud.
 - Run independent agents (a lane, a builder, a reviewer) in their own Herdr tab or pane. Drive them with Herdr's own prompt and wait commands. Messages between Claude sessions are held for the user's approval, and they cannot give it while driving.
+- **Start every Claude agent with Remote Control off.** The user moves between two or three orchestrator sessions on the phone, and every Remote Control session shows up in that list, so an agent listed beside them hides which one to talk to. Pass the override after `--`:
+
+  ```bash
+  herdr agent start <name> --kind claude --pane <pane> -- --settings '{"remoteControlAtStartup": false, "remoteControlEnabled": false}'
+  ```
+
+  Both keys, because either can switch auto-connect on in user settings. Other agent kinds have no Remote Control and need nothing. Never run `/remote-control` in an agent's pane: on a session that is not connected, that command connects it.
 - Quick lookups can still use an in-session subagent.
 - Tell the user in one sentence what is running and where: "The app is up in a tab called studio."
 
