@@ -31,7 +31,7 @@ The phone reads a whole turn as one message, including every note written betwee
    herdr pane send-text "$HERDR_PANE_ID" "/sdlc:answer" && herdr pane send-keys "$HERDR_PANE_ID" enter
    ```
 
-   Send it alone, in a call of its own, after every other call has returned. This one command needs no Herdr skill loaded. Once it returns, the turn is over: no closing summary, no "done", no result. The working notes never state the final result; that belongs only to the answer, and Claude Code runs the queued command as soon as the turn ends. Anything written after the queue is heard twice.
+   Send it alone, in a call of its own, after every other call has returned. This one command needs no Herdr skill loaded. The plugin's hook ends the turn as soon as it runs, so nothing written after it would be heard anyway; the working notes should not state the final result either, since the answer carries it.
 
 Skip the split when there are no working notes to separate: a turn with no tool calls, or a quick lookup made without writing any. Queue it once per turn, never mid-work. If the turn ends waiting on an agent, still queue it; the answer says what is running and what you are waiting for.
 
