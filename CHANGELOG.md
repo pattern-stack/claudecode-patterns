@@ -5,6 +5,19 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.31] — 2026-09-18
+
+### Fixed — the working message no longer repeats the answer
+
+0.2.30 split a driving-mode turn into a working message and an answer, but the working message still
+tended to close with the result, so the record said it twice. Three rounds of wording did not stop it.
+A structural stop does: **`hooks/driving-answer-stop.sh`**, a `PostToolUse` hook on Bash filtered with
+`if: Bash(herdr pane send-text *)`, returns `{"continue": false}` once the `/sdlc:answer` queue command
+has run. Claude Code then makes no further model call in that turn, and the queued answer runs next. Any
+other `send-text` passes through, and unparseable input fails open. Measured live on Sonnet: the working
+turn ended at the queue with no closing text, and the answer followed as its own message.
+`hooks/driving-answer-stop.test.sh` covers six cases.
+
 ## [0.2.30] — 2026-09-18
 
 ### Added — driving mode answers in a message of its own
