@@ -270,7 +270,7 @@ plugin/
 ├── commands/                     # /sdlc:plan, /sdlc:design, /sdlc:develop, /sdlc:orchestrate,
 │                                 # /sdlc:sync-issues, /sdlc:canvas, /sdlc:setup
 ├── skills/                       # workflow knowledge (when to use what; how to recover)
-├── output-styles/                # canvas-flow voices (developer, seller)
+├── output-styles/                # canvas-flow voices (developer, seller) + Driving (replies written to be heard)
 ├── canvases/                     # spec, envelope, plan, session — artifact contracts
 ├── hooks/                        # lifecycle event fan-out + check-config nag
 └── scripts/                      # bootstrap-tracker, verify-canvases, verify-tool-groups, list-canvases

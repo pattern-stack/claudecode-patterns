@@ -5,6 +5,32 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.29] — 2026-09-18
+
+### Changed — driving mode is an output style; the voice script is gone
+
+The user's phone now reads replies aloud, so Claude no longer needs to speak. What is left of driving
+mode is a way of writing, and that is what an output style is for. **`output-styles/driving.md`**
+(selected as `sdlc:Driving`) keeps the coding instructions and changes only what reaches the user in
+chat: answer first, a few short sentences, no markdown, paths, hashes or tables, rounded numbers, "Heads
+up" before a problem, one question and it comes last, detail in files named in a clause. It also makes
+**Herdr** the way to run the app, long processes and independent agents while the user is away, since
+messages between sessions wait for an approval a driver cannot give.
+
+The `driving-mode` skill is now the voice switch. The phone can select only built-in styles, so on "I'm
+driving" the skill writes `outputStyle: "sdlc:Driving"` to the project's `settings.local.json` and reads
+the style so the current reply already follows it; "I'm parked" puts back the previous value. Measured on
+Claude Code 2.1.277 in a live session: a direct file edit switches the style from the next message, both
+ways, exactly as `/output-style` does. **The value must carry the plugin prefix** — a bare `Driving`
+matches nothing and silently leaves the default in place.
+
+**Removed:** `scripts/driving-mode.mjs`, its shim, the OpenAI key lookup and the `just sdlc::say`
+recipe. They are in 0.2.28 if a machine voice is ever wanted again.
+
+**Fixed:** the `claude-platform` output-style reference and template said a changed style applies only
+at the next session. That has not been true since 2.1.251; they now also record the plugin-prefixed name
+and that Remote Control lists only built-in styles.
+
 ## [0.2.28] — 2026-09-11
 
 ### Added — the statusline's project name links to its working directory
