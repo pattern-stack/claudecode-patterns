@@ -36,7 +36,7 @@ Built-ins: **Default** (the standard system prompt), **Explanatory** (adds Insig
 { "outputStyle": "Explanatory" }
 ```
 
-System prompt is fixed at session start (for prompt caching). Changes apply on next session.
+Since v2.1.251 a changed style applies from the next message, mid-session; before that it needed `/clear` or a new session. `/output-style <name>` (v2.1.269+) also switches it. From the mobile app or web via Remote Control, only the built-in styles can be listed and selected. Style files are read at startup: restart after creating or editing one. A plugin's style is named `<plugin>:<name>` (for example `sdlc:Driving`), and that full string is the `outputStyle` value; a bare name matches nothing and leaves the default in place. Editing `outputStyle` in `settings.local.json` directly also switches the style from the next message, in both directions (measured on 2.1.277).
 
 ## How they differ from related features
 
