@@ -5,6 +5,18 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.34] — 2026-09-18
+
+### Fixed — headline pushes were held back as "terminal is active"
+
+Claude Code skips a phone push while it believes its terminal is focused, and switching Herdr tabs does
+not send the pane a focus-out. So after the user last looked at the session on the Mac, every headline
+push came back "Not sent — this terminal is active", even with the user away and Herdr reporting the pane
+unfocused. Sending the terminal focus-out sequence (`ESC [ O`) to the pane fixed it on the spot: the next
+push was sent, and nothing was left in the input box. The answer-queue command in the Driving style now
+sends it first, and the `driving-mode` skill sends it on entry. A real focus-in (the user back at the
+terminal) resets it, which is the behaviour wanted. `driving-answer-stop.test.sh` gains two cases.
+
 ## [0.2.33] — 2026-09-18
 
 ### Added — each driving-mode answer pushes its headline to the phone

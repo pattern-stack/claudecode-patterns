@@ -36,7 +36,13 @@ Why a skill at all: the phone can select only Claude Code's built-in output styl
 
 2. **Read the style and follow it from this reply on.** Its rules are in `${CLAUDE_SKILL_DIR}/../../output-styles/driving.md`; read that file now. Claude Code re-reads the setting and applies the style itself from the next message (measured on 2.1.277: a file edit switches it mid-session both ways, as `/output-style` does), and sessions started later in this project open in it.
 
-3. **Confirm in one spoken sentence**, for example: "Driving mode is on. I'll keep it short and speakable."
+3. **Mark the terminal unfocused** when `HERDR_ENV=1`, so the headline pushes reach the phone. Claude Code skips a push while it believes its terminal is focused, and a Herdr tab switch does not tell it otherwise:
+
+   ```bash
+   herdr pane send-text "$HERDR_PANE_ID" $'\e[O'
+   ```
+
+4. **Confirm in one spoken sentence**, for example: "Driving mode is on. I'll keep it short and speakable."
 
 ## Leaving
 
