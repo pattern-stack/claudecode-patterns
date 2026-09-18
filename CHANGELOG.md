@@ -5,6 +5,25 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.30] — 2026-09-18
+
+### Added — driving mode answers in a message of its own
+
+The phone reads a whole turn aloud as one message, notes between tool calls included, so the answer was
+buried under the working narration. In the Driving style a working turn now ends by queuing
+**`/sdlc:answer`** on its own session through Herdr (`herdr pane send-text "$HERDR_PANE_ID"` + `enter`).
+Claude Code runs the queued command when the turn ends, and the reply to it, written with no tool calls,
+is the message the user plays. The working notes stay as a record they can replay. The split is skipped
+when a turn wrote no notes, and without Herdr the last paragraph of the turn carries the answer.
+
+The style also gains **Orchestrating involved work**: for work with several parts or longer than a few
+minutes, hand the parts to agents in Herdr tabs and report what went to whom, what came back and what
+waits on the user. Small tasks stay in the session.
+
+Measured in a live Sonnet session on this branch: a one-lookup turn skipped the split, and two multi-step
+turns each produced a working message followed by a separate answer message. Known gap: the working
+message still tends to end with the result as well, so the record repeats the answer once.
+
 ## [0.2.29] — 2026-09-18
 
 ### Changed — driving mode is an output style; the voice script is gone
