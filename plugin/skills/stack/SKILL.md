@@ -1,297 +1,201 @@
 ---
 name: stack
-description: Manage PR stacks — create, track, submit, restack, sync, merge, split, navigate, undo, and more. Use when user mentions stacks, stacked PRs, restack, stack submit, merge, split, or branch dependencies.
-argument-hint: [create|track|submit|restack|sync|merge|split|nav|status|absorb|undo|delete|remove|check|graph|modify|config|login|pop|fold|continue|abort|daemon|update|init]
+description: Manage PR stacks with GitHub's official `gh stack` extension — init, add, view, submit, push, sync, rebase, merge, checkout, link, unstack. Use when the user mentions stacks, stacked PRs, restack, stack submit/merge, branch dependencies, the GitHub stack UI, atomic stack merge, or splitting work into reviewable layers.
+argument-hint: [init|add|view|checkout|up|down|top|bottom|submit|push|sync|rebase|merge|link|unstack]
 allowed-tools: Bash, Read
 ---
 
-# /stack — PR Stack Management
+# /stack — PR stack management with `gh stack`
 
-All operations use the `st` CLI (or `bun run src/cli.ts` in dev). This skill teaches you to use it correctly, recover from problems, and leverage smart features.
+All operations use [`github/gh-stack`](https://github.com/github/gh-stack), GitHub's official CLI
+extension (**v0.1.1**, verified 2026-09-20). This replaces the retired home-grown `st` CLI — see
+[references/st-migration.md](references/st-migration.md) to move a stack that `st` still tracks.
 
-## Quick Reference
+A stack is an ordered chain of branches rooted on trunk, one PR per branch based on the branch
+below, so a reviewer sees only that layer's diff. `gh stack` prints it trunk-first, left to right:
 
 ```
-st create <name> -d <desc>     Create stack with first branch
-st branch insert --after N -d  Add branch at position
-st submit                      Push + create/update all PRs
-st submit --ready              Mark drafts as ready for review
-st sync                        Clean up after merges on GitHub
-st merge --all                 Merge entire stack bottom-up
-st restack                     Cascade rebase after mid-stack edit
-st modify                      Amend current branch + restack
-st check <cmd>                 Run command on every branch
-st undo                        Restore previous state
-st status                      Show stack + PR status
-st graph --all                 Show dependency graph
+(main) <- auth <- api <- frontend
 ```
 
-## Command Reference
+Left is the **bottom** (`auth`, merges first); right is the **top**. `up` moves away from trunk,
+`down` toward it. Foundational work belongs at the bottom.
 
-### Stack Lifecycle
-```
-st create [name]               Interactive create (prompts for details)
-st create <name> -d <desc>     Create with first branch description
-st create --from b1 b2 b3      Adopt existing branches into a stack
-st create <name> -b <branch>   Create dependent stack (base = another stack's branch)
-st create <name> -b .          Create dependent stack from current branch
-st delete [name]               Remove stack from tracking
-st delete [name] --branches    Also delete local + remote git branches
-st delete [name] --prs         Also close open PRs
-```
+Local tracking lives in `.git/gh-stack` (JSON, not committed). The remote representation is a
+first-class GitHub **stack object** with a stack number — anyone can `gh stack checkout <pr#>` and
+materialize the whole chain, with no shared config.
 
-### Branch Operations
-```
-st branch insert --after N -d <desc>   Insert new branch at position
-st branch insert --before N -d <desc>  Insert before position
-st branch fold                         Merge current branch into parent
-st branch pop [--close]                Remove from stack, keep changes
-st branch remove [branch]              Remove branch from tracking
-st branch remove --branch --pr         Also delete git branch + close PR
-st branch move up|down                 Reorder within stack
-st branch reorder 3 1 2 4             Reorder by specifying new positions
-st branch rename <new-name>            Rename current branch
-st branch track [-s <stack>]           Add current branch to a stack
-st branch split <specs...>             Split uncommitted changes into branches
-st branch absorb                       Route uncommitted fixes to correct branches
-```
-
-### Navigation
-```
-st up / st down                Move one branch in stack
-st top / st bottom             Jump to ends
-st <number>                    Jump to branch N (e.g., st 3)
-st <stack-name>                Switch to a different stack
-st nav                         Interactive branch picker
-```
-
-### Submit & Sync
-```
-st submit                      Push all branches, create/update PRs (drafts by default)
-st submit --ready              Mark all PRs as ready for review
-st submit --describe           Generate AI PR descriptions
-st submit --update             Regenerate descriptions for existing PRs
-st submit --dry-run            Preview without pushing
-st sync                        Fetch, remove merged branches, rebase remaining
-st sync -s <stack>             Sync a specific stack
-```
-
-### Merge
-```
-st merge                       Enable auto-merge on current branch's PR
-st merge --all                 Merge entire stack bottom-up (auto-merge cascade)
-st merge --now                 Merge current branch immediately (must target trunk)
-st merge --dry-run             Preview merge plan
-st merge -s <stack>            Target specific stack
-```
-
-### Check (Run Command Across Stack)
-```
-st check <command>             Run command on every branch (bottom to top)
-st check --from 3 <command>    Start from branch 3
-st check --bail <command>      Stop on first failure
-st check --quiet <command>     Suppress command output
-st check --json <command>      Machine-readable output
-```
-
-**This is incredibly useful.** Use it to:
-- Type-check entire stack: `st check bun tsc --noEmit`
-- Run tests across branches: `st check --bail bun test`
-- Lint check: `st check bunx biome check .`
-- Verify builds: `st check bun run build`
-
-Check auto-stashes dirty changes, checks out each branch, runs the command, then restores your branch and stash.
-
-### Recovery
-```
-st continue                    Resume after resolving rebase conflicts
-st abort                       Abort in-progress restack, restore previous state
-st undo                        Restore to before last mutating command
-st undo --steps 3              Go back 3 operations
-st undo --list                 Show available restore points
-st undo --dry-run              Preview what would change
-```
-
-### Observability
-```
-st status                      Show stack with PR statuses and checks
-st status --json               Machine-readable output
-st -i / st --interactive       Interactive graph visualization (TUI)
-st graph                       Show current stack as graph
-st graph --all                 Show all stacks and dependencies
-st graph --expand              Show individual branches in graph
-st daemon status               Check daemon health
-st daemon attach --stack <n>   Stream daemon logs for a stack
-st daemon logs [-f]            View daemon logs (follow with -f)
-```
-
-### Daemon Management
-```
-st daemon start                Start background daemon
-st daemon stop                 Stop daemon
-st daemon status               Check daemon health
-st daemon logs [-f]            View logs (follow with -f)
-st daemon attach [-s <stack>]  Stream live log events
-st daemon run                  Run daemon in foreground (for debugging)
-st daemon setup                Initialize daemon config + secrets
-```
-
-### Meta
-```
-st init                        Install stack skills in project (.claude/skills/)
-st update                      Self-update to latest version from GitHub
-st completions [shell]         Print shell completion script
-st completions --install       Install completions for current shell
-```
-
-### Authentication & Configuration
-```
-st login                       Authenticate with Anthropic OAuth (required for AI features)
-st logout                      Clear stored credentials
-st config                      Show current config
-st config --describe           Enable AI PR descriptions (requires `st login` first)
-st config --no-describe        Disable AI PR descriptions
-```
-
-## Smart Workflows
-
-### Starting a new feature stack
-```bash
-st create my-feature -d "add-data-model"
-# make changes, commit
-st branch insert --after 1 -d "add-api-endpoint"
-# make changes, commit
-st branch insert --after 2 -d "add-ui-component"
-# make changes, commit
-st submit                      # creates 3 draft PRs
-st submit --ready              # mark ready for review
-```
-
-### Mid-stack edits (the power move)
-```bash
-st 2                           # jump to branch 2
-# make edits, stage them
-st modify                      # amends + cascades rebase to all downstream
-st submit                      # push updated branches + update PRs
-```
-
-### Absorb (auto-route fixes to correct branch)
-When you have uncommitted changes that fix issues across multiple branches:
-```bash
-st absorb --dry-run            # preview: shows which files go to which branch
-st absorb                      # execute: commits each fix to the right branch
-st submit                      # push everything
-```
-
-### Split (large changes into a stack)
-When you have a big batch of uncommitted changes to organize:
-```bash
-git diff --stat                # inventory your changes
-st split --dry-run --name feature \
-  "data-model:src/models/**" \
-  "api:src/routes/**:src/middleware/**" \
-  "ui:src/components/**:!src/components/legacy/**"
-# review the plan, then remove --dry-run to execute
-st submit
-```
-Pattern syntax: `branch-desc:glob[:glob...]` — use `!` prefix for negation.
-
-### Merge entire stack
-```bash
-st merge --dry-run             # preview the plan
-st merge --all                 # enables auto-merge bottom-up
-# GitHub merges each PR when CI passes
-# Daemon handles cascade: rebase next → retarget → enable auto-merge
-```
-
-### After PRs merge on GitHub
-```bash
-st sync                        # removes merged branches, rebases remaining
-# if all merged: stack is cleaned up automatically
-```
-
-### Check stack health before submitting
-```bash
-st check bun tsc --noEmit      # type-check every branch
-st check --bail bun test       # test every branch, stop on failure
-```
-
-## Recovery Guide
-
-### "Working tree is dirty"
-**This shouldn't happen anymore** — most commands auto-stash. If it does:
-```bash
-git stash                      # stash manually
-st <command>                   # run your command
-git stash pop                  # restore changes
-```
-
-### Rebase conflict during restack/modify
-```bash
-# Git will pause with conflict markers in files
-# 1. Edit the conflicting files to resolve
-# 2. Stage resolved files:
-git add <resolved-files>
-# 3. Continue the restack:
-st continue
-# OR abort and try a different approach:
-st abort
-```
-
-### Something went wrong — undo it
-```bash
-st undo --list                 # see what snapshots exist
-st undo                        # go back one operation
-st undo --steps 3              # go back 3 operations
-```
-Snapshots are saved automatically before: sync, restack, modify, absorb, split, fold, insert, move, remove.
-
-### PR in weird state after merge
-```bash
-st sync                        # let sync clean up merged branches
-st submit                      # re-push and update remaining PRs
-```
-
-### Branch got out of sync
-```bash
-st restack                     # cascade rebase from the bottom
-st submit                      # push updated branches
-```
-
-### Dependent stack's base was merged
-```bash
-st sync                        # auto-converts to standalone stack
-```
-
-### Daemon issues
-```bash
-st daemon stop                 # stop it
-st daemon start                # restart fresh
-st daemon status               # check health
-st daemon logs -f              # follow log file
-st daemon attach               # stream live events
-```
-
-## Important Rules
-
-1. **Always `st submit` after mutations** — restack, modify, absorb, and merge-cascade all change branch SHAs. Push them.
-2. **Use `st check` before submitting** — catches type errors, test failures, lint issues across the whole stack.
-3. **Don't manually `git rebase` stack branches** — use `st restack` or `st modify`. The tool tracks parent tips for smart rebasing.
-4. **Don't manually retarget PRs** — `st submit` manages PR base branches. Manual changes will be overwritten.
-5. **Use `st sync` after merges** — don't manually delete branches or close PRs. Sync handles cleanup.
-6. **`st modify` > manual amend + restack** — `modify` does both in one step and handles edge cases.
-
-## Execution
-
-Run the CLI command directly. Pass through all arguments from `$ARGUMENTS`:
+## Setup (once per machine / repo)
 
 ```bash
-st $ARGUMENTS
+gh extension install github/gh-stack     # or: gh extension upgrade stack
+git config rerere.enabled true           # replay repeated conflict resolutions
+git config remote.pushDefault origin     # REQUIRED when the repo has >1 remote
 ```
 
-If `$ARGUMENTS` is empty, run `st status`.
+`gh stack init` enables `rerere` itself, but under a TTY the first run asks to confirm — setting it
+beforehand keeps that prompt out of an agent's way.
 
-If `st` is not found, try `bun run src/cli.ts` (dev mode) or tell the user to install:
+## Non-interactive use — read this before running anything
+
+`gh stack` branches on whether stdout is a TTY. Under a PTY the commands below open a prompt or a
+full-screen TUI and **block forever**. Agent harnesses vary, so always pass the flags rather than
+relying on TTY detection.
+
+| Always run | Never run bare | Why |
+|---|---|---|
+| `gh stack view --json` | `gh stack view` | TUI under a PTY |
+| `gh stack submit --auto` | `gh stack submit` | prompts for a title per new PR |
+| `gh stack merge <target> --yes` | `gh pr merge` | `gh pr merge` cannot merge a stack |
+| `gh stack init <branch>...` | `gh stack init` | prompts for branch names |
+| `gh stack add <branch>` | `gh stack add` | prompts for a name; fails even when piped |
+| `gh stack up`/`down`/`top`/`bottom` | `gh stack switch` | `switch` is menu-only |
+| — | `gh stack modify` | TUI-only; **no** non-interactive path |
+
+**Multiple remotes:** pass `--remote <name>` to `push`, `submit`, `sync`, `rebase`, and `link`
+unless `remote.pushDefault` is set. `checkout` and `trunk` have no `--remote` flag and depend on
+that config.
+
+`view --short` never opens the TUI but is formatted for humans — parse `--json`, not `--short`.
+
+## Standing rules
+
+- **Push only on the human's explicit sign-off in the current exchange.** `push`, `submit`, `sync`
+  (it pushes) and `merge` are all outward-facing.
+- **There is no undo.** No `st undo` equivalent, no snapshots. Before any surgery, make your own
+  restore points — see [references/troubleshooting.md](references/troubleshooting.md).
+- **Don't retarget PR bases by hand** — `submit` and `sync` own them.
+- **Don't raw-`git rebase` stack branches** — use `gh stack rebase`; it cascades and knows the
+  recorded bases. (Exception: the deliberate restructure recipes, which re-adopt afterwards.)
+- **After any mutation, push** so the PRs match local SHAs.
+- **After PRs merge, `gh stack sync --prune`** — never hand-delete branches or close PRs.
+
+## Core loop
+
 ```bash
-bun install -g git+ssh://git@github.com/dugshub/stack.git
+gh stack init billing/schema           # create the stack, check out its branch
+git add … && git commit -m "Add billing schema"
+gh stack add billing/api               # next layer, branched from the current one
+git add … && git commit -m "Add billing routes"
+gh stack view --json                   # confirm the chain
+gh stack submit --auto                 # 🚦 sign-off — pushes + opens draft PRs
 ```
+
+- `init` takes the whole chain at once: `gh stack init b1 b2 b3` (bottom→top). Existing branches are
+  **adopted**, missing ones created — existence decides, there is no separate adopt mode. This is
+  the re-slice entry point. `--base <branch>` selects a non-default trunk.
+- `add` **must run from the top branch** (or trunk on an empty stack) — anywhere else it exits `5`.
+  Run `gh stack top` first.
+- `add` without `-Am` does not touch the working tree: uncommitted changes **carry over** to the new
+  branch. Commit or stash first if the new layer should start clean.
+- Branch names are used verbatim — `gh stack add refactor/foo` creates `refactor/foo`.
+- `submit --auto` creates drafts; add `--open` to mark new **and existing** PRs ready for review.
+- PR titles/bodies are auto-generated (single-commit branch → that commit's subject/body; otherwise
+  the humanized branch name). There is no title flag — use `gh pr edit <n> --title … --body-file …`
+  afterwards, including any repo-required body lines.
+
+For how to choose the layers, read [references/stack-design.md](references/stack-design.md).
+
+## Editing a lower layer
+
+Check out the layer that **owns** the change before editing — never commit a lower layer's concern
+on the top branch.
+
+```bash
+gh stack down                       # or: gh stack checkout billing/api
+git add … && git commit -m "Fix the amount rounding"   # or --amend
+gh stack rebase --upstack           # replay every branch ABOVE onto the change
+gh stack top                        # back to where you were
+gh stack push                       # 🚦 sign-off
+```
+
+`--upstack` (current → top) is the right tool after editing a lower layer. `--downstack` does trunk
+→ current. `--no-trunk` aligns the whole chain with each other but skips the fetch and trunk rebase.
+Bare `gh stack rebase` does everything, including fast-forwarding trunk.
+
+If ownership is unclear, `gh stack view --json` plus `git log --all -- <path>` settles it.
+
+## Staying in sync, and landing
+
+```bash
+gh stack sync                 # fetch, reconcile with GitHub, rebase, push atomically, refresh PRs
+gh stack sync --prune         # …and delete local branches for merged PRs
+gh stack merge 42 --yes --squash   # 🚦 PR #42 + every unmerged PR below it, all-or-nothing
+gh stack merge 7 --yes             # every unmerged PR in stack #7
+```
+
+- `merge` is **atomic**: if any PR in the set cannot merge, none do. A bare number resolves as a
+  stack number first, then a PR number. Without a method flag the last-used method is reused.
+- Only basic PR state is pre-checked (open, not a draft). Branch protection is evaluated by GitHub
+  at merge time and reported back — never bypassed. Submit with `--open` first if the stack is
+  still in draft.
+- **A merge queue on the base branch overrides everything**: the stack is enqueued, the queue picks
+  the method, and any method flag you passed is ignored with a warning. Queued PRs can land in
+  separate groups.
+- `sync` **never opens PRs** — that is `submit`. Pruning never happens without `--prune`.
+- On local/remote divergence, non-interactive `sync` prints both chains, changes nothing, and exits
+  **0** with `Sync aborted`. **Exit 0 does not mean it synced** — check for that message, or
+  re-read `gh stack view --json`.
+
+## Reading state
+
+`gh stack view --json` writes JSON to **stdout**; status messages go to **stderr**. Don't parse
+stderr — branch on exit codes.
+
+```
+trunk           string
+currentBranch   string
+branches[]      name, head, base, isCurrent, isMerged, isQueued, needsRebase
+branches[].pr   number, url, state ("OPEN" | "MERGED" | "QUEUED"); absent when no PR exists
+```
+
+`base` is the saved SHA of the parent this branch was last known to contain — it may be older than
+the parent's current tip. `needsRebase` is true when the parent's tip is no longer an ancestor.
+
+`view` refreshes PR state from GitHub as a best-effort side effect; it does not fail when the API
+is unreachable.
+
+## Exit codes
+
+| Code | Meaning | Recovery |
+|---|---|---|
+| 0 | Success | — (but see the `Sync aborted` caveat above) |
+| 1 | Generic error | Read stderr |
+| 2 | Not in a stack / unknown stack number | `gh stack init`, or `gh stack checkout <target>` |
+| 3 | Rebase conflict | Resolve, `git add`, `gh stack rebase --continue` |
+| 4 | GitHub API failure | Check `gh auth status`, retry |
+| 5 | Invalid arguments | Fix the invocation (`<command> --help`); also `add` off the top branch |
+| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
+| 7 | Rebase already in progress | `gh stack rebase --continue` or `--abort` |
+| 8 | Stack file locked | Another `gh stack` process is writing; retry after ~5s |
+| 9 | Stacked PRs unavailable | Not enabled on the repository — tell the user |
+| 10 | Modify recovery required | `gh stack modify --abort` |
+
+Check `$?` on the command itself, not through a pipe.
+
+## Constraints
+
+- Stacks are **strictly linear**: one parent, at most one child. Parallel work needs a separate
+  stack.
+- **No non-interactive reorder, rename, or removal.** Errors may suggest `gh stack modify`, but it
+  is TUI-only and must never be invoked by an agent. Restructure with git, then `unstack` + `init`
+  — recipes in [references/troubleshooting.md](references/troubleshooting.md).
+- **`push` and `submit` are not atomic** (per-branch `--force-with-lease`); a later rejection leaves
+  earlier pushes standing. Rerunning is safe. Only `sync` pushes atomically.
+- Dependent/cross-stack relationships are not modeled. Fold dependent work into one taller stack.
+- `gh stack help <command>` does **not** work — it prints the top-level help. Use
+  `gh stack <command> --help`, which is authoritative for flags.
+
+## References
+
+Open the one whose trigger matches the task — no need to preload them.
+
+| Reference | When |
+|---|---|
+| [references/stack-design.md](references/stack-design.md) | Before `init` — how many layers, what goes in each, when work needs its own stack |
+| [references/commands.md](references/commands.md) | A command failed unexpectedly, or you need its preconditions, side effects, atomicity, ordering |
+| [references/troubleshooting.md](references/troubleshooting.md) | Rebase conflict, squash-merge, divergence, restructuring, driving stacks from another tool |
+| [references/st-migration.md](references/st-migration.md) | A stack the retired `st` CLI still tracks |
+
+Adapted from the MIT-licensed agent skill bundled with `github/gh-stack`, plus this project's
+agent-driving rules.

@@ -5,6 +5,54 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.35] — 2026-09-20
+
+### Changed — `/sdlc:stack` now drives `gh stack`, not the retired `st` CLI
+
+The skill documented `st` (`@pattern-stack/stack`), a home-grown CLI that is retired and that the
+`stack-management` auto-loader still shelled out to. Both now use
+[`github/gh-stack`](https://github.com/github/gh-stack), GitHub's official extension, verified
+against **v0.1.1** on 2026-09-20. `/sdlc:stack` keeps its name and invocation.
+
+The skill is restructured as a lean core plus four on-demand references, mirroring the shape
+upstream adopted in v0.1.1 (their own agent skill went from ~891 to ~183 lines and measured ~34%
+fewer input tokens with no loss of task coverage). `SKILL.md` carries the mental model, the
+non-interactive flag matrix, the core loop, `view --json`'s schema, the exit-code table and the
+standing rules; `references/{commands,troubleshooting,stack-design,st-migration}.md` load only when
+their trigger fires.
+
+Corrections to what the previous gh-flavoured drafts asserted, each re-verified against the CLI and
+upstream docs:
+
+- **`push` and `submit` are not atomic.** They push per-branch with `--force-with-lease`, so a later
+  rejection leaves earlier pushes standing; rerunning is safe. Only `sync` pushes atomically.
+- **`rebase --upstack`, not `--no-trunk`, is the move after editing a lower layer.** `--upstack`
+  replays current→top; `--no-trunk` realigns the whole chain while skipping the trunk rebase.
+- **`sync` exits 0 when it aborts on local/remote divergence.** It prints both chains, changes
+  nothing, and says `Sync aborted` — an agent branching on the exit code alone reads that as success.
+- **The exit-code table is 0–10**, not just "2 = no stack, 3 = conflict": 5 invalid args (including
+  `add` run off the top branch), 6 disambiguation, 7 rebase already running, 8 stack file locked,
+  9 stacked PRs not enabled, 10 interrupted `modify`.
+- **`add` must run from the top branch** or it exits 5, and without `-Am` it leaves the working tree
+  alone, so uncommitted changes carry over to the new layer.
+- **A merge queue overrides the merge method** and ignores any method flag with a warning; `merge`
+  pre-checks only that each PR is open and not a draft.
+- **`rerere` is enabled by `init`** (with a TTY confirmation on first run), rather than being on by
+  itself — so `git config rerere.enabled true` belongs in setup.
+- **Multiple remotes need `--remote`** on `push`/`submit`/`sync`/`rebase`/`link`; `checkout` and
+  `trunk` have no such flag and depend on `remote.pushDefault`.
+
+Also new from v0.1.1: `checkout` resolves an untracked branch name against remote stacks and offers
+the current branch's remote stack when run bare, and `view --short` prints `#N (URL)` on terminals
+without OSC 8 hyperlinks (`GH_STACK_HYPERLINKS` forces either form).
+
+Kept from the `st` era where it still earns its place: push only on explicit sign-off, self-made
+`backup/*` refs because there is still no undo, the bottom-up fix-routing recipe that replaces
+`absorb`, the shell loop that replaces `check`, and this project's slicing discipline (dependency
+order, disjoint files per branch, DI wiring deferred to the go-live layer).
+`references/st-migration.md` covers moving a stack that `st` still tracks, including the `link`
+bridge for one you cannot migrate yet.
+
 ## [0.2.34] — 2026-09-18
 
 ### Fixed — headline pushes were held back as "terminal is active"

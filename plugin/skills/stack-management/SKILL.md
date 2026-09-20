@@ -8,49 +8,65 @@ allowed-tools: Bash, Read
 # Stack Context Auto-Loader
 
 Provides stack awareness to Claude and subagents automatically. Read-only — never modifies state.
+Backed by `gh stack` (GitHub's official extension); `/sdlc:stack` is the full skill.
 
 ## Steps
 
-1. Check if `stack` CLI is available:
+1. Check the extension is installed:
    ```bash
-   which stack 2>/dev/null
+   gh extension list 2>/dev/null | grep -q 'github/gh-stack'
    ```
 
-2. If available, get stack context:
+2. If installed, read stack state. **Always `--json`** — bare `view` opens a TUI under a PTY and
+   blocks forever:
    ```bash
-   stack status --json 2>/dev/null
+   gh stack view --json 2>/dev/null
    ```
 
-3. If JSON output is returned, report concisely:
+3. Exit code **2** means the current branch is not in a stack — **stay silent**, this is the
+   common case. Exit **6** means the branch belongs to several stacks; report that and stop.
+
+4. On success, report concisely — `branches[]` is ordered bottom (trunk-side) to top:
    ```
-   Stack: <stackName> | Branch <position> of <total> | <branchName>
-   PRs: <open>/<total> open | CI: <passing>/<total> passing
+   Stack: <n of total> | <currentBranch> | trunk: <trunk>
+   PRs: <open>/<total> open
+   ```
+   Derive the position from the index of the entry whose `isCurrent` is true. PR state per branch
+   is `branches[].pr.state` (`OPEN` | `MERGED` | `QUEUED`); `pr` is absent when no PR exists.
+
+5. If any branch has `needsRebase: true`, warn:
+   ```
+   ⚠ Stack needs a rebase — run `gh stack rebase` (or `--upstack` after editing a lower layer)
    ```
 
-4. If a restack is in progress, warn:
+6. If a rebase is already in flight (`gh stack rebase` would exit **7**), warn:
    ```
-   ⚠ Restack in progress — resolve conflicts and run `stack continue`
-   ```
-
-5. If `stack` is not installed, suggest:
-   ```
-   Stack CLI not installed. Install with: bun install -g git+ssh://git@github.com/dugshub/stack.git
-   Then run: stack init
+   ⚠ Rebase in progress — resolve conflicts, `git add`, then `gh stack rebase --continue`
    ```
 
-6. If not on a stack branch, stay silent.
+7. If the extension is not installed, suggest:
+   ```
+   gh stack not installed. Install with: gh extension install github/gh-stack
+   ```
 
-## JSON output fields
+## `view --json` schema
 
-The `stack status --json` output includes:
-- `stack` — stack name
-- `branches` — array of branch objects with `name`, `pr` (number, url, status, checks), `position`
-- `current` — index of the current branch
-- `trunk` — base branch name
+JSON goes to **stdout**; status messages go to **stderr** — never parse stderr.
+
+```
+trunk           string
+currentBranch   string
+branches[]      name, head, base, isCurrent, isMerged, isQueued, needsRebase
+branches[].pr   number, url, state ("OPEN" | "MERGED" | "QUEUED"); absent when no PR exists
+```
+
+`base` is the saved SHA of the parent this branch was last known to contain — it can be older than
+the parent's current tip, which is what `needsRebase` reflects.
 
 ## Principles
 
-- **Lean**: One command, concise output
-- **Read-only**: Never modify state or branches
-- **Silent when irrelevant**: No output if not on a stack branch
-- **Actionable warnings**: Surface restack-in-progress or merge-in-progress states
+- **Lean**: one command, concise output
+- **Read-only**: never modify state or branches (note `view` does refresh PR state from GitHub as a
+  best-effort side effect, and does not fail when the API is unreachable)
+- **Silent when irrelevant**: no output when not on a stack branch (exit 2)
+- **Actionable warnings**: surface needs-rebase and rebase-in-progress states
