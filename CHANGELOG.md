@@ -5,6 +5,17 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.36] — 2026-09-22
+
+### Fixed — `/sdlc:prime` and `/sdlc:handoff` read the stack from `gh stack`
+
+0.2.35 moved `/sdlc:stack` off the retired `st` CLI, but `prime` and `handoff` still pre-rendered
+`st status` under a "Graphite stack" label, so the stack line always read "(st not available)". Both
+now render `gh stack view --short`, gated on `view --json` reporting the current branch as a member:
+off-stack (e.g. on trunk) `gh stack view` prints the last tracked stack even when every layer has
+merged, which is noise at cold-start. `handoff`'s clean-tree check and the GitHub/Linear
+task-management primitives' remaining `st` references point at `gh stack` too.
+
 ## [0.2.35] — 2026-09-20
 
 ### Changed — `/sdlc:stack` now drives `gh stack`, not the retired `st` CLI

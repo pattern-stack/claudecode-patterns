@@ -62,7 +62,7 @@ Cache the result for the session — owner-type doesn't change mid-session. If t
 - **Commit scope**: `feat(#<n>): ...`
 - **PR closing ref**: `Closes #<n>` (only auto-links when PR's base is the default branch — stacked PRs auto-link after upstream merges cascade)
 
-`gh issue develop <n> --name <branch>` creates and checks out a branch already linked to the issue (use this when starting work; not used for stacked branches — let `st create` / `st branch insert` name them).
+`gh issue develop <n> --name <branch>` creates and checks out a branch already linked to the issue (use this when starting work; not used for stacked branches — let `gh stack init` / `gh stack add` name them).
 
 ### Slug rules (terseness is load-bearing)
 
@@ -76,7 +76,7 @@ Right shape:
 dugshub/plugin-layout/2-gate-modes                                          ✓
 ```
 
-The issue key and PR number are durable identifiers — they live on the issue / PR forever. The branch name is for human skimmability (`st status`, `git branch -a`). Keep it short.
+The issue key and PR number are durable identifiers — they live on the issue / PR forever. The branch name is for human skimmability (`gh stack view --short`, `git branch -a`). Keep it short.
 
 ## Label provisioning
 

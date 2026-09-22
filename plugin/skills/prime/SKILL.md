@@ -20,8 +20,8 @@ Branch: !`git branch --show-current 2>/dev/null || echo "(not a git repository)"
 Recent commits:
 !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 
-Graphite stack:
-!`st status 2>/dev/null || echo "(st not available or no stack)"`
+Stack (`gh stack`, shown only when this branch is in one):
+!`gh stack view --json 2>/dev/null | jq -e 'any(.branches[]; .isCurrent)' >/dev/null 2>&1 && gh stack view --short 2>/dev/null || echo "(not on a gh stack branch)"`
 
 ## Instructions
 
