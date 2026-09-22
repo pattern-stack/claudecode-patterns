@@ -83,7 +83,7 @@ The `<slug>` portion is the only free-form part. Keep it **succinct** — the is
 - **No issue keywords** (`pr-N-`, `issue-NN`, `feat-`) — the directory + PR + issue body already carry that
 - **No verbose descriptions** (anti-example: `gate-mode-mechanism-and-status-taxonomy-v2-1-opinion`)
 
-The branch name is for humans skimming `st status` or `git branch -a`; the durable identifiers are the issue key and PR number.
+The branch name is for humans skimming `gh stack view --short` or `git branch -a`; the durable identifiers are the issue key and PR number.
 
 ## CLI / tool reference
 
