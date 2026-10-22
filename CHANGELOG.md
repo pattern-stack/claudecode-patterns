@@ -5,6 +5,17 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.37] — 2026-10-21
+
+### Fixed — `chrome-devtools` no longer starts a telemetry watchdog in every session
+
+The plugin's `chrome-devtools` MCP server starts in every Claude Code session, and with usage statistics on
+(chrome-devtools-mcp's default) each server also spawns a separate Node process that sends Google usage
+statistics. That's about 96 MB per session whether or not the session ever opens a browser, so 20 open
+sessions carry about 1.9 GB of watchdogs (measured 2026-10-21). The server now starts with
+`--no-usage-statistics`. Verified on chrome-devtools-mcp 1.1.1: one watchdog child without the flag, none
+with it.
+
 ## [0.2.36] — 2026-09-22
 
 ### Fixed — `/sdlc:prime` and `/sdlc:handoff` read the stack from `gh stack`

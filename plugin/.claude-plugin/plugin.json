@@ -1,6 +1,6 @@
 {
   "name": "sdlc",
-  "version": "0.2.36",
+  "version": "0.2.37",
   "description": "Plan-first, gate-disciplined SDLC for Claude Code teams. Agents, canvases, primitives, commands.",
   "author": {
     "name": "pattern-stack"
@@ -11,7 +11,7 @@
     "chrome-devtools": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.1.1", "--browserUrl", "http://127.0.0.1:9222"]
+      "args": ["-y", "chrome-devtools-mcp@1.1.1", "--browserUrl", "http://127.0.0.1:9222", "--no-usage-statistics"]
     },
     "playwright": {
       "type": "stdio",
