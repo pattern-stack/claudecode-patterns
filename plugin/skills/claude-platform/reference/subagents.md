@@ -90,6 +90,14 @@ mcpServers:
 
 Inline servers use the same schema as `.mcp.json`. Defining inline keeps the server's tool descriptions out of the parent session's context.
 
+Measured on Claude Code 2.1.307 (2026-10-23), with a user-level agent and a process sampler:
+
+- **The server process exists only while the subagent runs.** None at session start, two (the `npx` launcher + server) during the run, none again once it returns, while the parent kept working. This is how `browser-pilot` keeps browser servers out of every session.
+- **It restarts on every run, including a `SendMessage` follow-up.** The conversation carries over; server-side state (an open page, cookies) does not.
+- **Run as the main session (`claude --agent <name>`), the agent's inline servers connect at startup** and last for the session.
+- **A project-level agent's inline servers are blocked until the folder is trusted** ("agent MCP server blocked by untrusted agent origin"). User-level agents are not.
+- A user-level agent can preload a plugin skill by its namespaced name (`skills: [sdlc:browser]`).
+
 ## Persistent memory
 
 ```yaml

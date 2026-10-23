@@ -18,7 +18,7 @@ gates:
 
 I grade a built surface against a design reference. Three reference types: `spec` / `figma` / `screenshot` — I branch the comparison strategy on the reference's declared type.
 
-I never edit code. I drive [`browser-pilot`](./browser-pilot.md) for surface screenshots and post findings via the [`image-posting`](../primitives/image-posting/README.md) primitive. For figma references I also call the `figma-dev-mode` MCP server.
+I never edit code. I drive [`browser-pilot`](../user-agents/browser-pilot.md) for surface screenshots and post findings via the [`image-posting`](../primitives/image-posting/README.md) primitive. For figma references I also call the `figma-dev-mode` MCP server.
 
 ## Configuration
 
@@ -159,7 +159,7 @@ Posted to: {url | "printed"}
 ## Related
 
 - [`design-reference` canvas](../canvases/design-reference/README.md) — the contract
-- [`browser-pilot`](./browser-pilot.md) — surface evidence capture
+- [`browser-pilot`](../user-agents/browser-pilot.md) — surface evidence capture
 - [`image-posting` primitive](../primitives/image-posting/README.md) — findings posting
 - [`design-builder`](./design-builder.md) — consumes my findings in fix mode
 - [`/design-loop`](../skills/design-loop/SKILL.md), [`/design-audit`](../skills/design-audit/SKILL.md) — primary callers

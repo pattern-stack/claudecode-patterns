@@ -7,6 +7,8 @@ argument-hint: "[url] [--perf]"
 
 Run a visual QA pass against a URL via the user's browser (CDP). Knowledge base: the [`browser`](../skills/browser/SKILL.md) skill.
 
+This session has no browser tools of its own: the pass runs inside the **`browser-pilot`** agent, whose browser servers start only while it runs (installed to `~/.claude/agents/` by `hooks/ensure-browser-agent.sh`). Spawn it once with the whole checklist below as one task, then relay its report.
+
 ## Usage
 
 ```
@@ -19,7 +21,7 @@ Run a visual QA pass against a URL via the user's browser (CDP). Knowledge base:
 **Arguments**:
 - `$ARGUMENTS`: Target URL — defaults to `sdlc.yml → browser.frontend_url`; if neither is present, ask. Append `--perf` for performance metrics.
 
-## Steps
+## Steps (browser-pilot runs these)
 
 ### 1. Check CDP connection
 
@@ -70,4 +72,4 @@ Run in parallel where possible:
 ## Tips
 
 - Check the project's dev server is running before reporting a connection failure as a finding.
-- Repeated checks: just re-run `/verify` — the CDP connection is reused.
+- Repeated checks: just re-run `/verify`. Each run spawns browser-pilot again; the page itself stays open in the user's browser.

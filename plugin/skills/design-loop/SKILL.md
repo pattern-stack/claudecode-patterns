@@ -134,7 +134,7 @@ For a complete trace of this loop run on a real epic (sales-patterns-ts issue #4
 
 - [`design-reference` canvas](../../canvases/design-reference/README.md) — the contract
 - [`design-builder`](../../agents/design-builder.md), [`design-grader`](../../agents/design-grader.md) — phase agents
-- [`browser-pilot`](../../agents/browser-pilot.md), [`image-posting` primitive](../../primitives/image-posting/README.md) — substrate
+- [`browser-pilot`](../../user-agents/browser-pilot.md), [`image-posting` primitive](../../primitives/image-posting/README.md) — substrate
 - [`/design-audit`](../design-audit/SKILL.md) — thin audit-only wrapper
 - [`/develop`](../../commands/develop.md) — composed-mode entrypoint
 - [v2 proposal](../../../.ai-docs/proposals/design-loop-v2.md) — architecture

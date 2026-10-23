@@ -5,6 +5,27 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.39] — 2026-10-23
+
+### Changed — browser MCP servers start only when `browser-pilot` runs
+
+`plugin.json` no longer declares any MCP servers. Before this, `chrome-devtools` and `playwright` started in every
+Claude Code session, about 0.5 GB of processes each time (servers plus `npx` launchers), even though on one machine
+16 of ~5,200 sessions in 14 days used a browser tool. The two servers now live in the `browser-pilot` agent's own
+`mcpServers:`, so they start when that agent runs and stop when it finishes.
+
+- **`browser-pilot` moves to `plugin/user-agents/`** and the new `ensure-browser-agent` SessionStart hook installs it
+  to `~/.claude/agents/`, refreshing it on updates. Plugin-shipped agents ignore `mcpServers:`, so it has to be
+  user-level. Opt-out like the statusline: delete the file and it isn't reinstalled; delete its `# managed-by:` line
+  to keep your own edits. A first install is picked up by the next session.
+- **`/sdlc:browse`, `/sdlc:verify` and the `browser` skill hand browser work to `browser-pilot`**, since sessions no
+  longer have browser tools. Its tools are `mcp__sdlc-chrome-devtools__*` and `mcp__sdlc-playwright__*`.
+- **Headless state doesn't survive between runs.** As a subagent, its servers restart for every run, including a
+  `SendMessage` follow-up, so give it each headless flow as one task. chrome-devtools work is unaffected (the page
+  lives in the user's browser), and as a `/sdlc:develop` teammate or `claude --agent browser-pilot` its servers last
+  for the session.
+- Playwright now starts at 1280x720 (`--viewport-size`), so screenshots no longer need a `browser_resize` first.
+
 ## [0.2.38] — 2026-10-23
 
 ### Removed — the `lighthouse` MCP server

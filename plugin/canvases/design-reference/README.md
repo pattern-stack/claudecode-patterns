@@ -109,6 +109,6 @@ The v2 canvas does not lock a `spec_format_version` — that role is filled by `
 - [`/design-loop`](../../skills/design-loop/SKILL.md) — primary orchestrator
 - [`/design-audit`](../../skills/design-audit/SKILL.md) — thin audit-only wrapper
 - [`design-builder`](../../agents/design-builder.md), [`design-grader`](../../agents/design-grader.md) — phase agents
-- [`browser-pilot`](../../agents/browser-pilot.md) — captures surface evidence
+- [`browser-pilot`](../../user-agents/browser-pilot.md) — captures surface evidence
 - [`image-posting` primitive](../../primitives/image-posting/README.md) — posts findings
 - [v2 proposal](../../../.ai-docs/proposals/design-loop-v2.md) — architectural decisions
