@@ -1,6 +1,6 @@
 {
   "name": "sdlc",
-  "version": "0.2.37",
+  "version": "0.2.38",
   "description": "Plan-first, gate-disciplined SDLC for Claude Code teams. Agents, canvases, primitives, commands.",
   "author": {
     "name": "pattern-stack"
@@ -17,11 +17,6 @@
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@playwright/mcp@0.0.75", "--headless", "--isolated"]
-    },
-    "lighthouse": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@danielsogl/lighthouse-mcp@1.3.0"]
     }
   }
 }
