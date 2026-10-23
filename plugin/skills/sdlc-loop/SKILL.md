@@ -228,7 +228,7 @@ Two entrypoints:
 
 Composed mode via `/develop` + `needs:design` runs spec-mode only (figma/screenshot composed mode deferred to v3). See [`/design-loop` SKILL.md § Composed mode](../design-loop/SKILL.md#composed-mode-develop-with-needsdesign) for the collapse rules.
 
-Shared substrate: [`browser-pilot`](../../agents/browser-pilot.md) for screenshot capture, [`image-posting` primitive](../../primitives/image-posting/README.md) for findings posting, `figma-dev-mode` MCP for figma references.
+Shared substrate: [`browser-pilot`](../../user-agents/browser-pilot.md) for screenshot capture, [`image-posting` primitive](../../primitives/image-posting/README.md) for findings posting, `figma-dev-mode` MCP for figma references.
 
 ## Halt recovery
 

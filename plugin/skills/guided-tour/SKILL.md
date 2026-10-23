@@ -179,4 +179,4 @@ Honest inventory. This is a proven v1, not a finished product.
 
 - [`browser` skill](../browser/SKILL.md) — CDP connection recipes (incl. the Arc relaunch one-liner), URL resolution from `sdlc.yml`, the headless-auth ladder
 - [`browser-driver` skill](../browser-driver/SKILL.md) — headless Playwright evidence capture for design loops (screenshots, selector probes) when you want a check, not a walkthrough
-- [`browser-pilot`](../../agents/browser-pilot.md) — the browser teammate; spawn it for exploratory browser work, use a tour when the path is known and worth repeating
+- [`browser-pilot`](../../user-agents/browser-pilot.md) — the browser teammate; spawn it for exploratory browser work, use a tour when the path is known and worth repeating

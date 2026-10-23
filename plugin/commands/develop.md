@@ -46,7 +46,7 @@ Recent: !`git log --oneline -5 2>/dev/null || echo "(no git history)"`
 | `task-management/{adapter}` | primitive | Issue resolution, gate label semantics (`{adapter}` = `sdlc.yml.task_management`) |
 | `implementer` | agent | Default member of `develop_team` |
 | `validator` | agent | Default member of `develop_team` |
-| `browser-pilot` / `tester` / `designer` | agent | Spawned per `needs:*` labels (`browser-pilot` ships with the plugin since the design-loop port; `tester` / `designer` are project-vendored) |
+| `browser-pilot` / `tester` / `designer` | agent | Spawned per `needs:*` labels (`browser-pilot` ships with the plugin and is installed to `~/.claude/agents/` by its `ensure-browser-agent` hook, because it owns the browser MCP servers; `tester` / `designer` are project-vendored) |
 | `design-grader` (+ `browser-pilot`) | agent (composed-design mode, spec-only for v2) | Spawned when issue carries `needs:design` — runs between implementer commit and validator. See [`/design-loop` SKILL.md § Composed mode](../skills/design-loop/SKILL.md#composed-mode-develop-with-needsdesign). |
 
 ## Steps

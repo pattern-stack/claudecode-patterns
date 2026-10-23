@@ -1,6 +1,6 @@
 ---
 name: browser
-description: Browser interaction via the plugin-shipped MCP servers — see and drive the user's own browser over CDP, run independent headless checks via Playwright, and audit with chrome-devtools' Lighthouse tool. Auto-invoked when the conversation mentions browser verification, console errors, screenshots, lighthouse audits, visual QA, tapping into the user's browser, or checking the app in a browser. Exposes /browse and /verify.
+description: Browser interaction via the browser-pilot agent's MCP servers — see and drive the user's own browser over CDP, run independent headless checks via Playwright, and audit with chrome-devtools' Lighthouse tool. Auto-invoked when the conversation mentions browser verification, console errors, screenshots, lighthouse audits, visual QA, tapping into the user's browser, or checking the app in a browser. Exposes /browse and /verify.
 allowed-tools: Bash, Read, Glob, Grep
 
 # === Project SDLC overlay ===
@@ -17,7 +17,7 @@ gates:
 
 ## Purpose
 
-Unified browser interaction for development: see what the user sees (their session, their cookies), interact with pages, run visual QA, and audit performance. The plugin ships the two MCP servers this skill drives, so any project with the plugin has them on the session — no per-project `.mcp.json` setup.
+Unified browser interaction for development: see what the user sees (their session, their cookies), interact with pages, run visual QA, and audit performance. The two MCP servers this skill drives belong to the **`browser-pilot`** agent, which the plugin installs for you — no per-project `.mcp.json` setup.
 
 ## Two modes, two skills
 
@@ -28,18 +28,20 @@ Unified browser interaction for development: see what the user sees (their sessi
 | Scripted evidence capture for design loops — screenshots, selector probes, saved-auth headless runs | [`browser-driver`](../browser-driver/SKILL.md) (`design.ts capture/inspect/verify`) |
 | A repeatable walkthrough of a known path — demo it for a human, then re-run the same file as a check | [`guided-tour`](../guided-tour/SKILL.md) (`guided-tour.mjs`, narrate/verify) |
 
-## The two MCP servers (plugin-shipped)
+## The two MCP servers (owned by browser-pilot)
 
-Declared as top-level `mcpServers` in `plugin.json`; they register on every session of every consuming project. Tool names are **plugin-namespaced** (`mcp__plugin_sdlc_<server>__…`) — when in doubt, discover them with ToolSearch (`"chrome-devtools list pages"`, `"browser navigate"`, `"lighthouse audit"`).
+The servers are declared in the `browser-pilot` agent's own frontmatter (`mcpServers:`), so they start when that agent runs and stop when it finishes. **Sessions that never spawn it start no browser processes**, and a session's own tool list has no browser tools: hand browser work to `browser-pilot`. Inside the agent, tool names are `mcp__sdlc-chrome-devtools__<tool>` and `mcp__sdlc-playwright__<tool>` — discover them with ToolSearch (`"chrome-devtools list pages"`, `"browser navigate"`, `"lighthouse audit"`).
 
 | Server | Purpose | When to use |
 |--------|---------|-------------|
-| `chrome-devtools` | The user's running browser via CDP :9222 | Use their session/cookies, see their page, interact alongside them; audits (`lighthouse_audit`, performance traces) |
-| `playwright` | Headless, isolated browser | Independent verification; authenticated runs via saved storage state |
+| `sdlc-chrome-devtools` | The user's running browser via CDP :9222 | Use their session/cookies, see their page, interact alongside them; audits (`lighthouse_audit`, performance traces) |
+| `sdlc-playwright` | Headless, isolated browser at 1280x720 | Independent verification; authenticated runs via saved storage state |
 
 Audits: `lighthouse_audit` covers accessibility, SEO and best practices but not performance; for performance run `performance_start_trace` with `reload: true`. Both run on the page selected in the user's browser, so they need CDP.
 
-**Note for plugin-shipped subagents:** agent-frontmatter `mcpServers:` is silently ignored for plugin agents (platform security rule). Browser-capable agents (e.g. `browser-pilot`) rely on these session-level servers instead — which also means their `tools:` must be the **denylist** form, since an allowlist without MCP entries blocks MCP tools.
+**Lifetime.** As a subagent, browser-pilot's servers restart on every run — including a follow-up `SendMessage` — so a headless page, its cookies and its JS state don't survive between runs: give it each headless flow as one complete task. chrome-devtools state lives in the user's browser and does survive. Run as a whole session (`claude --agent browser-pilot`, or a `/sdlc:develop` teammate), its servers last for that session.
+
+**Why the agent is user-level.** Plugin-shipped agents silently ignore frontmatter `mcpServers:` (platform security rule), so `browser-pilot` lives in the plugin as `user-agents/browser-pilot.md` and the `ensure-browser-agent` SessionStart hook copies it to `~/.claude/agents/`, refreshing it on plugin updates. A fresh install is picked up by the next session. Delete its `# managed-by:` line to keep your own edits; delete the file to opt out. A project-level copy (`.claude/agents/`) also works, but its servers are blocked until that folder is trusted.
 
 ## Connecting to the user's browser (CDP)
 
@@ -136,9 +138,9 @@ The playwright server runs `--headless --isolated` — it has no session. The la
 - **`/verify [url] [--perf]`** — visual QA pass (snapshot, console, network, screenshot, optional perf). See `commands/verify.md`.
 - **`/browse [instruction]`** — open-ended browser interaction. See `commands/browse.md`.
 
-## Delegating: the browser-pilot teammate
+## Delegating: the browser-pilot agent
 
-For sustained browser work inside dev loops, spawn the plugin's `browser-pilot` agent — it uses the same session-level servers and this skill as its knowledge base.
+All browser work goes through `browser-pilot` — `/verify` and `/browse` spawn it, and dev loops add it as a teammate (`needs:browser-pilot`). It preloads this skill as its knowledge base.
 
 ## Reporting format
 

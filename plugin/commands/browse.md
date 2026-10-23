@@ -23,45 +23,32 @@ Open-ended browser interaction. Tell Claude what to do in a browser and it does 
 
 ## How It Works
 
+This session has no browser tools of its own. The browser servers belong to the **`browser-pilot`** agent and start only while it runs, so every browser action goes through it. The plugin installs it to `~/.claude/agents/` (`hooks/ensure-browser-agent.sh`); if the Agent tool doesn't list `browser-pilot`, start a new session and try again.
+
 ### 1. Pick the mode
 
 - Instruction concerns *the user's* page/session ("my screen", "I'm logged in", prod debugging) → **chrome-devtools**.
 - Independent check that shouldn't disturb the user → **playwright** (headless; see the skill's auth ladder if the target needs login).
 - Audit request → **chrome-devtools** `lighthouse_audit` (accessibility, SEO, best practices) plus a performance trace for speed. Needs the CDP connection.
 
-### 2. Check the connection (chrome-devtools mode)
-
-Call the chrome-devtools `list_pages` tool (plugin-namespaced — discover via ToolSearch if needed).
-
-**If it fails**: follow the CDP Connection Check in the `browser` skill — `BROWSER_PREFERENCE` from `.claude/settings.local.json`, browser-specific launch command (Arc has a dedicated relaunch recipe). Stop until connected.
-
-### 3. Resolve URLs
+### 2. Resolve URLs
 
 Per the skill's Project URLs section: `sdlc.yml → browser:` block → explicit URL in the instruction → ask.
 
-### 4. Interpret and execute
+### 3. Hand it to browser-pilot
 
-Full toolkit (short tool names; all plugin-namespaced):
+Spawn the `browser-pilot` agent with the mode, the resolved URL and the user's instruction as one complete task. It checks the CDP connection itself in chrome-devtools mode (the `browser` skill's CDP Connection Check) and reports back in its standard format.
 
-**Navigation & interaction** (chrome-devtools): `navigate_page`, `click`, `fill`, `fill_form`, `hover`, `type_text`, `press_key`, `drag`, `upload_file`
+- **Headless (playwright) work must be one complete task.** browser-pilot's servers restart on every run, including a follow-up `SendMessage`, so the headless page, its cookies and its JS state are gone by the next run. Put the whole flow (navigate, act, check, screenshot) in one prompt.
+- **chrome-devtools work can continue.** The page lives in the user's browser, so a follow-up `SendMessage` to the same agent picks up where it left off.
 
-**Inspection** (chrome-devtools): `take_snapshot` (preferred), `take_screenshot`, `list_console_messages`, `list_network_requests`, `evaluate_script`, `get_console_message`, `get_network_request`
+### 4. Report back
 
-**Performance** (chrome-devtools): `performance_start_trace` / `performance_stop_trace`, `performance_analyze_insight`
-
-**Headless** (playwright): `browser_navigate`, `browser_click`, `browser_snapshot`, `browser_take_screenshot`, `browser_evaluate`, `browser_console_messages`, `browser_network_requests`
-
-**Auditing** (chrome-devtools): `lighthouse_audit` (accessibility, SEO, best practices; excludes performance, so pair it with a performance trace)
-
-### 5. Report back
-
-- Describe what happened; show screenshots when visual output was requested or relevant.
+- Relay what browser-pilot found; show screenshots when visual output was requested or relevant.
 - Report errors encountered; suggest follow-ups when appropriate.
 
 ## Approach
 
-- **Always snapshot first** to understand page structure before interacting.
-- **Use element uids** from the snapshot — never guess coordinates.
-- **Chain actions naturally** — "click X then fill Y" is one flow.
+- **Chain actions naturally** — "click X then fill Y" is one flow, and one browser-pilot task.
 - **Be conversational** — interactive, not a formal report.
 - **Ask if unclear** before acting.

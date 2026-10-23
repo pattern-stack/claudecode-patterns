@@ -1,22 +1,10 @@
 {
   "name": "sdlc",
-  "version": "0.2.38",
+  "version": "0.2.39",
   "description": "Plan-first, gate-disciplined SDLC for Claude Code teams. Agents, canvases, primitives, commands.",
   "author": {
     "name": "pattern-stack"
   },
   "homepage": "https://github.com/pattern-stack/claudecode-patterns",
-  "license": "MIT",
-  "mcpServers": {
-    "chrome-devtools": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.1.1", "--browserUrl", "http://127.0.0.1:9222", "--no-usage-statistics"]
-    },
-    "playwright": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@0.0.75", "--headless", "--isolated"]
-    }
-  }
+  "license": "MIT"
 }
