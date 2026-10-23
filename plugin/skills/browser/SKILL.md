@@ -1,6 +1,6 @@
 ---
 name: browser
-description: Browser interaction via the plugin-shipped MCP servers — see and drive the user's own browser over CDP, run independent headless checks via Playwright, and audit with Lighthouse. Auto-invoked when the conversation mentions browser verification, console errors, screenshots, lighthouse audits, visual QA, tapping into the user's browser, or checking the app in a browser. Exposes /browse and /verify.
+description: Browser interaction via the plugin-shipped MCP servers — see and drive the user's own browser over CDP, run independent headless checks via Playwright, and audit with chrome-devtools' Lighthouse tool. Auto-invoked when the conversation mentions browser verification, console errors, screenshots, lighthouse audits, visual QA, tapping into the user's browser, or checking the app in a browser. Exposes /browse and /verify.
 allowed-tools: Bash, Read, Glob, Grep
 
 # === Project SDLC overlay ===
@@ -17,7 +17,7 @@ gates:
 
 ## Purpose
 
-Unified browser interaction for development: see what the user sees (their session, their cookies), interact with pages, run visual QA, and audit performance. The plugin ships the three MCP servers this skill drives, so any project with the plugin has them on the session — no per-project `.mcp.json` setup.
+Unified browser interaction for development: see what the user sees (their session, their cookies), interact with pages, run visual QA, and audit performance. The plugin ships the two MCP servers this skill drives, so any project with the plugin has them on the session — no per-project `.mcp.json` setup.
 
 ## Two modes, two skills
 
@@ -28,15 +28,16 @@ Unified browser interaction for development: see what the user sees (their sessi
 | Scripted evidence capture for design loops — screenshots, selector probes, saved-auth headless runs | [`browser-driver`](../browser-driver/SKILL.md) (`design.ts capture/inspect/verify`) |
 | A repeatable walkthrough of a known path — demo it for a human, then re-run the same file as a check | [`guided-tour`](../guided-tour/SKILL.md) (`guided-tour.mjs`, narrate/verify) |
 
-## The three MCP servers (plugin-shipped)
+## The two MCP servers (plugin-shipped)
 
 Declared as top-level `mcpServers` in `plugin.json`; they register on every session of every consuming project. Tool names are **plugin-namespaced** (`mcp__plugin_sdlc_<server>__…`) — when in doubt, discover them with ToolSearch (`"chrome-devtools list pages"`, `"browser navigate"`, `"lighthouse audit"`).
 
 | Server | Purpose | When to use |
 |--------|---------|-------------|
-| `chrome-devtools` | The user's running browser via CDP :9222 | Use their session/cookies, see their page, interact alongside them |
+| `chrome-devtools` | The user's running browser via CDP :9222 | Use their session/cookies, see their page, interact alongside them; audits (`lighthouse_audit`, performance traces) |
 | `playwright` | Headless, isolated browser | Independent verification; authenticated runs via saved storage state |
-| `lighthouse` | Auditing | Performance, accessibility, SEO, best-practices gates |
+
+Audits: `lighthouse_audit` covers accessibility, SEO and best practices but not performance; for performance run `performance_start_trace` with `reload: true`. Both run on the page selected in the user's browser, so they need CDP.
 
 **Note for plugin-shipped subagents:** agent-frontmatter `mcpServers:` is silently ignored for plugin agents (platform security rule). Browser-capable agents (e.g. `browser-pilot`) rely on these session-level servers instead — which also means their `tools:` must be the **denylist** form, since an allowlist without MCP entries blocks MCP tools.
 
@@ -128,7 +129,7 @@ The playwright server runs `--headless --isolated` — it has no session. The la
 - **PREFER** accessibility snapshots (`take_snapshot` / `browser_snapshot`) over screenshots — structured, token-efficient.
 - **USE** element uids from the snapshot for clicks/fills — never guess coordinates.
 - **USE** `evaluate_script` / `browser_evaluate` for batch work against an authenticated app (e.g. many API calls) instead of clicking through UI.
-- **USE** lighthouse for quality gates, chrome-devtools performance tracing for deep dives.
+- **USE** chrome-devtools `lighthouse_audit` for accessibility/SEO/best-practices gates, and its performance tracing for speed.
 
 ## Commands
 

@@ -40,5 +40,5 @@ if [ "$PREF" = "arc" ]; then
 else
   echo "Relaunch after a full quit: open -a \"${APP}\" --args --remote-debugging-port=9222"
 fi
-echo "Ignore this if you don't need the browser this session — headless playwright + lighthouse still work."
+echo "Ignore this if you don't need the browser this session — headless playwright still works (audits need this connection)."
 exit 0

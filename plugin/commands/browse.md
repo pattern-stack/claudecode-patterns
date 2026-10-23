@@ -27,7 +27,7 @@ Open-ended browser interaction. Tell Claude what to do in a browser and it does 
 
 - Instruction concerns *the user's* page/session ("my screen", "I'm logged in", prod debugging) → **chrome-devtools**.
 - Independent check that shouldn't disturb the user → **playwright** (headless; see the skill's auth ladder if the target needs login).
-- Audit request → **lighthouse**.
+- Audit request → **chrome-devtools** `lighthouse_audit` (accessibility, SEO, best practices) plus a performance trace for speed. Needs the CDP connection.
 
 ### 2. Check the connection (chrome-devtools mode)
 
@@ -51,7 +51,7 @@ Full toolkit (short tool names; all plugin-namespaced):
 
 **Headless** (playwright): `browser_navigate`, `browser_click`, `browser_snapshot`, `browser_take_screenshot`, `browser_evaluate`, `browser_console_messages`, `browser_network_requests`
 
-**Auditing** (lighthouse): `run_audit`, `get_performance_score`, `get_accessibility_score`, `get_seo_analysis`, `get_core_web_vitals`, `get_lcp_opportunities`, `compare_mobile_desktop`, `find_unused_javascript`
+**Auditing** (chrome-devtools): `lighthouse_audit` (accessibility, SEO, best practices; excludes performance, so pair it with a performance trace)
 
 ### 5. Report back
 

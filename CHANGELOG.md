@@ -5,6 +5,18 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.38] — 2026-10-23
+
+### Removed — the `lighthouse` MCP server
+
+The plugin started `@danielsogl/lighthouse-mcp` in every Claude Code session, about 190 MB each (the server plus
+its `npx` launcher). Across one machine's last 14 days of sessions it was called zero times. chrome-devtools-mcp
+already has its own `lighthouse_audit` tool (accessibility, SEO, best practices), and its performance traces cover
+Core Web Vitals, so `browser-pilot`, the `browser` skill and `/sdlc:browse` now point there.
+
+One capability changes: chrome-devtools audits the page selected in the user's browser, so audits now need the CDP
+connection (:9222). The removed server could launch its own Chrome.
+
 ## [0.2.37] — 2026-10-21
 
 ### Fixed — `chrome-devtools` no longer starts a telemetry watchdog in every session
