@@ -1,0 +1,216 @@
+plan:
+  slug: machines
+  summary: sdlc learns where agents run — a per-person machine registry, a per-repo placement map beside `phases`, a remote hint in the phase-tuning hook, and the first `sdlc delegate`.
+  milestone: SDLC — machines (ADR-009)
+  status: awaiting-gate-0     # Gate 0 goes to Doug through HQ; no tracker writes until approved
+  source:
+    brief: ~/maplelog/hq/briefs/sdlc/20261025-machines.md
+    adr: ~/maplelog/hq/docs/adrs/009-machines.md
+
+  epic_title: "Machines: registry, placement, remote hint, sdlc delegate"
+  epic_body: |
+    ## Goal
+
+    Today everything sdlc spawns runs on the coordinator's own box. ADR-009 adds
+    the idea of a **machine**: a registry of boxes in `~/.config/sdlc/machines.yaml`
+    (what each can do — `caps` — and what each holds — `keeps`, `secrets`), and a
+    per-repo map in `.claude/sdlc.yml` that places phases and agents on them, the
+    same shape as `phase_models`. A resolver matches the two, trust boundary first
+    (never `assignable: false`, never a box that lacks the `keeps` / `secrets` /
+    `caps` a step needs), capacity second.
+
+    Generic for every project: nothing MapleLog-specific ships in the plugin. The
+    example registry uses neutral names; ADR-009's real estate goes in Doug's
+    hand-written `~/.config/sdlc/machines.yaml`, not in the repo.
+
+    ## Shape
+
+    1. Registry schema + loader + `sdlc machines` (list / check) + example file.
+    2. Placement keys in `sdlc.yml` + the resolver + tests.
+    3. phase-tuning hook: when a phase placed on another machine is about to be
+       spawned as a local subagent, emit a hint telling the coordinator to start
+       it there as a herdr agent (a subagent can't change machines).
+    4. `sdlc delegate <phase|agent>`: pick by fit then load, start in `workdir`,
+       clear first-start gates, print placement. Results return via GitHub only.
+
+    Each step is one PR with tests, a CHANGELOG entry and README section, and a
+    plugin version bump (`verify-version-bump.sh`). Repo `just` checks green by
+    explicit exit code.
+
+    ## Decisions proposed for Gate 0 (defaults the plan assumes)
+
+    - **D1 — where the CLI lives.** A single Python entry point `plugin/bin/sdlc`
+      (subcommands `machines`, `delegate`), plus `just sdlc::machines` /
+      `just sdlc::delegate` recipes in `plugin/sdlc.justfile` so it works whether
+      or not the plugin's `bin/` lands on PATH. The resolver is a module
+      (`plugin/lib/machines.py`) shared by the CLI and the hook.
+    - **D2 — YAML parsing.** The registry is nested (inline flow maps, lists,
+      `transport` as string-or-map), beyond the hook's flat scanner. Use PyYAML
+      when importable, else `yq` (the pattern `sync-github.py` already uses); if
+      neither, the CLI errors clearly and the hook fails open (no hint). No new
+      hard dependency.
+    - **D3 — hint, not a block.** The hook stays fail-open: it allows the spawn
+      and adds context ("phase X is placed on devbox-n2; start it there with
+      `sdlc delegate X --issue N` instead"). It does not deny. A `deny` mode can be
+      a later knob if hints get ignored.
+    - **D4 — `any` and unknown machines.** `any` resolves via `needs` + fit; a
+      placement naming an unregistered machine or an unfit one is a `check`
+      error and the resolver falls back to `default_machine` with a warning
+      (never to an `assignable: false` box). No registry file → everything is
+      local, the feature is inert, and existing projects see no change.
+    - **D5 — `gaming_sensitive`.** Generic in the plugin as a per-machine
+      `busy_flag: <path>` (ADR's `gaming_flag`, accepted as an alias): when the
+      file exists, heavy steps (`needs` containing `full-suite`/`browser`/`docker`)
+      are not placed there under `auto`.
+
+    ## Out of scope
+
+    Building / resizing / keying machines (control plane + Doug). Anything on
+    compute. Porting MapleLog's leads to `delegate` (HQ step 4). Fetching results
+    over ssh (GitHub is the return path). Installing the guard hook on devbox-n2.
+
+issues:
+  - key: machine-registry
+    title: "Machine registry: schema, loader, `sdlc machines` list/check, example file"
+    layer: L0
+    depends_on: []
+    parallel_with: []
+    labels: []
+    description: |
+      Add the per-person registry at `~/.config/sdlc/machines.yaml`
+      (override: `$SDLC_MACHINES`), its loader + validator, and a CLI to inspect it.
+
+      Fields per machine (ADR-009 §1): `transport` (`local`, or a map with
+      `herdr: <label>` and optional `ssh:`), `workdir`, `limits` (`cores`,
+      `mem_gb`, `browser_jobs`, `agents`), `caps` (list), `keeps` (list),
+      `secrets` (string; `none` default), `gaming_sensitive` + `busy_flag`
+      (D5), `backup` (bool), `persistence` (`durable` | `disposable`), `role`,
+      `assignable` (bool, default true), `first_start` (list of known gate names:
+      `trust-prompt`, `fullscreen-notice`).
+
+      Ships:
+      - `plugin/lib/machines.py`: load + validate (unknown keys warn, wrong
+        types error, `transport` herdr label required for non-local, at least
+        one `transport: local` machine expected).
+      - `plugin/bin/sdlc` with `machines list` (table: name, transport, role,
+        assignable, caps, keeps, secrets) and `machines check` (exit 1 on any
+        error; optional `--probe` runs `herdr --machine X agent list` per herdr
+        machine and reports reachability).
+      - `plugin/machines.example.yaml`: a neutral three-box example (a local
+        dev box, a disposable worker, a non-assignable control plane).
+      - `just sdlc::machines` recipe.
+
+      Acceptance:
+      - Tests (fixture registries) cover: valid file, each field's type error,
+        missing herdr label, unknown key warning, missing file → inert/empty
+        with a clear message, `assignable` default.
+      - `machines check` on the example file exits 0; on a broken fixture exits 1.
+      - CHANGELOG entry with the why; README section "Machines".
+
+  - key: placement-resolver
+    title: "Placement in sdlc.yml: phase_machines, agent_machines, default_machine, needs + resolver"
+    layer: L1
+    depends_on: [machine-registry]
+    parallel_with: []
+    labels: []
+    description: |
+      Add the per-repo placement map to `plugin/sdlc.example.yml` (commented,
+      beside `phases:`), and a resolver that answers "where does role R run?".
+
+      Keys: `phase_machines` (same keys as `phase_models`), `agent_machines`
+      (agent names like `browser-pilot`, `tour`), `default_machine`, and
+      `needs: { <role>: { caps: [...], keeps: [...], secrets: <level> } }` (a bare
+      list is shorthand for `caps`). Also accept the grouped form
+      `phases.<role>.machine` for symmetry with the existing hook; grouped wins
+      over flat, as for the other knobs.
+
+      Resolver (`plugin/lib/machines.py`, `resolve(role, kind) -> Placement`):
+      - Hard filters, in order: `assignable: false` never; `caps` ⊇ needs.caps;
+        `keeps` ⊇ needs.keeps; `secrets` level satisfies needs.secrets.
+      - Named placement that fails a filter → error in `check`, falls back to
+        `default_machine` (if it fits) with a reason string; never to an
+        unassignable box.
+      - `any` → all fitting machines, local first; load ordering is
+        `delegate`'s job (issue 4), not the resolver's.
+      - Returns machine + reason so the hook and CLI can explain themselves.
+      - `sdlc machines check` gains a repo pass: every placed role resolves.
+      - `sdlc machines where <role>` prints the resolution.
+
+      Acceptance:
+      - Table-driven tests: unassignable target refused; caps/keeps/secrets
+        mismatch refused with reason; `any` with needs; unknown machine;
+        no registry → local; grouped beats flat.
+      - CHANGELOG + README updated.
+
+  - key: phase-tuning-remote-hint
+    title: "phase-tuning hook: hint to start a remotely-placed phase as a herdr agent"
+    layer: L2
+    depends_on: [placement-resolver]
+    parallel_with: [sdlc-delegate]
+    labels: []
+    description: |
+      When an `Agent` / `TeamCreate` spawn's role resolves to a machine other
+      than the local one, the phase-tuning hook adds context telling the
+      coordinator that the subagent will run here, not there, and how to place
+      it remotely: `sdlc delegate <role> --issue <n>` (or the raw
+      `herdr --machine <m> agent start …` until issue 4 lands).
+
+      - Uses the resolver from `plugin/lib/machines.py`; any import/parse error
+        → no hint (fail-open contract unchanged).
+      - Tuning injection (`updatedInput`) and the hint coexist in one payload.
+      - Local or unplaced roles: output byte-identical to today.
+      - Per D3, the spawn is allowed. (If Gate 0 prefers a block, this issue
+        switches to `permissionDecision: deny` with the same reason text.)
+
+      Acceptance:
+      - `phase-tuning.test.sh` cases: remote role → hint present; local role →
+        no hint; tuning + hint together; broken registry → no output change;
+        no registry → today's behavior exactly.
+      - Live check: a bare `Agent(subagent_type: "sdlc:validator")` in a repo
+        placing validator on the worker box surfaces the hint.
+      - CHANGELOG + README updated.
+
+  - key: sdlc-delegate
+    title: "`sdlc delegate <phase|agent>`: place, start in workdir, clear first-start gates"
+    layer: L2
+    depends_on: [placement-resolver]
+    parallel_with: [phase-tuning-remote-hint]
+    labels: []
+    description: |
+      `sdlc delegate <role> [--issue N] [--machine auto|<name>] [--prompt TEXT|@file]
+      [--name NAME] [--dry-run]`.
+
+      - Pick: resolver's fitting set (refuses unassignable / unfit, incl. an
+        explicit `--machine compute`, with the reason and a non-zero exit); skip
+        busy-flagged gaming-sensitive boxes for heavy needs; then least loaded:
+        `herdr --machine X agent list` count against `limits.agents` /
+        `browser_jobs` (full or unreachable → next).
+      - Start: create a tab/pane in `workdir` on the chosen machine, then
+        `herdr agent start <name> --kind claude --pane <id> -- <args>`, passing
+        `--permission-mode auto` and the role's `model` / `effort` from `phases`.
+      - First start: for each gate in `first_start`, while start/prompt returns
+        `agent_not_ready`, send-keys Down then Enter (trust prompt, then
+        fullscreen-renderer notice), bounded retries, then fail with pane output.
+      - Brief: `herdr agent prompt` with the mission; the mission states that
+        results come back as a pushed branch / PR comment (GitHub only).
+      - Print: machine, workspace/tab/pane, agent name, and the `herdr --machine
+        X agent get` / `pane read` commands to check on it.
+      - `--dry-run` prints the decision and the commands without running them.
+      - The herdr calls are behind a thin adapter so tests run against a fake
+        herdr on PATH; the exact herdr invocation is cross-checked with the
+        control plane's `~/orchestra/justfile` recipes if they've arrived in
+        `to-compute.md`.
+
+      Acceptance:
+      - Unit tests with fake herdr: fit+load picking, compute refused, full
+        machine skipped, first-start loop (0, 1, 2 gates; timeout), dry-run.
+      - **Live check:** `sdlc delegate` places one real read-only job on
+        devbox-n2 (e.g. a reviewer reading a public branch and commenting on a
+        PR) and `sdlc delegate … --machine compute` refuses. Run at nice 19.
+      - CHANGELOG + README updated.
+
+open_questions_for_doug:
+  - "D1: `sdlc` as a plugin `bin/` script plus `just sdlc::*` recipes — OK, or recipes only?"
+  - "D3: remote placement → hint (spawn still runs locally) or hard block?"
+  - "D5: generic `busy_flag` path in the plugin (MapleLog sets it to the gaming flag) — OK?"
+  - "Live check for delegate: a read-only reviewer pass on devbox-n2 posting one PR comment — acceptable job?"
