@@ -2,7 +2,7 @@ plan:
   slug: machines
   summary: sdlc learns where agents run — a per-person machine registry, a per-repo placement map beside `phases`, a remote hint in the phase-tuning hook, and the first `sdlc delegate`.
   milestone: SDLC — machines (ADR-009)
-  status: awaiting-gate-0     # Gate 0 goes to Doug through HQ; no tracker writes until approved
+  status: approved          # Gate 0: Doug, via HQ board, 2026-10-25 13:42 (D1-D5 defaults)
   source:
     brief: ~/maplelog/hq/briefs/sdlc/20261025-machines.md
     adr: ~/maplelog/hq/docs/adrs/009-machines.md
@@ -75,7 +75,7 @@ issues:
     layer: L0
     depends_on: []
     parallel_with: []
-    labels: []
+    labels: [gate:auto]
     description: |
       Add the per-person registry at `~/.config/sdlc/machines.yaml`
       (override: `$SDLC_MACHINES`), its loader + validator, and a CLI to inspect it.
@@ -112,7 +112,7 @@ issues:
     layer: L1
     depends_on: [machine-registry]
     parallel_with: []
-    labels: []
+    labels: [gate:auto]
     description: |
       Add the per-repo placement map to `plugin/sdlc.example.yml` (commented,
       beside `phases:`), and a resolver that answers "where does role R run?".
@@ -147,7 +147,7 @@ issues:
     layer: L2
     depends_on: [placement-resolver]
     parallel_with: [sdlc-delegate]
-    labels: []
+    labels: [gate:auto]
     description: |
       When an `Agent` / `TeamCreate` spawn's role resolves to a machine other
       than the local one, the phase-tuning hook adds context telling the
@@ -175,7 +175,7 @@ issues:
     layer: L2
     depends_on: [placement-resolver]
     parallel_with: [phase-tuning-remote-hint]
-    labels: []
+    labels: [gate:auto]
     description: |
       `sdlc delegate <role> [--issue N] [--machine auto|<name>] [--prompt TEXT|@file]
       [--name NAME] [--dry-run]`.
