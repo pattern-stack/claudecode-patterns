@@ -391,19 +391,55 @@ def parse_yaml(path: Path, timeout: Optional[float] = None) -> object:
         extra["preexec_fn"] = _limit_child
     except ImportError:
         pass
+    deadline = time.monotonic() + limit      # one budget for every yq call below, each under the memory limit
+
+    def run_yq(expr: str) -> str:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
+        try:
+            proc = subprocess.run(["yq", "-o=json", "-I=0", expr, str(path)], stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=left, **extra)
+        except subprocess.TimeoutExpired:
+            raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
+        except (OSError, subprocess.SubprocessError) as exc:      # incl. a setrlimit failure in the child: fail closed
+            raise RegistryError("could not run yq on %s: %s" % (path, exc))
+        if proc.returncode != 0:
+            raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
+        return proc.stdout
+
+    out = run_yq(".")
     try:
-        proc = subprocess.run(["yq", "-o=json", ".", str(path)], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=limit, **extra)
-    except subprocess.TimeoutExpired:
-        raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
-    except (OSError, subprocess.SubprocessError) as exc:      # incl. a setrlimit failure in the child: fail closed
-        raise RegistryError("could not run yq on %s: %s" % (path, exc))
-    if proc.returncode != 0:
-        raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
-    try:
-        return _normalise_numbers(json.loads(proc.stdout, object_pairs_hook=_pairs_to_map))
+        doc = json.loads(out, object_pairs_hook=_pairs_to_map)
     except (ValueError, RecursionError):
         raise RegistryError("could not parse %s: yq printed output that is not JSON" % path)
+    if _has_merge_key(path):
+        # yq resolves `<<` merges before printing, which drops repeated keys (the last copy wins).
+        # Ask for the repeats on the unresolved tree, and put them back on the parsed document.
+        try:
+            repeats = json.loads(run_yq(_YQ_REPEATS))
+            for entry in repeats:
+                node = doc
+                for step in entry["p"]:
+                    node = node[step]
+                node.dups = tuple(dict.fromkeys(tuple(node.dups) + tuple(entry["d"])))
+        except RegistryError:
+            raise
+        except Exception:
+            raise RegistryError("could not parse %s: cannot tell whether a merged mapping repeats a key" % path)
+    return _normalise_numbers(doc)
+
+
+_YQ_REPEATS = ('[.. | select(kind == "map") | select((keys|length) != (keys|unique|length)) '
+               '| {"p": path, "d": (keys | group_by(.) | map(select(length>1) | .[0]))}]')
+
+
+def _has_merge_key(path: Path) -> bool:
+    try:
+        with open(str(path), "rb") as fh:
+            return b"<<" in fh.read()
+    except OSError:
+        return True
 
 
 # ── schema ───────────────────────────────────────────────────────────────────
