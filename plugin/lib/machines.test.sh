@@ -18,6 +18,9 @@ trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
 mkdir -p "$HOME"
 unset SDLC_MACHINES XDG_CONFIG_HOME
+# Keep the placement pass deterministic: no sdlc.yml here, rather than walking up into the repo the suite runs in.
+export CLAUDE_PROJECT_DIR="$TMP/proj"
+mkdir -p "$TMP/proj"
 export PYTHONDONTWRITEBYTECODE=1
 FX="$TMP/fx"; mkdir -p "$FX"
 

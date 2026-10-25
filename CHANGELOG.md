@@ -5,6 +5,41 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.41] — 2026-10-25
+
+### Added — placement: where each phase and agent runs
+
+The registry (0.2.40) says what each box can do and hold. A repo can now say which box each phase and agent belongs
+on, and a resolver checks that against the registry, trust first: a box that is unassignable, has registry errors, or
+lacks a cap, keep or secrets level the role needs is refused. The role then falls back to `default_machine` if that
+fits; otherwise it has nowhere to run, and the work is never sent to a box that was refused. Nothing moves yet. This
+release only answers "where"; acting on the answer comes later.
+
+- **The keys, in `.claude/sdlc.yml`.** `phase_machines`, `agent_machines`, `default_machine` and `needs`, plus the
+  grouped `phases.<role>.machine`, which wins over `phase_machines.<role>` as the other grouped knobs do. A target is a
+  machine name from your registry, `local` (the box you run Claude Code on, so a shared file needn't know what
+  each person calls it), or `any` (every machine that fits, local first). The commented block in `plugin/sdlc.example.yml`
+  shows each form.
+- **Opt-in.** Nothing changes until a file sets a target. A repo with no placement keys, or a person with no registry,
+  runs everything on this box as before, and `check` reports no placement errors.
+- **Fall back, never sideways.** A refused placement goes to `default_machine` (unset means `local`) if that fits the
+  role's needs, and to nothing else. An unusable `default_machine` is reported once and treated as unset, and `local`
+  is still filtered in full.
+- **`needs`.** A role's requirements, as a list (shorthand for `caps`) or a map of `caps`, `keeps` and `secrets`.
+  `secrets` is a floor: a step that needs `dev` may run where `dev` or `prod` is held, so mark a `prod` box
+  `assignable: false` unless you want `any` to choose it. An unknown or blank `needs` key is an error and leaves the
+  role unplaceable, because a dropped requirement would quietly place a step where it cannot run.
+- **A repeated placement key is an error, never last-wins.** A repeated top-level placement key turns placement off with
+  an error, a repeated `needs` entry makes the role unplaceable, and a repeated target makes the role fall back.
+  Repeats in other keys of `sdlc.yml` are ignored. A repeated or malformed top-level `needs` is flagged
+  (`needs_broken`) even in a file that sets no target, so a later `--machine` override can refuse on it.
+- **`sdlc machines where <role>`.** The first line is the answer. It exits 0 when the role is placed, or when machines
+  are off because there is no registry or the repo places nothing; 1 for a fallback, nowhere to run, or machines off
+  because of an error; 2 for a usage error.
+- **`sdlc machines check`** gains a repo pass: one line per role the file names, and an error for every refusal.
+- **No registry, no change.** `check` prints exactly what it printed in 0.2.40.
+- **The tests run in CI** under both YAML backends (`plugin/lib/placement.test.sh`).
+
 ## [0.2.40] — 2026-10-25
 
 ### Added — a machine registry and `sdlc machines`

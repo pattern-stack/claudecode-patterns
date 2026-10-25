@@ -2,8 +2,9 @@
 # start agents: `local` means that box. Put it at ~/.config/sdlc/machines.yaml, or point
 # $SDLC_MACHINES at it. Don't copy it to worker boxes: a box without the file runs everything
 # locally, which is right for an agent that was delegated there.
-# A machine says what it CAN do (caps) and what it HOLDS (keeps, secrets). Placement (a later
-# release) matches a step's needs against both, trust boundary first, capacity second.
+# A machine says what it CAN do (caps) and what it HOLDS (keeps, secrets). Placement
+# (`phase_machines`, `agent_machines` and `needs` in a repo's `.claude/sdlc.yml`) matches a
+# step's needs against both, trust boundary first, capacity second.
 # Booleans are true/false (yes/no/on/off are errors). secrets is one of: none < dev < prod.
 # Check the file with: sdlc machines check   (--probe asks herdr too)
 machines:

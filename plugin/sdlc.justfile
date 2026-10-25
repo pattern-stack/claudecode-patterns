@@ -87,7 +87,7 @@ tour-verify tour_file *args:
 # ─── Machines (where agents run) ─────────────────────────────────────
 
 # Runs from the project root, so a relative --registry path is relative to the root, not your cwd.
-# show the machine registry (${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml or $SDLC_MACHINES); `check [--probe]` validates it.
+# show the machine registry (${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml or $SDLC_MACHINES); `where <role>` says where a phase or agent runs; `check [--probe]` validates it.
 [group('machines')]
 [positional-arguments]
 machines *args:
