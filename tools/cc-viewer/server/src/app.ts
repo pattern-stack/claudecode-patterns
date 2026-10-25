@@ -11,6 +11,7 @@ import { hookRoutes } from "./routes/hooks.js";
 import { inputRoutes } from "./routes/input.js";
 import { pairRoutes } from "./routes/pair.js";
 import { transcriptRoutes } from "./routes/transcripts.js";
+import { voiceRoutes } from "./routes/voice.js";
 import { SPA_FALLBACK, STATIC_BUNDLE } from "./static-bundle.js";
 
 export function createServer(config: ServerConfig): Hono {
@@ -33,6 +34,7 @@ export function createServer(config: ServerConfig): Hono {
   app.route("/", inputRoutes(config.input));
   app.route("/", commandRoutes());
   app.route("/", fileRoutes());
+  if (config.voice) app.route("/", voiceRoutes(config.voice));
 
   // SPA fallback. Bundle is populated by scripts/codegen-static.ts at build
   // time. When empty (dev / pre-build), Hono returns 404 on unmatched paths

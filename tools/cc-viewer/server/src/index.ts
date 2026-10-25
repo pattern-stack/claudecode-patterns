@@ -17,6 +17,7 @@ import { EventStore } from "./event-store.js";
 import { sessionInputFromEnv } from "./input/index.js";
 import { SSEBroadcaster } from "./sse-broadcaster.js";
 import { STATIC_BUNDLE } from "./static-bundle.js";
+import { voiceFromEnv } from "./voice/index.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3993", 10);
 // On the network by default; every request that isn't from this machine needs a paired device (pairing.ts).
@@ -54,13 +55,21 @@ const broadcaster = new SSEBroadcaster();
 watchCommandSources(broadcaster);
 
 const pairing = new Pairing(STATE_DIR);
-// Adapters are bound here, once: how /admin/input/send reaches a terminal.
+// Adapters are bound here, once: how replies reach a terminal, and the voice module that speaks answers.
 const input = sessionInputFromEnv();
+const voice = voiceFromEnv({
+  stateDir: path.join(STATE_DIR, "voice"),
+  input,
+  sessions: persistence.store,
+  log: (...a: unknown[]) => console.log(new Date().toLocaleTimeString(), ...a),
+});
+if (voice) broadcaster.subscribe(voice.onViewerEvent);
 const app = createServer({
   eventStore: persistence.store,
   broadcaster,
   pairing,
   input,
+  voice,
 });
 
 const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
@@ -71,6 +80,7 @@ console.log(`  url      http://localhost:${PORT} (bound to ${HOST})`);
 console.log(`  pairing  off-host devices pair at /pair (key in ${path.join(STATE_DIR, "viewer-key")})`);
 console.log(`  storage  ${persistence.banner}`);
 console.log(`  input    ${input.name}`);
+console.log(`  voice    ${voice ? `http://localhost:${PORT}/voice` : "off (CC_VIEWER_VOICE=0)"}`);
 console.log(
   `  spa      ${spaAssetCount > 0 ? `${spaAssetCount} embedded asset(s)` : "not bundled — run vite dev separately"}`,
 );
