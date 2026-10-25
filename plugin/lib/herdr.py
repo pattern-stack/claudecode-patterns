@@ -13,6 +13,8 @@ import shutil
 import subprocess
 from typing import List, Optional
 
+DEFAULT_TIMEOUT = 15.0
+
 
 class HerdrError(Exception):
     """A herdr call failed. `detail` is one line fit to show a user."""
@@ -34,7 +36,7 @@ def _first_line(text: str) -> str:
     return ""
 
 
-def agent_list(machine: Optional[str] = None, *, timeout: float = 15.0) -> List[dict]:
+def agent_list(machine: Optional[str] = None, *, timeout: float = DEFAULT_TIMEOUT) -> List[dict]:
     """Return the agents herdr reports, on `machine` (a herdr label) or on the local server.
 
     Raises HerdrError if herdr is missing, exits non-zero, times out, or prints an unexpected shape.
@@ -44,7 +46,7 @@ def agent_list(machine: Optional[str] = None, *, timeout: float = 15.0) -> List[
         cmd += ["--machine", machine]
     cmd += ["agent", "list"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError:
         raise HerdrError("herdr not found on PATH")
     except subprocess.TimeoutExpired:

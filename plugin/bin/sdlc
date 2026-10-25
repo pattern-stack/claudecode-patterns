@@ -23,12 +23,29 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PLUGIN_ROOT / "lib"))
 
 import argparse  # noqa: E402
+import math  # noqa: E402
 from typing import List, Optional  # noqa: E402
 
 import herdr  # noqa: E402
 import machines  # noqa: E402
 
 LEGEND = "! = invalid value, shown as the restrictive value it loads as; run: sdlc machines check"
+
+
+def _path_arg(text: str) -> str:
+    if not text.strip():
+        raise argparse.ArgumentTypeError("--registry needs a path, got an empty value")
+    return text
+
+
+def _timeout_arg(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r is not a number" % text)
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number of seconds > 0, got %r" % text)
+    return value
 
 
 def _eprint(text: str) -> None:
@@ -69,7 +86,7 @@ def _table(reg: "machines.Registry") -> bool:
     widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     for r in rows:
         print("  ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip())
-    return any(c.endswith("!") for r in rows[1:] for c in r)
+    return any(not m.ok for m in reg.machines.values())
 
 
 def _counts(reg: "machines.Registry") -> str:
@@ -82,7 +99,7 @@ def _load(args: argparse.Namespace) -> "machines.Registry":
 
 def cmd_list(args: argparse.Namespace) -> int:
     reg = _load(args)
-    if reg.inert:
+    if reg.inert and not reg.errors:
         _inert(reg)
         return 0
     print("Registry: %s" % reg.path)
@@ -118,7 +135,7 @@ def _probe(reg: "machines.Registry", timeout: float) -> List["machines.Issue"]:
     if not targets:
         return out
     if not herdr.available():
-        return [machines.Issue("error", "registry", "probe: herdr not found on PATH")]
+        return [machines.Issue("error", "probe", "herdr not found on PATH")]
     for m in targets:
         where = "machines.%s.transport" % m.name
         try:
@@ -138,7 +155,7 @@ def _probe(reg: "machines.Registry", timeout: float) -> List["machines.Issue"]:
 
 def cmd_check(args: argparse.Namespace) -> int:
     reg = _load(args)
-    if reg.inert:
+    if reg.inert and not reg.errors:
         _inert(reg)
         return 0
     print("Registry: %s" % reg.path)
@@ -161,20 +178,20 @@ def build_parser() -> argparse.ArgumentParser:
     top.required = True
 
     mp = top.add_parser("machines", help="show and check the machine registry")
-    mp.add_argument("--registry", metavar="PATH", default=None,
+    mp.add_argument("--registry", metavar="PATH", type=_path_arg, default=None,
                     help="registry file (default: $SDLC_MACHINES, then ${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml)")
     sub = mp.add_subparsers(dest="machines_command", metavar="{list,check}")
 
     lp = sub.add_parser("list", help="print the machines")
     # SUPPRESS: a leaf default would overwrite a --registry given before the subcommand.
-    lp.add_argument("--registry", metavar="PATH", default=argparse.SUPPRESS, help="registry file")
+    lp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
     lp.set_defaults(func=cmd_list)
 
     cp = sub.add_parser("check", help="validate the registry (exit 1 on any error)")
-    cp.add_argument("--registry", metavar="PATH", default=argparse.SUPPRESS, help="registry file")
+    cp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
     cp.add_argument("--probe", action="store_true", help="also ask herdr whether each herdr machine answers")
-    cp.add_argument("--timeout", type=float, default=15.0, metavar="SECS",
-                    help="per-machine probe timeout (default: 15)")
+    cp.add_argument("--timeout", type=_timeout_arg, default=herdr.DEFAULT_TIMEOUT, metavar="SECS",
+                    help="per-machine probe timeout (default: %g)" % herdr.DEFAULT_TIMEOUT)
     cp.set_defaults(func=cmd_check)
 
     mp.set_defaults(func=cmd_list)

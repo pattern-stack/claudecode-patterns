@@ -69,6 +69,8 @@ jobs:
         run: just sdlc::verify-preflight-shell
 
       - name: Machine registry tests
+        env:
+          SDLC_REQUIRE_BOTH_BACKENDS: "1"
         run: bash plugin/lib/machines.test.sh
 
       - name: List canvases (informational)
