@@ -254,7 +254,19 @@ A *machine* is a box agents can run on. Its entry says what it can do (`caps`), 
 - **Bad values fail closed.** A value that fails validation loads as its restrictive value (a mistyped `assignable` loads as `false`), the machine is not placeable, and `list` marks the cell with `!`. A blank `assignable`, `gaming_sensitive`, `busy_flag` or `secrets`, a repeated key, and a close misspelling of a trust key (`ASSIGNABLE`, `busyflag`) are errors too.
 - **No registry, no change.** Without the file, everything behaves as before.
 
-Placing phases on machines comes in a later release.
+### Placing phases and agents
+
+A repo says where each phase and agent runs in `.claude/sdlc.yml`; the commented block in `plugin/sdlc.example.yml` shows every form.
+
+- **Keys:** `phase_machines`, `agent_machines`, `default_machine`, `needs`, and the grouped `phases.<role>.machine`, which wins over `phase_machines.<role>`.
+- **Opt-in:** nothing changes until the file sets a target. `needs` alone places nothing (`check` warns that it has no effect). With no registry, or no placement keys, everything runs on this box as before.
+- **Targets:** a machine name from your registry, `local` (the box you run Claude Code on), or `any` (every machine that fits, local first). Machine names are per person, so prefer `default_machine: local` in a file the team shares.
+- **Trust first:** a machine that is `assignable: false`, has registry errors, or lacks a cap, keep or secrets level in the role's `needs` is refused. The role then falls back to `default_machine` if that fits; otherwise it has nowhere to run. Work is never placed on a machine that was refused.
+- **`secrets` is a minimum.** A role that needs `dev` may run where `dev` or `prod` is held, so `any` and `default_machine: any` can choose a box that holds `prod` for any role that fits. Mark such a box `assignable: false` unless that is wanted.
+- **Write each key once.** A repeated placement key is an error, never last-wins.
+- **Ask and check:** `sdlc machines where validator` prints the answer on its first line and exits 0 when the role is placed, or when machines are off because there is no registry or the repo places nothing. `sdlc machines check` adds a line per role and an error for every refusal.
+
+Nothing moves yet: this only answers "where". Starting work on another box comes in a later release.
 
 ---
 

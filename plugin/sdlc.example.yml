@@ -157,6 +157,39 @@ develop_team:
 # `phase_max_turns:` / `phase_worktree:` (each a `<role>: <value>` map) are still
 # honored as a fallback. A grouped `phases.<role>.<knob>` wins over its flat twin.
 
+# === Machines — where each phase and agent runs (optional) ===
+# Needs a machine registry (${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml; start from
+# ${CLAUDE_PLUGIN_DIR}/machines.example.yaml). Without one, or until one of
+# phase_machines / agent_machines / default_machine / phases.<role>.machine is set,
+# everything runs on this box exactly as before.
+#
+# A placement is a machine name from your registry, `local` (the box you run Claude Code
+# on), or `any` (every machine that fits the role's needs, local first; `sdlc delegate`
+# picks among them by load). Trust comes first: a machine that is `assignable: false`,
+# has registry errors, or lacks a cap, keep or secrets level in `needs` is refused, and
+# the role falls back to `default_machine` if that fits; otherwise the role has nowhere
+# to run. `sdlc machines check` reports every refusal; `sdlc machines where <role>`
+# explains one.
+#
+# Machine names come from each person's registry, so `local` is the portable choice for
+# `default_machine`. `needs:` here is not the `needs:*` issue labels (those add /develop
+# teammates). Write each key once: a repeated placement key is an error, never last-wins.
+#
+# phase_machines:                 # same keys as phase_models / phases
+#   validator: worker-1           # full suite + browser off the workstation
+#   implementer: local            # needs this box's checkout and services
+#   reviewer: any                 # read-only: wherever it fits
+# agent_machines:                 # agent names as in subagent_type, minus `sdlc:`
+#   browser-pilot: worker-1
+# default_machine: local          # where unplaced roles run (default: local)
+# needs:                          # filters every placement; resolves `any`
+#   validator: [full-suite, browser]                 # a list is shorthand for caps
+#   implementer: { keeps: [checkouts, services], secrets: dev }
+#
+# Grouped form: `phases.<role>.machine: worker-1` works too and wins over
+# `phase_machines.<role>`, as for the other knobs. To unset it, delete the line or write
+# `machine: null`; never leave a bare `machine:` (the tuning hook misreads it).
+
 # === Loop iteration caps + Gate-1 timeout ===
 # Consumed by the coordinator-driven impl⇄val loop (issue #44 wires these in).
 # Today they are dormant — no agent reads them yet — but they ship now so the
