@@ -11,15 +11,17 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createServer } from "./app.js";
+import { Pairing } from "./pairing.js";
 import { watchCommandSources } from "./command-watcher.js";
 import { EventStore } from "./event-store.js";
 import { SSEBroadcaster } from "./sse-broadcaster.js";
 import { STATIC_BUNDLE } from "./static-bundle.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3993", 10);
-// Loopback only by default: the dashboard serves session transcripts with no login, so it must not be reachable
-// from the network. Set CC_VIEWER_HOST (e.g. 0.0.0.0) to expose it deliberately.
-const HOST = process.env.CC_VIEWER_HOST ?? "127.0.0.1";
+// On the network by default; every request that isn't from this machine needs a paired device (pairing.ts).
+// CC_VIEWER_HOST=127.0.0.1 keeps it on this machine only.
+const HOST = process.env.CC_VIEWER_HOST ?? "0.0.0.0";
+const STATE_DIR = path.join(process.env.XDG_STATE_HOME ?? path.join(homedir(), ".local", "state"), "cc-viewer");
 
 function resolveEventStore(): { store?: EventStore; banner: string } {
   if (process.env.CC_VIEWER_PERSISTENCE === "0") {
@@ -50,9 +52,11 @@ const broadcaster = new SSEBroadcaster();
 // Live-update the slash-command palette when plugin config changes on disk.
 watchCommandSources(broadcaster);
 
+const pairing = new Pairing(STATE_DIR);
 const app = createServer({
   eventStore: persistence.store,
   broadcaster,
+  pairing,
 });
 
 const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
@@ -60,6 +64,7 @@ const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
 console.log("");
 console.log("  cc-viewer");
 console.log(`  url      http://localhost:${PORT} (bound to ${HOST})`);
+console.log(`  pairing  off-host devices pair at /pair (key in ${path.join(STATE_DIR, "viewer-key")})`);
 console.log(`  storage  ${persistence.banner}`);
 console.log(
   `  spa      ${spaAssetCount > 0 ? `${spaAssetCount} embedded asset(s)` : "not bundled — run vite dev separately"}`,

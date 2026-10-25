@@ -1,4 +1,5 @@
 import type { EventStore } from "./event-store.js";
+import type { Pairing } from "./pairing.js";
 import type { SSEBroadcaster } from "./sse-broadcaster.js";
 
 export interface CORSConfig {
@@ -14,4 +15,6 @@ export interface ServerConfig {
   readonly eventStore?: EventStore;
   readonly broadcaster: SSEBroadcaster;
   readonly cors?: CORSConfig;
+  /** Device pairing. When absent (tests, dev) every request is allowed. */
+  readonly pairing?: Pairing;
 }

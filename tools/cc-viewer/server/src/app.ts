@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { ServerConfig } from "./config.js";
 import { corsMiddleware } from "./middleware/cors.js";
+import { deviceAuth } from "./middleware/device-auth.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { commandRoutes } from "./routes/commands.js";
 import { eventRoutes } from "./routes/events.js";
@@ -8,6 +9,7 @@ import { fileRoutes } from "./routes/file.js";
 import { healthRoutes } from "./routes/health.js";
 import { hookRoutes } from "./routes/hooks.js";
 import { inputRoutes } from "./routes/input.js";
+import { pairRoutes } from "./routes/pair.js";
 import { transcriptRoutes } from "./routes/transcripts.js";
 import { SPA_FALLBACK, STATIC_BUNDLE } from "./static-bundle.js";
 
@@ -15,7 +17,10 @@ export function createServer(config: ServerConfig): Hono {
   const app = new Hono();
 
   app.use("*", corsMiddleware(config.cors));
+  if (config.pairing) app.use("*", deviceAuth(config.pairing));
   app.onError(errorHandler);
+
+  if (config.pairing) app.route("/", pairRoutes(config.pairing));
 
   // API first (so they beat the SPA fallback).
   // transcriptRoutes registers the static `/hooks/TranscriptDelta` path —
