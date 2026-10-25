@@ -1,6 +1,6 @@
 /**
- * ChatComposer — types a message into the live terminal pane for `cwd`
- * (via ghostty-bridge), with a `/` slash-command palette that mirrors the
+ * ChatComposer — types a message into the live terminal running this session
+ * (Herdr by session id, or ghostty-bridge by `cwd`), with a `/` slash-command palette that mirrors the
  * commands Claude Code reads (enabled-plugin commands + user-invocable
  * skills + project commands; built-ins are not file-backed and not listed).
  *
@@ -13,7 +13,7 @@ import { useCommandCatalog } from "../../hooks/useCommandCatalog";
 import { type CommandEntry, sendAgentInput } from "../../lib/eventApi";
 import { Button } from "../atoms/Button";
 
-export function ChatComposer({ cwd }: { cwd: string }) {
+export function ChatComposer({ cwd, sessionId }: { cwd: string; sessionId?: string }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export function ChatComposer({ cwd }: { cwd: string }) {
     setSending(true);
     setError(null);
     try {
-      await sendAgentInput({ cwd, text: value, submit: true });
+      await sendAgentInput({ cwd, sessionId, text: value, submit: true });
       setText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

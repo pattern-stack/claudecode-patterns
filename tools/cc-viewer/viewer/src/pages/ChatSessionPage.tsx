@@ -118,6 +118,7 @@ export function ChatSessionPage() {
           emptyLabel={loading ? "Loading transcript…" : "No transcript entries for this session."}
           expectingReply={connected}
           cwd={cwd}
+          sessionId={decoded}
         />
       </div>
     </div>

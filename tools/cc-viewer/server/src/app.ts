@@ -30,7 +30,7 @@ export function createServer(config: ServerConfig): Hono {
   app.route("/", transcriptRoutes(config.broadcaster, config.eventStore));
   app.route("/", hookRoutes(config.broadcaster, config.eventStore));
   app.route("/", eventRoutes(config.eventStore, config.broadcaster));
-  app.route("/", inputRoutes());
+  app.route("/", inputRoutes(config.input));
   app.route("/", commandRoutes());
   app.route("/", fileRoutes());
 

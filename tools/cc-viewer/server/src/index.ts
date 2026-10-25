@@ -14,6 +14,7 @@ import { createServer } from "./app.js";
 import { Pairing } from "./pairing.js";
 import { watchCommandSources } from "./command-watcher.js";
 import { EventStore } from "./event-store.js";
+import { sessionInputFromEnv } from "./input/index.js";
 import { SSEBroadcaster } from "./sse-broadcaster.js";
 import { STATIC_BUNDLE } from "./static-bundle.js";
 
@@ -53,10 +54,13 @@ const broadcaster = new SSEBroadcaster();
 watchCommandSources(broadcaster);
 
 const pairing = new Pairing(STATE_DIR);
+// Adapters are bound here, once: how /admin/input/send reaches a terminal.
+const input = sessionInputFromEnv();
 const app = createServer({
   eventStore: persistence.store,
   broadcaster,
   pairing,
+  input,
 });
 
 const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
@@ -66,6 +70,7 @@ console.log("  cc-viewer");
 console.log(`  url      http://localhost:${PORT} (bound to ${HOST})`);
 console.log(`  pairing  off-host devices pair at /pair (key in ${path.join(STATE_DIR, "viewer-key")})`);
 console.log(`  storage  ${persistence.banner}`);
+console.log(`  input    ${input.name}`);
 console.log(
   `  spa      ${spaAssetCount > 0 ? `${spaAssetCount} embedded asset(s)` : "not bundled — run vite dev separately"}`,
 );

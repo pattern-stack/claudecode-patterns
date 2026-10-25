@@ -28,9 +28,11 @@ interface ChatPanelProps {
    * waiting on Claude (post-user-message or mid-tool). */
   expectingReply?: boolean;
   /** Working directory of this session. When set, an input composer is
-   * rendered that injects text into the live terminal pane in this cwd
-   * (via ghostty-bridge). Omit for a purely read-only thread. */
+   * rendered that injects text into the live terminal running this session.
+   * Omit for a purely read-only thread. */
   cwd?: string;
+  /** The session's id, so the input can target its pane exactly (Herdr). */
+  sessionId?: string;
 }
 
 export function ChatPanel({
@@ -38,6 +40,7 @@ export function ChatPanel({
   emptyLabel = "No messages yet.",
   expectingReply = false,
   cwd,
+  sessionId,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => groupTurns(messages), [messages]);
@@ -80,7 +83,7 @@ export function ChatPanel({
         {waitingFor && <WaitingTurn label={waitingFor} />}
         <div ref={bottomRef} />
       </div>
-      {cwd && <ChatComposer cwd={cwd} />}
+      {cwd && <ChatComposer cwd={cwd} sessionId={sessionId} />}
     </div>
   );
 }

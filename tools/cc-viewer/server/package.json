@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
   },
   "dependencies": {
     "hono": "^4.6.0"

@@ -1,4 +1,5 @@
 import type { EventStore } from "./event-store.js";
+import type { SessionInput } from "./input/index.js";
 import type { Pairing } from "./pairing.js";
 import type { SSEBroadcaster } from "./sse-broadcaster.js";
 
@@ -17,4 +18,6 @@ export interface ServerConfig {
   readonly cors?: CORSConfig;
   /** Device pairing. When absent (tests, dev) every request is allowed. */
   readonly pairing?: Pairing;
+  /** How /admin/input/send reaches a live terminal (input/index.ts). */
+  readonly input: SessionInput;
 }
