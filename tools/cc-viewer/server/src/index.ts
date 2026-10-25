@@ -17,6 +17,9 @@ import { SSEBroadcaster } from "./sse-broadcaster.js";
 import { STATIC_BUNDLE } from "./static-bundle.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3993", 10);
+// Loopback only by default: the dashboard serves session transcripts with no login, so it must not be reachable
+// from the network. Set CC_VIEWER_HOST (e.g. 0.0.0.0) to expose it deliberately.
+const HOST = process.env.CC_VIEWER_HOST ?? "127.0.0.1";
 
 function resolveEventStore(): { store?: EventStore; banner: string } {
   if (process.env.CC_VIEWER_PERSISTENCE === "0") {
@@ -56,7 +59,7 @@ const spaAssetCount = Object.keys(STATIC_BUNDLE).length;
 
 console.log("");
 console.log("  cc-viewer");
-console.log(`  url      http://localhost:${PORT}`);
+console.log(`  url      http://localhost:${PORT} (bound to ${HOST})`);
 console.log(`  storage  ${persistence.banner}`);
 console.log(
   `  spa      ${spaAssetCount > 0 ? `${spaAssetCount} embedded asset(s)` : "not bundled — run vite dev separately"}`,
@@ -64,6 +67,7 @@ console.log(
 console.log("");
 
 export default {
+  hostname: HOST,
   port: PORT,
   fetch: app.fetch,
   // SSE streams hold connections open indefinitely with bursty (or zero)

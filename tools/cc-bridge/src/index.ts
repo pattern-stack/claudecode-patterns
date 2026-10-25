@@ -33,13 +33,14 @@ reaperHandle.unref?.();
 
 console.log("");
 console.log("  cc-bridge");
-console.log(`  url        http://localhost:${config.port}`);
+console.log(`  url        http://localhost:${config.port} (bound to ${config.host})`);
 console.log(`  forward    ${config.ccViewerUrl}`);
 console.log(`  state      ${config.stateDir}`);
 console.log(`  idle reap  ${Math.round(config.idleTimeoutMs / 1000)}s`);
 console.log("");
 
 export default {
+  hostname: config.host,
   port: config.port,
   fetch: app.fetch,
 };
