@@ -37,15 +37,21 @@ import machines  # noqa: E402
 LEGEND = "! = invalid value, shown as the restrictive value it loads as; run: sdlc machines check"
 
 
-def _path_arg(text: str) -> str:
-    if not text.strip():
-        raise argparse.ArgumentTypeError("--registry needs a path, got an empty value")
-    return text
+def _nonempty(flag: str):
+    def convert(text: str) -> str:
+        if not text.strip():
+            raise argparse.ArgumentTypeError("%s needs a path, got an empty value" % flag)
+        return text
+    return convert
 
 
-def _config_arg(text: str) -> str:
-    if not text.strip():
-        raise argparse.ArgumentTypeError("--config needs a path, got an empty value")
+_path_arg = _nonempty("--registry")
+_config_arg = _nonempty("--config")
+
+
+def _role_arg(text: str) -> str:
+    if not machines._strip_role(text):
+        raise argparse.ArgumentTypeError("a role needs a name, got %r" % text)
     return text
 
 
@@ -282,7 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp.set_defaults(func=cmd_check)
 
     wp = sub.add_parser("where", help="say where a phase or agent runs (exit 1 on a fallback, nowhere, or an error)")
-    wp.add_argument("role", help="a phase or agent name, e.g. validator (a leading sdlc: is ignored)")
+    wp.add_argument("role", type=_role_arg, help="a phase or agent name, e.g. validator (a leading sdlc: is ignored)")
     wp.add_argument("--kind", choices=machines.KINDS, default=None,
                     help="read only the phase or only the agent placement (default: whichever names the role)")
     wp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")

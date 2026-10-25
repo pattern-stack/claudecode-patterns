@@ -31,8 +31,9 @@ release only answers "where"; acting on the answer comes later.
   role unplaceable, because a dropped requirement would quietly place a step where it cannot run.
 - **A repeated placement key is an error, never last-wins.** A repeated top-level placement key turns placement off with
   an error, a repeated `needs` entry makes the role unplaceable, and a repeated target makes the role fall back.
-  Repeats in other keys of `sdlc.yml` are ignored. A repeated or malformed top-level `needs` is flagged
-  (`needs_broken`) even in a file that sets no target, so a later `--machine` override can refuse on it.
+  Repeats in other keys of `sdlc.yml` are ignored. A repeated or malformed `needs` is remembered even in a file that
+  sets no target, so a later per-run override can refuse on it. A repeat is judged on every copy, so a blank last copy
+  can't hide an earlier target.
 - **`sdlc machines where <role>`.** The first line is the answer. It exits 0 when the role is placed, or when machines
   are off because there is no registry or the repo places nothing; 1 for a fallback, nowhere to run, or machines off
   because of an error; 2 for a usage error.

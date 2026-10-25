@@ -85,6 +85,7 @@ FIRST_START_GATES = ("trust-prompt", "fullscreen-notice")
 PERSISTENCE = ("durable", "disposable")
 LIMIT_KEYS = ("cores", "mem_gb", "browser_jobs", "agents")
 ALIASES = {"gaming_flag": "busy_flag"}                   # D5
+YQ_MIN_TIMEOUT = 0.1                                     # a smaller remaining budget is raised to this
 YQ_TIMEOUT = 2.0                                         # seconds; the #138 hook is killed at 5 s
 NEAR_MISS_CUTOFF = 0.8                                   # difflib ratio at which a fail-closed key typo is an error
 
@@ -233,8 +234,9 @@ def _r(value: Any) -> str:
 
 
 class _Map(dict):
-    """A parsed mapping that remembers keys written more than once (`dups`)."""
+    """A parsed mapping that remembers keys written more than once (`dups`) and the earlier values (`shadowed`)."""
     dups = ()
+    shadowed = ()       # ((key, earlier value), ...) for repeated keys, in file order
 
     def __repr__(self) -> str:
         return _r(self)
@@ -244,13 +246,17 @@ def _pairs_to_map(pairs: Any) -> "_Map":
     out = _Map()
     seen = set()
     dups = []
+    shadowed = []
     for key, value in pairs:
-        if key in seen and key not in dups:
-            dups.append(key)
+        if key in seen:
+            if key not in dups:
+                dups.append(key)
+            shadowed.append((key, out[key]))
         seen.add(key)
         out[key] = value
     if dups:
         out.dups = tuple(dups)
+        out.shadowed = tuple(shadowed)
     return out
 
 
@@ -312,6 +318,7 @@ def _strict_loader(yaml: Any) -> Any:
             value = self.construct_mapping(node)
             data.update(value)
             data.dups = value.dups
+            data.shadowed = value.shadowed
 
     StrictLoader.yaml_implicit_resolvers = {
         ch: [(tag, rx) for (tag, rx) in resolvers if tag not in drop]
@@ -346,7 +353,7 @@ def parse_yaml(path: Path, timeout: Optional[float] = None) -> object:
 
     `timeout` bounds the yq run (None: YQ_TIMEOUT); PyYAML parses in-process and ignores it.
     """
-    limit = YQ_TIMEOUT if timeout is None else max(float(timeout), 0.05)
+    limit = YQ_TIMEOUT if timeout is None else max(float(timeout), YQ_MIN_TIMEOUT)
     try:
         import yaml  # type: ignore
     except ImportError:
@@ -773,10 +780,8 @@ SDLC_RELPATH = ".claude/sdlc.yml"
 PROJECT_ENV = "CLAUDE_PROJECT_DIR"
 KINDS = ("phase", "agent")
 PLACEMENT_KEYWORDS = ("any", "local")           # `auto` is #139's --machine auto; refused in sdlc.yml
-PLACEMENT_KEYS = ("phase_machines", "agent_machines", "default_machine", "needs", "phases")
+PLACEMENT_KEYS = ("phase_machines", "agent_machines", "default_machine", "needs", "phases")   # a problem with one of these as a whole is block-level
 NEEDS_KEYS = ("caps", "keeps", "secrets")
-STATUSES = ("off", "placed", "fallback", "unplaceable")
-OFF_CAUSES = ("no-registry", "registry-errors", "sdlc-errors", "no-placement", "time-budget")
 LOOKUP_BUDGET = 2.5                             # seconds for lookup()'s file reads (the hook is killed at 5 s)
 SDLC_SKIP_AFTER = 1.0                           # a registry read this slow: lookup() doesn't read sdlc.yml
 
@@ -853,8 +858,11 @@ def _blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
 
 
-def _short(value: Any) -> str:
-    return reprlib.repr(value)
+def _mk(level: str, where: str, message: str) -> Issue:
+    """An Issue whose message is capped like the registry's."""
+    out: List[Issue] = []
+    _issue(out, level, where, message)
+    return out[0]
 
 
 def _new_config(path: Optional[Path], source: str, exists: bool) -> PlacementConfig:
@@ -909,11 +917,11 @@ def _target(value: Any, at: str, soft: List[Issue]) -> Requested:
         text = value.strip()
         if text == "auto":
             msg = "'auto' is reserved for `sdlc delegate --machine auto`; write 'any' to let any fitting machine take it"
-            soft.append(Issue("error", _w(at), msg))
+            soft.append(_mk("error", _w(at), msg))
             return Requested(None, at, msg)
         return Requested(text, at)
-    msg = "must be a machine name, 'local' or 'any', got %s" % _short(value)
-    soft.append(Issue("error", _w(at), msg))
+    msg = "must be a machine name, 'local' or 'any', got %s" % _r(value)
+    soft.append(_mk("error", _w(at), msg))
     return Requested(None, at, msg)
 
 
@@ -924,12 +932,12 @@ def _entries(block: Any, name: str, soft: List[Issue]) -> Tuple[List[str], Dict[
     repeated: set = set()
     for key, value in block.items():
         if not isinstance(key, str) or not _strip_role(key):
-            soft.append(Issue("error", _w(name), "a role key must be a non-empty string, got %s" % _short(key)))
+            soft.append(_mk("error", _w(name), "a role key must be a non-empty string, got %s" % _r(key)))
             continue
         role = _strip_role(key)
         if role != key:
-            soft.append(Issue("warning", _w(name, key),
-                              "role keys are written without the plugin prefix: %r is read as %r" % (key, role)))
+            soft.append(_mk("warning", _w(name, key),
+                              "role keys are written without the plugin prefix: %s is read as %s" % (_r(key), _r(role))))
         if role in values:
             repeated.add(role)
         else:
@@ -949,11 +957,11 @@ def _needs_entry(role: str, value: Any, repeated: bool, soft: List[Issue]) -> Ne
     secrets = "none"
 
     def err(where: str, message: str, key: str) -> None:
-        soft.append(Issue("error", where, message))
+        soft.append(_mk("error", where, message))
         invalid.add(key)
 
     if repeated:
-        err(base, "needs for %r is written more than once; the role is unplaceable until it is written once" % role, "entry")
+        err(base, "needs for %s is written more than once; the role is unplaceable until it is written once" % _r(role), "entry")
     elif value is None:
         err(base, "needs.%s must not be blank (it is a requirement; write [] for none)" % role, "entry")
     elif isinstance(value, list):
@@ -985,33 +993,51 @@ def _needs_entry(role: str, value: Any, repeated: bool, soft: List[Issue]) -> Ne
             else:
                 text = str(key)
                 near = difflib.get_close_matches(_norm_key(text), NEEDS_KEYS, n=1)
-                hint = "; did you mean %r?" % near[0] if near else ""
-                err(_w("needs", role, text), "unknown needs key %r%s (every needs key is a requirement, so it is an error)"
-                    % (text, hint), text)
+                hint = "; did you mean %s?" % _r(near[0]) if near else ""
+                err(_w("needs", role, text), "unknown needs key %s%s (every needs key is a requirement, so it is an error)"
+                    % (_r(text), hint), text)
     else:
-        err(base, "needs.%s must be a list of caps or a map {caps, keeps, secrets}, got %s" % (role, _short(value)), "entry")
+        err(base, "needs.%s must be a list of caps or a map {caps, keeps, secrets}, got %s" % (role, _r(value)), "entry")
     return Needs(caps, keeps, secrets, frozenset(invalid))
 
 
+def _copies(mapping: Any, key: Any) -> List[Any]:
+    """Every value written for `key`, earlier copies first (the parser keeps only the last in the mapping)."""
+    out = [v for k, v in getattr(mapping, "shadowed", ()) if k == key]
+    if key in mapping:
+        out.append(mapping[key])
+    return out
+
+
+def _sets_target(value: Any) -> bool:
+    """A phase_machines / agent_machines copy that attempts to place, including a repeat inside it."""
+    if isinstance(value, dict):
+        if getattr(value, "dups", ()):
+            return True
+        roles = [_strip_role(k) for k in value if isinstance(k, str)]
+        return len(roles) != len(set(roles)) or any(not _blank(v) for v in value.values())
+    return not _blank(value)
+
+
 def _opts_in(doc: Any) -> bool:
-    """True when the file, as written, sets at least one target."""
+    """True when the file, as written, sets at least one target, or repeats a key that could have set one.
+
+    Decided from every copy of a repeated key, not only the last one the parser kept: a repeat is an
+    attempt to place, and the last copy may be blank.
+    """
     dups = set(getattr(doc, "dups", ()))
     for key in ("phase_machines", "agent_machines"):
-        if key in dups:
-            return True
-        value = doc.get(key)
-        if isinstance(value, dict):
-            if any(not _blank(v) for v in value.values()):
-                return True
-        elif not _blank(value):
+        if key in dups or any(_sets_target(c) for c in _copies(doc, key)):
             return True
     if "default_machine" in dups or not _blank(doc.get("default_machine")):
         return True
-    phases = doc.get("phases")
-    if isinstance(phases, dict):
-        for v in phases.values():
-            if isinstance(v, dict) and not _blank(v.get("machine")):
-                return True
+    for phases in _copies(doc, "phases"):
+        if not isinstance(phases, dict):
+            continue
+        for role in phases:
+            for value in _copies(phases, role):
+                if isinstance(value, dict) and ("machine" in getattr(value, "dups", ()) or not _blank(value.get("machine"))):
+                    return True
     return False
 
 
@@ -1025,7 +1051,7 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
     if doc is None:
         doc = {}
     if not isinstance(doc, dict):
-        cfg.issues.append(Issue("error", "sdlc.yml", "sdlc.yml must be a map at the top level, got %s" % type(doc).__name__))
+        cfg.issues.append(_mk("error", "sdlc.yml", "sdlc.yml must be a map at the top level, got %s" % type(doc).__name__))
         cfg.broken = True
         return cfg
     soft: List[Issue] = []
@@ -1036,13 +1062,13 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
     def block(key: str) -> Optional[dict]:
         nonlocal soft_broken
         if key in dups:
-            soft.append(Issue("error", _w(key), "%s is written more than once; no placement applies until it is written once" % key))
+            soft.append(_mk("error", _w(key), "%s is written more than once; no placement applies until it is written once" % key))
             soft_broken = True
         value = doc.get(key)
         if value is None:
             return {}
         if not isinstance(value, dict):
-            soft.append(Issue("error", _w(key), "%s must be a map, got %s" % (key, _short(value))))
+            soft.append(_mk("error", _w(key), "%s must be a map, got %s" % (key, _r(value))))
             soft_broken = True
             return None
         return value
@@ -1056,7 +1082,7 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
         for role in order:
             at = "%s.%s" % (key, role)
             if role in repeated:
-                soft.append(Issue("error", _w(at), "%s is written more than once" % role))
+                soft.append(_mk("error", _w(at), "%s is written more than once" % role))
                 out[role] = Requested(None, at, "written more than once")
             elif not _blank(values[role]):
                 out[role] = _target(values[role], at, soft)
@@ -1073,11 +1099,11 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
             value = values[role]
             if role in repeated:
                 # Fails closed: the dropped copy may have set `machine`, even if neither visibly did.
-                soft.append(Issue("error", _w("phases", role), "phases.%s is written more than once" % role))
+                soft.append(_mk("error", _w("phases", role), "phases.%s is written more than once" % role))
                 grouped[role] = Requested(None, at, "written more than once")
             elif isinstance(value, dict):
                 if "machine" in getattr(value, "dups", ()):
-                    soft.append(Issue("error", _w(at), "machine is written more than once"))
+                    soft.append(_mk("error", _w(at), "machine is written more than once"))
                     grouped[role] = Requested(None, at, "written more than once")
                 elif not _blank(value.get("machine")):
                     grouped[role] = _target(value["machine"], at, soft)
@@ -1087,7 +1113,7 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
         if g is not None:
             cfg.phases[role] = g
             if f is not None and f.error is None and g.error is None and f.value != g.value:
-                soft.append(Issue("warning", _w(f.at), "overridden by phases.%s.machine (%r)" % (role, g.value)))
+                soft.append(_mk("warning", _w(f.at), "overridden by phases.%s.machine (%s)" % (role, _r(g.value))))
         elif f is not None:
             cfg.phases[role] = f
 
@@ -1095,11 +1121,11 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
     for role, req in cfg.agents.items():
         other = cfg.phases.get(role)
         if other is not None and other.error is None and req.error is None and other.value != req.value:
-            soft.append(Issue("error", _w(req.at), "%s is placed by %s (%r) and by agent_machines (%r); with no kind the "
-                              "phase entry is used" % (role, other.at, other.value, req.value)))
+            soft.append(_mk("error", _w(req.at), "%s is placed by %s (%s) and by agent_machines (%s); with no kind the "
+                              "phase entry is used" % (role, other.at, _r(other.value), _r(req.value))))
 
     if "default_machine" in dups:
-        soft.append(Issue("error", _w("default_machine"), "default_machine is written more than once"))
+        soft.append(_mk("error", _w("default_machine"), "default_machine is written more than once"))
         soft_broken = True
     default = doc.get("default_machine")
     if not _blank(default):
@@ -1118,7 +1144,7 @@ def read_placement(doc: object, path: Optional[Path] = None, source: str = "flag
         cfg.issues.extend(soft)
         cfg.broken = soft_broken
     elif doc.get("needs") not in (None, {}):
-        cfg.issues.append(Issue("warning", _w("needs"),
+        cfg.issues.append(_mk("warning", _w("needs"),
                                 "needs has no effect until something is placed (set phase_machines, agent_machines, "
                                 "default_machine or phases.<role>.machine)"))
     return cfg
@@ -1187,9 +1213,9 @@ def _off(role: str, kind: Optional[str], cause: str, reason: str) -> Placement:
 
 
 def _unknown_name(name: str, registry: Registry) -> str:
-    text = "'%s' is not in the registry" % name
+    text = "%s is not in the registry" % _r(name)
     near = difflib.get_close_matches(name, list(registry.machines), n=1)
-    return text + ("; did you mean '%s'?" % near[0] if near else "")
+    return text + ("; did you mean %s?" % _r(near[0]) if near else "")
 
 
 def _own_request(config: PlacementConfig, role: str, kind: Optional[str]) -> Optional[Requested]:
@@ -1201,12 +1227,13 @@ def _own_request(config: PlacementConfig, role: str, kind: Optional[str]) -> Opt
 
 
 def _default_target(registry: Registry, config: PlacementConfig) -> Tuple[str, Optional[str], Optional[str]]:
-    """(target, shown, why): the default target; default_machine as written when it was replaced, and why."""
+    """(target, replaced, why): the default target; when default_machine was replaced by this box,
+    how to name it ("default_machine 'x'", or just "default_machine" when it has no usable text); and why."""
     d = config.default
     if d is None:
         return "local", None, None
     if d.error is not None:
-        return "local", "?", d.error
+        return "local", "default_machine", d.error
     if d.value in PLACEMENT_KEYWORDS:
         return d.value or "local", None, None
     m = registry.get(d.value or "")
@@ -1216,24 +1243,29 @@ def _default_target(registry: Registry, config: PlacementConfig) -> Tuple[str, O
         return d.value or "local", None, None
     else:
         why = unfit_reason(m, Needs()) or "not usable"
-    return "local", d.value, why
+    return "local", "default_machine %s" % _r(d.value), why
 
 
-def _evaluate(target: str, registry: Registry, needs: Needs
+def _evaluate(target: str, registry: Registry, needs: Needs, skip: FrozenSet[str] = frozenset()
               ) -> Tuple[List[str], List[Tuple[str, str]], str]:
-    """(fitting machines, [(key, why)] refusals, refusal text when none fit)."""
+    """(fitting machines, [(key, why)] refusals, refusal text when none fit).
+
+    Machines in `skip` were already judged and refused with these same needs, so they are not judged again.
+    """
     local = registry.local
     if target == "any":
         order = ([local] if local is not None else []) + [m for m in registry.machines.values() if m is not local]
         fits: List[str] = []
         refused: List[Tuple[str, str]] = []
         for m in order:
+            if m.name in skip:
+                continue
             why = unfit_reason(m, needs)
             if why is None:
                 fits.append(m.name)
             else:
                 refused.append((m.name, why))
-        text = "" if fits else "no machine fits: " + "; ".join("%s: %s" % (k, w) for k, w in refused)
+        text = "no machine fits: " + "; ".join("%s: %s" % (k, w) for k, w in refused) if refused and not fits else ""
         return fits, refused, text
     if target == "local":
         machine = local
@@ -1241,6 +1273,8 @@ def _evaluate(target: str, registry: Registry, needs: Needs
     else:
         machine = registry.get(target)
         key = target
+    if key in skip:
+        return [], [], ""
     if machine is None:
         why = _unknown_name(target, registry) if target != "local" else "there is no local machine"
         return [], [(key, why)], why
@@ -1248,15 +1282,6 @@ def _evaluate(target: str, registry: Registry, needs: Needs
     if why is None:
         return [machine.name], [], ""
     return [], [(machine.name, why)], why
-
-
-def _single(target: str, registry: Registry) -> Optional[str]:
-    """The one machine a target names, or None for `any`."""
-    if target == "any":
-        return None
-    if target == "local":
-        return registry.local.name if registry.local is not None else "local"
-    return target
 
 
 def resolve(role: str, kind: Optional[str] = None, *,
@@ -1291,11 +1316,10 @@ def resolve(role: str, kind: Optional[str] = None, *,
     rejected: List[Tuple[str, str]] = []
     texts: List[str] = []
     refused_own = False
-    own_single: Optional[str] = None
     own_label = ""
 
     if req is not None:
-        own_label = ("%s '%s'" % (req.at, req.value)) if req.value else req.at
+        own_label = ("%s %s" % (req.at, _r(req.value))) if req.value else req.at
         refused_own = True
         if req.error is not None:
             rejected.append((req.at, req.error))
@@ -1304,49 +1328,45 @@ def resolve(role: str, kind: Optional[str] = None, *,
             fits, refusals, text = _evaluate(req.value or "", registry, needs)
             rejected.extend(refusals)
             if fits:
-                how = "%s places %s on '%s'" % (req.at, role, fits[0])
+                how = "%s places %s on %s" % (req.at, role, _r(fits[0]))
                 if req.value == "any":
                     how = "%s places %s on any: %d %s" % (
                         req.at, role, len(fits), "machine fits" if len(fits) == 1 else "machines fit")
                 return Placement(role, shown_kind, "placed", None, fits[0], tuple(fits), fits[0] == local_name, req,
                                  tuple(rejected), how, req.value)
-            texts.append(text)
-            own_single = _single(req.value or "", registry)
+            if text:
+                texts.append(text)
 
-    if refused_own and own_single is not None and own_single == _single(dtarget, registry):
-        fits = []                               # the same single machine is not tried twice
-    else:
-        fits, refusals, text = _evaluate(dtarget, registry, needs)
-        rejected.extend(refusals)
-        if not fits:
-            texts.append(text)
+    # A machine the own target already refused is not judged again: same needs, same answer.
+    fits, refusals, text = _evaluate(dtarget, registry, needs, frozenset(k for k, _w2 in rejected))
+    rejected.extend(refusals)
     if not fits:
+        if text:
+            texts.append(text)
         return Placement(role, shown_kind, "unplaceable", None, None, (), False, req, tuple(rejected),
-                         "**%s has nowhere to run**: %s" % (role, "; ".join(texts)))
+                         "%s has nowhere to run: %s" % (role, "; ".join(texts)))
 
     if dtarget == "any":
         tail = "default_machine 'any' (%d machine%s fit)" % (len(fits), "" if len(fits) == 1 else "s")
-    elif replaced is not None:
-        tail = "this box ('%s')" % local_name
     elif d is None:
-        tail = "this box ('%s')" % local_name
+        tail = "this box (%s)" % _r(local_name)
     else:
-        tail = "default_machine '%s'" % d.value
+        tail = "default_machine %s" % _r(d.value)
     if not refused_own:
         if replaced is not None:
-            reason = "**%s has no placement; default_machine '%s' is not usable** (%s); runs on this box ('%s')" % (
-                role, replaced, replaced_why, local_name)
+            reason = "%s has no placement; %s is not usable (%s); runs on this box (%s)" % (
+                role, replaced, replaced_why, _r(local_name))
         elif d is None:
-            reason = "**%s has no placement**; runs on this box ('%s')" % (role, local_name)
+            reason = "%s has no placement; runs on this box (%s)" % (role, _r(local_name))
         else:
-            reason = "**%s has no placement**; %s" % (role, tail)
+            reason = "%s has no placement; %s" % (role, tail)
         status = "placed"
     else:
         if replaced is not None:
-            reason = "**%s was refused** (%s); **default_machine '%s' is not usable**; using this box ('%s')" % (
-                own_label, texts[0], replaced, local_name)
+            reason = "%s was refused (%s); %s is not usable; using this box (%s)" % (
+                own_label, texts[0] if texts else "refused", replaced, _r(local_name))
         else:
-            reason = "**%s was refused** (%s); **using** %s" % (own_label, texts[0], tail)
+            reason = "%s was refused (%s); using %s" % (own_label, texts[0] if texts else "refused", tail)
         status = "fallback"
     return Placement(role, shown_kind, status, None, fits[0], tuple(fits), fits[0] == local_name, req,
                      tuple(rejected), reason, dtarget)
@@ -1366,27 +1386,31 @@ def _default_issue(registry: Registry, config: PlacementConfig) -> Optional[str]
     effective_local = d is None or reported or explicit_local or replaced is not None
     parts: List[str] = []
     if replaced is not None and not reported:
-        parts.append("default_machine '%s' is not usable (%s)" % (replaced, why))
+        parts.append("%s is not usable (%s)" % (replaced, why))
     if effective_local and not local.assignable:
         if explicit_local:
-            parts.append("default_machine 'local' is the local machine '%s', which is not assignable, so unplaced roles "
-                         "have nowhere to run" % local.name)
+            parts.append("default_machine 'local' is the local machine %s, which is not assignable, so unplaced roles "
+                         "have nowhere to run" % _r(local.name))
         else:
-            parts.append("no usable default_machine and the local machine '%s' is not assignable, so unplaced roles "
-                         "have nowhere to run" % local.name)
+            parts.append("no usable default_machine and the local machine %s is not assignable, so unplaced roles "
+                         "have nowhere to run" % _r(local.name))
     elif parts:
-        parts[-1] += "; unplaced roles run on this box ('%s') instead" % local.name
+        parts[-1] += "; unplaced roles run on this box (%s) instead" % _r(local.name)
     return "; ".join(parts) if parts else None
 
 
 def placement_issues(registry: Registry, config: PlacementConfig) -> List[Issue]:
     """The repo pass of `check`. Call only when registry.usable."""
+    if not config.usable:
+        # A broken config shows only its file- or block-level errors, and no role lines.
+        levels = {"sdlc.yml"} | {_w(k) for k in PLACEMENT_KEYS}
+        return [i for i in config.issues if i.level == "error" and i.where in levels]
     out = list(config.issues)
-    if not config.usable or not config.opted_in:
+    if not config.opted_in:
         return out
     message = _default_issue(registry, config)
     if message:
-        out.append(Issue("error", _w("default_machine"), message))
+        out.append(_mk("error", _w("default_machine"), message))
     for role, kind in config.roles():
         p = resolve(role, kind, registry=registry, config=config)
         req = _own_request(config, role, kind)
@@ -1398,10 +1422,10 @@ def placement_issues(registry: Registry, config: PlacementConfig) -> List[Issue]
                 text = "%s -> %s (default)" % (role, p.machine)
             else:
                 text = "%s -> %s" % (role, p.machine)
-            out.append(Issue("info", where, text))
+            out.append(_mk("info", where, text))
             continue
         value_error = (req is not None and req.error is not None) or not config.needs.get(role, Needs()).ok
-        out.append(Issue("info" if value_error else "error", where, p.reason))
+        out.append(_mk("info" if value_error else "error", where, p.reason))
     return out
 
 
@@ -1426,13 +1450,13 @@ def locate(role: str, kind: Optional[str] = None, *, project_dir: Optional[str] 
             return _off(_strip_role(role), kind if kind in KINDS else None, "time-budget",
                         "machines are off: time budget spent reading the registry (%.1fs); sdlc.yml not read"
                         % elapsed), reg, None
-        timeout = None if budget is None else max(0.1, min(YQ_TIMEOUT, budget - elapsed))
+        timeout = None if budget is None else min(YQ_TIMEOUT, budget - elapsed)
         cfg = load_placement(config_file, project_dir=project_dir, env=env, cwd=cwd, timeout=timeout)
         return resolve(role, kind, registry=reg, config=cfg), reg, cfg
     except Exception as exc:  # last resort
         cfg = _broken(None, "none", False, "internal error: %s: %s" % (type(exc).__name__, exc))
         fallback_reg = reg if reg is not None else Registry(Path("."), "default", False, {}, [])
-        return (_off(str(role), None, "sdlc-errors", "machines are off: sdlc.yml has errors (%s)" % cfg.issues[0].message),
+        return (_off(_strip_role(str(role)), None, "sdlc-errors", "machines are off: %s" % cfg.issues[0].message),
                 fallback_reg, cfg)
 
 

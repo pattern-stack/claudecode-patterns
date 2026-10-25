@@ -125,7 +125,12 @@ row("A8 any with needs", {"phase_machines": {"reviewer": "any"}, "needs": {"revi
 row("A9 any with secrets prod", {"phase_machines": {"reviewer": "any"}, "needs": {"reviewer": {"secrets": "prod"}}},
     "reviewer", status="placed", cands=("vault",))
 row("A10 any, nothing fits", {"phase_machines": {"reviewer": "any"}, "needs": {"reviewer": ["gpu"]}}, "reviewer",
-    status="unplaceable", machine=None, has=["no machine fits", "has nowhere to run"])
+    status="unplaceable", machine=None, has=["no machine fits", "has nowhere to run"],
+    rej=["workstation", "worker-1", "vault", "control", "broken"])     # each judged once: the local default is not re-judged
+row("A10b any refused and default any: judged once, one reason",
+    {"phase_machines": {"reviewer": "any"}, "default_machine": "any", "needs": {"reviewer": ["gpu"]}}, "reviewer",
+    status="unplaceable", rej=["workstation", "worker-1", "vault", "control", "broken"],
+    fn=lambda p, c, r: p.reason.count("no machine fits") == 1)
 row("A11 any is local first", {"phase_machines": {"reviewer": "any"}}, "reviewer", reg="REG_WF",
     fn=lambda p, c, r: p.candidates[0] == "workstation")
 row("A12 unknown machine", {"phase_machines": {"validator": "worker-9"}}, "validator", status="fallback",
@@ -234,9 +239,28 @@ row("R7 repeated tuning-only phases.<role> overrides a flat target and falls bac
     "validator", status="fallback", machine="workstation",
     fn=lambda p, c, r: p.requested.error is not None
     and any(i.where == "sdlc.yml.phases.validator" for i in errors_of(c)))
-row("R8 a repeated top-level phases hides a machine: nothing else is placed, so it is off",
+row("R8 a repeated top-level phases with a machine in an earlier copy opts in, and is an error",
     repeated(("phases", {"validator": {"machine": "worker-1"}}), ("phases", {"validator": {"model": "opus"}})),
+    "validator", status="off", cause="sdlc-errors",
+    fn=lambda p, c, r: c.opted_in and c.broken and any(i.where == "sdlc.yml.phases" for i in errors_of(c)))
+row("R8b a repeated top-level phases with no machine in any copy does not opt in",
+    repeated(("phases", {"validator": {"model": "opus"}}), ("phases", {"validator": {"effort": "high"}})),
     "validator", status="off", cause="no-placement")
+row("O1 a repeated role in phase_machines followed by a bare one: opted in, an error, falls back",
+    {"phase_machines": repeated(("validator", "worker-1"), ("validator", None))}, "validator",
+    status="fallback", machine="workstation",
+    fn=lambda p, c, r: c.opted_in and any(i.where == "sdlc.yml.phase_machines.validator" for i in errors_of(c)))
+row("O2 machine repeated under phases.<role>, the last one null: opted in, an error, falls back",
+    {"phases": {"validator": repeated(("machine", "worker-1"), ("machine", None))}}, "validator",
+    status="fallback", machine="workstation",
+    fn=lambda p, c, r: c.opted_in and any(i.where == "sdlc.yml.phases.validator.machine" for i in errors_of(c)))
+row("O3 a repeated role in agent_machines followed by a bare one: opted in",
+    {"agent_machines": repeated(("browser-pilot", "worker-1"), ("browser-pilot", None))}, "browser-pilot",
+    status="fallback", fn=lambda p, c, r: c.opted_in)
+row("O4 a repeated top-level default_machine: opted in, broken",
+    repeated(("default_machine", "local"), ("default_machine", "worker-1")), "validator",
+    status="off", cause="sdlc-errors",
+    fn=lambda p, c, r: c.opted_in and any(i.where == "sdlc.yml.default_machine" for i in errors_of(c)))
 
 # placement_issues rows ---------------------------------------------------------
 IROWS = []
@@ -284,6 +308,8 @@ irow("I16 default_machine: local on an unassignable local box", {"default_machin
 irow("I17 unknown default on an unassignable local box: one combined error", {"default_machine": "worker-9"},
      [sw("default_machine")], reg="REG_LOCKED", opt=False,
      check=lambda iss: any("worker-9" in i.message and "nowhere to run" in i.message for i in iss))
+irow("I19 a broken config shows only its block-level error",
+     {"phase_machines": ["validator"], "needs": {"validator": {"cap": ["x"]}}}, [sw("phase_machines")], opt=False)
 irow("I18 placed roles are info lines", {"phase_machines": {"reviewer": "any", "validator": "worker-1"}}, [],
      check=lambda iss: any(i.level == "info" and i.message == "reviewer -> any: workstation, worker-1, vault" for i in iss)
      and any(i.level == "info" and i.message == "validator -> worker-1" for i in iss))
@@ -307,6 +333,8 @@ for name, cfgdoc, role, kind, regname, expect in ROWS:
         p = M.resolve(role, kind, registry=reg, config=cfg)
         got = getters(p, cfg, reg)
         problems = []
+        if "**" in p.reason:
+            problems.append("reason has literal ** markers: %s" % p.reason)
         for key, want in expect.items():
             if key == "kind_is":
                 if p.kind != want:
@@ -430,8 +458,7 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   t "[$be] B1 check: ok, 0 errors, 0 warnings" bash -c '[ "$1" = 0 ]' _ "$RC"
   t "[$be] B1 check: exact result line" has "check: ok (errors=0, warnings=0)"
   for role in validator implementer reviewer browser-pilot; do
-    t "[$be] B1 check: info line for $role" has "info     sdlc.yml."
-    t "[$be] B1 check: $role is reported" has "$role ->"
+    t "[$be] B1 check: info line for $role" bash -c 'printf "%s\n" "$1" | grep -q "^info     sdlc\.yml\..*: $2 ->"' _ "$OUT" "$role"
   done
   run $be machines where validator --registry "$EXAMPLE" --config "$BLOCK_FILE"
   t "[$be] B1 where validator: first line" first_is "validator: worker-1"
@@ -660,6 +687,28 @@ print(p.status, p.off_cause, '|', p.reason)" "$TMP/proj" "$EXAMPLE" 2>&1); RC=$?
   OUT=$(env PYTHONPATH="$TMP/noyaml" PATH="$TMP/b13b" "$PY" "$SDLC" machines where validator --registry "$EXAMPLE" --config "$TMP/proj/.claude/sdlc.yml" 2>&1); RC=$?
   t "B13b where has no budget: resolves normally" first_is "validator: worker-1"
   t "B13b where read sdlc.yml" test -e "$TMP/sdlc-read"
+
+  # B13c: the remaining budget clamps the sdlc.yml timeout. The registry read takes 0.7 s, under the (raised)
+  # skip threshold, so sdlc.yml is read with min(YQ_TIMEOUT, 2.5 - elapsed), about 1.8 s, not the full 2 s.
+  mkdir -p "$TMP/b13c"; ln -s "$PY" "$TMP/b13c/python3"
+  cat > "$TMP/b13c/yq" <<EOF
+#!/bin/sh
+for last; do :; done
+case "\$last" in
+  *sdlc.yml) exec $SLEEP 5 ;;
+esac
+$SLEEP 0.7
+exec $REAL_YQ "\$@"
+EOF
+  chmod +x "$TMP/b13c/yq"
+  OUT=$(env PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/b13c" "$PY" -c "
+import sys, machines
+machines.SDLC_SKIP_AFTER = 1.5
+p = machines.lookup('validator', project_dir=sys.argv[1], registry_file=sys.argv[2])
+print(p.status, p.off_cause, '|', p.reason)" "$TMP/proj" "$EXAMPLE" 2>&1); RC=$?
+  t "B13c a slow registry read leaves a shorter sdlc.yml timeout" bash -c '
+    n=$(printf "%s\n" "$1" | sed -n "s/.*timed out after \([0-9.]*\)s.*/\1/p")
+    [ -n "$n" ] && awk -v n="$n" "BEGIN { exit !(n > 1.0 && n < 1.95) }"' _ "$OUT"
 else
   [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ] || echo "skip: B12-B13b need yq"
 fi
@@ -689,6 +738,52 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
     OUT="$STDOUT $(cat "$TMP/err")"
     t "[$be] B14 file $n: exit 0, empty stderr, a status on stdout" bash -c '[ "$1" = 0 ] && [ ! -s "$2" ] && case "$3" in off|placed|fallback|unplaceable) true ;; *) false ;; esac' _ "$RC" "$TMP/err" "$STDOUT"
   done
+done
+
+echo "B14a  nested aliases stay bounded"
+mkdir -p "$FX/alias/.claude"
+"$PY" - "$FX/alias/.claude/sdlc.yml" <<'PYA'
+import sys
+lines = ["a0: &a0 {" + ", ".join("k%d: 1" % i for i in range(9)) + "}"]
+for n in range(1, 9):
+    lines.append("a%d: &a%d {" % (n, n) + ", ".join("k%d: *a%d" % (i, n - 1) for i in range(9)) + "}")
+lines += ["phase_machines: {validator: *a8}", "needs: {validator: *a8}"]
+open(sys.argv[1], "w").write("\n".join(lines) + "\n")
+PYA
+t "B14a the alias file is about 1 KB" bash -c '[ "$(wc -c < "$1")" -ge 700 ] && [ "$(wc -c < "$1")" -le 1400 ]' _ "$FX/alias/.claude/sdlc.yml"
+TIMEOUT="$(command -v timeout || true)"
+ALIAS='import sys, time, machines
+t0 = time.monotonic()
+p = machines.lookup("validator", project_dir=sys.argv[1], registry_file=sys.argv[2])
+t1 = time.monotonic()
+c = machines.load_placement(None, project_dir=sys.argv[1])
+reg = machines.load(sys.argv[2])
+msgs = [i.message for i in machines.placement_issues(reg, c)] + [p.reason]
+t2 = time.monotonic()
+print("lookup=%.2f check=%.2f longest=%d status=%s" % (t1 - t0, t2 - t1, max(len(m) for m in msgs), p.status))'
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  limit=2; [ "$be" = yq ] && limit=4
+  if [ "$be" = yq ]; then
+    OUT=$(PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c "$ALIAS" "$FX/alias" "$EXAMPLE" 2>&1); RC=$?
+  else
+    OUT=$(PYTHONPATH="$LIB" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c "$ALIAS" "$FX/alias" "$EXAMPLE" 2>&1); RC=$?
+  fi
+  t "[$be] B14a lookup and the check pass each return within ${limit}s, every message is 300 chars or fewer" bash -c '
+    [ "$1" = 0 ] || exit 1
+    echo "$2" | "$3" -c "
+import re, sys
+m = re.search(r\"lookup=([0-9.]+) check=([0-9.]+) longest=([0-9]+)\", sys.stdin.read())
+sys.exit(0 if m and float(m.group(1)) < $4 and float(m.group(2)) < $4 and int(m.group(3)) <= 300 else 1)"' _ "$RC" "$OUT" "$PY" "$limit"
+  run $be machines check --registry "$EXAMPLE" --config "$FX/alias/.claude/sdlc.yml"
+  t "[$be] B14a the CLI check finishes and every line is bounded" bash -c '[ "$(printf "%s\n" "$1" | awk "{ if (length(\$0) > m) m = length(\$0) } END { print m }")" -le 420 ]' _ "$OUT"
+done
+
+echo "B14c  an empty role is a usage error"
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  run $be machines where "" --registry "$EXAMPLE"
+  t "[$be] B14c where \"\": exit 2" rc_is 2
+  run $be machines where "sdlc:" --registry "$EXAMPLE"
+  t "[$be] B14c where sdlc: : exit 2" rc_is 2
 done
 
 echo "B14b  empty and overlong paths"
@@ -798,7 +893,48 @@ develop_team: [a]
 develop_team: [b]
 EOF
 )"
+R_F1="$(cfgfile r-f1 <<'EOF'
+default_machine: local
+default_machine: worker-1
+EOF
+)"
+R_G1="$(cfgfile r-g1 <<'EOF'
+phase_machines:
+  validator: worker-1
+  validator:
+EOF
+)"
+R_G2="$(cfgfile r-g2 <<'EOF'
+phases:
+  validator:
+    machine: worker-1
+    machine: null
+EOF
+)"
+R_G3="$(cfgfile r-g3 <<'EOF'
+phases:
+  validator: {machine: worker-1}
+phases:
+  validator: {model: opus}
+EOF
+)"
 for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  run $be machines check --registry "$EXAMPLE" --config "$R_F1"
+  t "[$be] B16e a repeated default_machine: rc 1, error at sdlc.yml.default_machine" has "error    sdlc.yml.default_machine:"
+  t "[$be] B16e a repeated default_machine: check fails" has "check: failed"
+  run $be machines where validator --registry "$EXAMPLE" --config "$R_F1"
+  t "[$be] B16e a repeated default_machine: where exits 1, sdlc.yml has errors" has "sdlc.yml has errors"
+  run $be machines check --registry "$EXAMPLE" --config "$R_G1"
+  t "[$be] B16f a repeated role then a bare one: opted in, error at the role" has "error    sdlc.yml.phase_machines.validator:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$R_G1"
+  t "[$be] B16f a repeated role then a bare one: falls back, rc 1" first_is "validator: workstation (local), fallback"
+  run $be machines check --registry "$EXAMPLE" --config "$R_G2"
+  t "[$be] B16f machine then machine: null: error at sdlc.yml.phases.validator.machine" has "error    sdlc.yml.phases.validator.machine:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$R_G2"
+  t "[$be] B16f machine then machine: null: falls back, rc 1" first_is "validator: workstation (local), fallback"
+  run $be machines check --registry "$EXAMPLE" --config "$R_G3"
+  t "[$be] B16f a repeated phases with a machine in the first copy: error at sdlc.yml.phases" has "error    sdlc.yml.phases:"
+  t "[$be] B16f ... and only that error is shown (a broken config shows block-level errors)" has "check: failed (errors=1, warnings=0)"
   run $be machines check --registry "$EXAMPLE" --config "$R_A1"
   t "[$be] B16a check: rc 1" rc_is 1
   t "[$be] B16a check: error at sdlc.yml.needs, written more than once" has "error    sdlc.yml.needs: needs is written more than once"
