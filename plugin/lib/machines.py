@@ -72,7 +72,8 @@ import reprlib
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
@@ -85,6 +86,7 @@ FIRST_START_GATES = ("trust-prompt", "fullscreen-notice")
 PERSISTENCE = ("durable", "disposable")
 LIMIT_KEYS = ("cores", "mem_gb", "browser_jobs", "agents")
 ALIASES = {"gaming_flag": "busy_flag"}                   # D5
+YQ_MEMORY_LIMIT = 1 << 30                                # address-space cap for the yq child (Go needs ~768 MB to start)
 YQ_MIN_TIMEOUT = 0.1                                     # a smaller remaining budget is raised to this
 YQ_TIMEOUT = 2.0                                         # seconds; the #138 hook is killed at 5 s
 NEAR_MISS_CUTOFF = 0.8                                   # difflib ratio at which a fail-closed key typo is an error
@@ -308,8 +310,12 @@ def _strict_loader(yaml: Any) -> Any:
             self.flatten_mapping(node)
             pairs = [(k.value, self.construct_object(v, deep=deep)) for k, v in node.value]
             out = _pairs_to_map(pairs)
-            repeated = tuple(dict.fromkeys(k for k in written if written.count(k) > 1))
+            counts = Counter(written)
+            repeated = tuple(dict.fromkeys(k for k in written if counts[k] > 1))
             out.dups = repeated
+            # A merge key (`<<: *base`) followed by an explicit key is standard YAML override, not a repeat:
+            # keep only what the file wrote twice, so PyYAML and yq agree.
+            out.shadowed = tuple((k, v) for k, v in out.shadowed if k in repeated)
             return out
 
         def construct_yaml_map(self, node):  # type: ignore
@@ -371,12 +377,18 @@ def parse_yaml(path: Path, timeout: Optional[float] = None) -> object:
     if shutil.which("yq") is None:
         raise RegistryError(
             "reading %s needs PyYAML (pip install pyyaml) or yq (mikefarah v4) on PATH" % path)
+    extra: Dict[str, Any] = {}
+    try:
+        import resource  # POSIX only; without it yq runs unlimited
+        extra["preexec_fn"] = lambda: resource.setrlimit(resource.RLIMIT_AS, (YQ_MEMORY_LIMIT, YQ_MEMORY_LIMIT))
+    except ImportError:
+        pass
     try:
         proc = subprocess.run(["yq", "-o=json", ".", str(path)], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=limit)
+                              capture_output=True, text=True, timeout=limit, **extra)
     except subprocess.TimeoutExpired:
         raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
-    except OSError as exc:
+    except (OSError, subprocess.SubprocessError) as exc:      # incl. a setrlimit failure in the child: fail closed
         raise RegistryError("could not run yq on %s: %s" % (path, exc))
     if proc.returncode != 0:
         raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
@@ -484,10 +496,24 @@ _LIMIT_RULES = {
 }
 
 
+MESSAGE_CAP = 300       # characters in any message or output line
+LIST_SHOWN = 10         # entries of a list shown before "(+k more)"
+
+
+def cap_text(text: str, n: int = MESSAGE_CAP) -> str:
+    """A pasted value must not become a wall of text."""
+    return text if len(text) <= n else text[:n - 3] + "..."
+
+
+def shown_list(items: Any, n: int = LIST_SHOWN) -> str:
+    """The first `n` items joined with commas, then "(+k more)"."""
+    items = list(items)
+    more = " (+%d more)" % (len(items) - n) if len(items) > n else ""
+    return ", ".join(str(i) for i in items[:n]) + more
+
+
 def _issue(out: List[Issue], level: str, where: str, message: str) -> None:
-    if len(message) > 300:  # a pasted value must not become a wall of text
-        message = message[:297] + "..."
-    out.append(Issue(level, where, message))
+    out.append(Issue(level, where, cap_text(message)))
 
 
 def _transport(value: Any, base: str, out: List[Issue], invalid: set) -> Transport:
@@ -835,8 +861,8 @@ class PlacementConfig:
 class Placement:
     role: str                                   # namespace stripped
     kind: Optional[str]                         # "phase" | "agent" | None
-    status: str                                 # one of STATUSES
-    off_cause: Optional[str]                    # one of OFF_CAUSES when status == "off", else None
+    status: str                                 # "off" | "placed" | "fallback" | "unplaceable"
+    off_cause: Optional[str]                    # when status == "off": "no-registry" | "registry-errors" | "sdlc-errors" | "no-placement" | "time-budget"
     machine: Optional[str]                      # set only for "placed" and "fallback"
     candidates: Tuple[str, ...]                 # fitting machines of the winning target; `any`: local first, then file order
     local: bool                                 # runs on this box
@@ -850,7 +876,8 @@ def _w(*parts: str) -> str:
     return ".".join(("sdlc.yml",) + tuple(parts))
 
 
-def _strip_role(text: str) -> str:
+def strip_role(text: str) -> str:
+    """`sdlc:validator` -> `validator`: the role name without its plugin namespace."""
     return text.rsplit(":", 1)[-1].strip()
 
 
@@ -931,10 +958,10 @@ def _entries(block: Any, name: str, soft: List[Issue]) -> Tuple[List[str], Dict[
     values: Dict[str, Any] = {}
     repeated: set = set()
     for key, value in block.items():
-        if not isinstance(key, str) or not _strip_role(key):
+        if not isinstance(key, str) or not strip_role(key):
             soft.append(_mk("error", _w(name), "a role key must be a non-empty string, got %s" % _r(key)))
             continue
-        role = _strip_role(key)
+        role = strip_role(key)
         if role != key:
             soft.append(_mk("warning", _w(name, key),
                               "role keys are written without the plugin prefix: %s is read as %s" % (_r(key), _r(role))))
@@ -944,8 +971,8 @@ def _entries(block: Any, name: str, soft: List[Issue]) -> Tuple[List[str], Dict[
             order.append(role)
         values[role] = value
     for key in getattr(block, "dups", ()):
-        if isinstance(key, str) and _strip_role(key):
-            repeated.add(_strip_role(key))
+        if isinstance(key, str) and strip_role(key):
+            repeated.add(strip_role(key))
     return order, values, repeated
 
 
@@ -1014,7 +1041,7 @@ def _sets_target(value: Any) -> bool:
     if isinstance(value, dict):
         if getattr(value, "dups", ()):
             return True
-        roles = [_strip_role(k) for k in value if isinstance(k, str)]
+        roles = [strip_role(k) for k in value if isinstance(k, str)]
         return len(roles) != len(set(roles)) or any(not _blank(v) for v in value.values())
     return not _blank(value)
 
@@ -1185,15 +1212,15 @@ def load_placement(explicit: Optional[str] = None, *, project_dir: Optional[str]
 def unfit_reason(machine: Machine, needs: Needs) -> Optional[str]:
     """None when `machine` fits `needs`; else the first failing filter."""
     if not machine.ok:
-        return "machine '%s' has registry errors in: %s" % (machine.name, ", ".join(sorted(machine.invalid)))
+        return "machine '%s' has registry errors in: %s" % (machine.name, shown_list(sorted(machine.invalid)))
     if not machine.assignable:
         return "machine '%s' is not assignable" % machine.name
     missing = [c for c in needs.caps if c not in machine.caps]
     if missing:
-        return "machine '%s' lacks caps: %s" % (machine.name, ", ".join(missing))
+        return "machine '%s' lacks caps: %s" % (machine.name, shown_list(missing))
     missing = [k for k in needs.keeps if k not in machine.keeps]
     if missing:
-        return "machine '%s' lacks keeps: %s" % (machine.name, ", ".join(missing))
+        return "machine '%s' lacks keeps: %s" % (machine.name, shown_list(missing))
     have = SECRET_LEVELS.index(machine.secrets) if machine.secrets in SECRET_LEVELS else -1
     need = SECRET_LEVELS.index(needs.secrets) if needs.secrets in SECRET_LEVELS else len(SECRET_LEVELS)
     if have < need:
@@ -1265,7 +1292,8 @@ def _evaluate(target: str, registry: Registry, needs: Needs, skip: FrozenSet[str
                 fits.append(m.name)
             else:
                 refused.append((m.name, why))
-        text = "no machine fits: " + "; ".join("%s: %s" % (k, w) for k, w in refused) if refused and not fits else ""
+        text = "no machine fits: " + "; ".join("%s: %s" % (k, w) for k, w in refused[:LIST_SHOWN]) + (
+            " (+%d more)" % (len(refused) - LIST_SHOWN) if len(refused) > LIST_SHOWN else "") if refused and not fits else ""
         return fits, refused, text
     if target == "local":
         machine = local
@@ -1286,8 +1314,16 @@ def _evaluate(target: str, registry: Registry, needs: Needs, skip: FrozenSet[str
 
 def resolve(role: str, kind: Optional[str] = None, *,
             registry: Registry, config: PlacementConfig) -> Placement:
-    """Where does `role` run? Pure: no I/O. See the module docstring, rules 6-9."""
-    role = _strip_role(role)
+    """Where does `role` run? Pure: no I/O. See the module docstring, rules 6-9.
+
+    `reason` and every `rejected` explanation are capped at MESSAGE_CAP characters.
+    """
+    p = _resolve(role, kind, registry, config)
+    return replace(p, reason=cap_text(p.reason), rejected=tuple((k, cap_text(w)) for k, w in p.rejected))
+
+
+def _resolve(role: str, kind: Optional[str], registry: Registry, config: PlacementConfig) -> Placement:
+    role = strip_role(role)
     kind_in = kind if kind in KINDS else None
     if not registry.usable:
         if registry.inert:
@@ -1309,7 +1345,7 @@ def resolve(role: str, kind: Optional[str] = None, *,
     needs = config.needs.get(role, Needs())
     if not needs.ok:
         return Placement(role, shown_kind, "unplaceable", None, None, (), False, req, (),
-                         "needs.%s has errors in: %s" % (role, ", ".join(sorted(needs.invalid))))
+                         "needs.%s has errors in: %s" % (role, shown_list(sorted(needs.invalid))))
 
     dtarget, replaced, replaced_why = _default_target(registry, config)
     d = config.default
@@ -1447,7 +1483,7 @@ def locate(role: str, kind: Optional[str] = None, *, project_dir: Optional[str] 
             return resolve(role, kind, registry=reg, config=_new_config(None, "none", False)), reg, None
         elapsed = time.monotonic() - started
         if budget is not None and elapsed >= SDLC_SKIP_AFTER:
-            return _off(_strip_role(role), kind if kind in KINDS else None, "time-budget",
+            return _off(strip_role(role), kind if kind in KINDS else None, "time-budget",
                         "machines are off: time budget spent reading the registry (%.1fs); sdlc.yml not read"
                         % elapsed), reg, None
         timeout = None if budget is None else min(YQ_TIMEOUT, budget - elapsed)
@@ -1456,7 +1492,7 @@ def locate(role: str, kind: Optional[str] = None, *, project_dir: Optional[str] 
     except Exception as exc:  # last resort
         cfg = _broken(None, "none", False, "internal error: %s: %s" % (type(exc).__name__, exc))
         fallback_reg = reg if reg is not None else Registry(Path("."), "default", False, {}, [])
-        return (_off(_strip_role(str(role)), None, "sdlc-errors", "machines are off: %s" % cfg.issues[0].message),
+        return (_off(strip_role(str(role)), None, "sdlc-errors", "machines are off: %s" % cfg.issues[0].message),
                 fallback_reg, cfg)
 
 
