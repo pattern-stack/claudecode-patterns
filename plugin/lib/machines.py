@@ -209,9 +209,35 @@ def registry_path(explicit: Optional[str] = None,
 
 # ── YAML backends ────────────────────────────────────────────────────────────
 
+class _BoundedRepr(reprlib.Repr):
+    """reprlib.Repr that also bounds _Map, so a value built from nested aliases prints in constant time."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.maxlevel = 3
+        self.maxdict = 4
+        self.maxlist = 4
+        self.maxstring = 60
+        self.maxother = 60
+
+    def repr__Map(self, x: Any, level: int) -> str:
+        return self.repr_dict(x, level)
+
+
+_BOUNDED = _BoundedRepr()
+
+
+def _r(value: Any) -> str:
+    """A short repr of a user value for messages. Never walks more than a few entries."""
+    return _BOUNDED.repr(value)
+
+
 class _Map(dict):
     """A parsed mapping that remembers keys written more than once (`dups`)."""
     dups = ()
+
+    def __repr__(self) -> str:
+        return _r(self)
 
 
 def _pairs_to_map(pairs: Any) -> "_Map":
@@ -362,27 +388,27 @@ class _Bad(Exception):
 def _check_bool(v: Any) -> bool:
     if isinstance(v, bool):
         return v
-    raise _Bad("must be true or false (yes/no/on/off, 1 and quoted strings are not booleans), got %r" % (v,))
+    raise _Bad("must be true or false (yes/no/on/off, 1 and quoted strings are not booleans), got %s" % (_r(v),))
 
 
 def _check_str(v: Any) -> str:
     if isinstance(v, str):
         return v
-    raise _Bad("must be a string, got %r" % (v,))
+    raise _Bad("must be a string, got %s" % (_r(v),))
 
 
 def _check_path(v: Any) -> str:
     if isinstance(v, str) and v.strip():
         return v
-    raise _Bad("must be a non-empty path string, got %r" % (v,))
+    raise _Bad("must be a non-empty path string, got %s" % (_r(v),))
 
 
 def _check_strlist(v: Any) -> Tuple[str, ...]:
     if not isinstance(v, list):
-        raise _Bad("must be a list of non-empty strings, got %r" % (v,))
+        raise _Bad("must be a list of non-empty strings, got %s" % (_r(v),))
     for item in v:
         if not (isinstance(item, str) and item.strip()):
-            raise _Bad("must be a list of non-empty strings, got item %r" % (item,))
+            raise _Bad("must be a list of non-empty strings, got item %s" % (_r(item),))
     return tuple(v)
 
 
@@ -390,16 +416,16 @@ def _enum(values: Tuple[str, ...]) -> Callable[[Any], str]:
     def check(v: Any) -> str:
         if isinstance(v, str) and v in values:
             return v
-        raise _Bad("must be one of %s, got %r" % (", ".join(values), v))
+        raise _Bad("must be one of %s, got %s" % (", ".join(values), _r(v)))
     return check
 
 
 def _check_gates(v: Any) -> Tuple[str, ...]:
     if not isinstance(v, list):
-        raise _Bad("must be a list of %s, got %r" % (" and/or ".join(FIRST_START_GATES), v))
+        raise _Bad("must be a list of %s, got %s" % (" and/or ".join(FIRST_START_GATES), _r(v)))
     for item in v:
         if not (isinstance(item, str) and item in FIRST_START_GATES):
-            raise _Bad("has unknown first-start gate %r; known: %s" % (item, ", ".join(FIRST_START_GATES)))
+            raise _Bad("has unknown first-start gate %s; known: %s" % (_r(item), ", ".join(FIRST_START_GATES)))
     return tuple(v)
 
 
@@ -462,7 +488,7 @@ def _transport(value: Any, base: str, out: List[Issue], invalid: set) -> Transpo
     if isinstance(value, str) and value == "local":
         return Transport("local")
     if not isinstance(value, dict):
-        _issue(out, "error", base, "transport must be 'local' or a map {herdr: <label>, ssh: <target>}, got %r" % (value,))
+        _issue(out, "error", base, "transport must be 'local' or a map {herdr: <label>, ssh: <target>}, got %s" % (_r(value),))
         invalid.add("transport")
         return Transport("none")
     bad = False
@@ -473,12 +499,12 @@ def _transport(value: Any, base: str, out: List[Issue], invalid: set) -> Transpo
         bad = True
     ssh = value.get("ssh")
     if ssh is not None and not isinstance(ssh, str):
-        _issue(out, "error", base + ".ssh", "transport.ssh must be a string, got %r" % (ssh,))
+        _issue(out, "error", base + ".ssh", "transport.ssh must be a string, got %s" % (_r(ssh),))
         invalid.add("transport.ssh")
         bad = True
     for key in value:
         if key not in ("herdr", "ssh"):
-            _issue(out, "warning", "%s.%s" % (base, key), "unknown transport key %r" % (key,))
+            _issue(out, "warning", "%s.%s" % (base, key), "unknown transport key %s" % (_r(key),))
     if bad:
         return Transport("none")
     return Transport("herdr", herdr=label, ssh=ssh)
@@ -488,13 +514,13 @@ def _limits(value: Any, base: str, out: List[Issue], invalid: set) -> Limits:
     if value is None:
         return Limits()
     if not isinstance(value, dict):
-        _issue(out, "error", base, "limits must be a map of %s, got %r" % (", ".join(LIMIT_KEYS), value))
+        _issue(out, "error", base, "limits must be a map of %s, got %s" % (", ".join(LIMIT_KEYS), _r(value)))
         invalid.add("limits")
         return Limits(0, 0, 0, 0)
     got: Dict[str, Any] = {}
     for key, v in value.items():
         if key not in _LIMIT_RULES:
-            _issue(out, "warning", "%s.%s" % (base, key), "unknown limit %r; known: %s" % (key, ", ".join(LIMIT_KEYS)))
+            _issue(out, "warning", "%s.%s" % (base, key), "unknown limit %s; known: %s" % (_r(key), ", ".join(LIMIT_KEYS)))
             continue
         if v is None:
             continue
@@ -502,7 +528,7 @@ def _limits(value: Any, base: str, out: List[Issue], invalid: set) -> Limits:
         if test(v):
             got[key] = v
         else:
-            _issue(out, "error", "%s.%s" % (base, key), "limits.%s must be %s, got %r" % (key, what, v))
+            _issue(out, "error", "%s.%s" % (base, key), "limits.%s must be %s, got %s" % (key, what, _r(v)))
             invalid.add("limits.%s" % key)
             got[key] = 0
     return Limits(**got)
@@ -535,7 +561,7 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
-        _issue(out, "error", base, "machine entry must be a map of keys, got %r" % (raw,))
+        _issue(out, "error", base, "machine entry must be a map of keys, got %s" % (_r(raw),))
         return Machine(name, Transport("none"), secrets="none", gaming_sensitive=True, assignable=False,
                        persistence="disposable", limits=Limits(0, 0, 0, 0), invalid=frozenset({"entry"}))
 
@@ -580,14 +606,14 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
         if (first is not None and SCHEMA[canon].fail_closed
                 and difflib.SequenceMatcher(None, norm, first).ratio() >= NEAR_MISS_CUTOFF):
             _issue(out, "error", "%s.%s" % (base, text),
-                   "unknown key %r looks like a misspelling of %r; fix it (the restrictive value is used meanwhile)"
-                   % (text, first))
+                   "unknown key %s looks like a misspelling of %s; fix it (the restrictive value is used meanwhile)"
+                   % (_r(text), _r(first)))
             invalid.add(canon)
             if canon == "busy_flag":
                 near_miss_flag = True
         else:
-            hint = "; did you mean %r?" % first if first else ""
-            _issue(out, "warning", "%s.%s" % (base, text), "unknown key %r%s" % (text, hint))
+            hint = "; did you mean %s?" % _r(first) if first else ""
+            _issue(out, "warning", "%s.%s" % (base, text), "unknown key %s%s" % (_r(text), hint))
 
     # Plain keys, through the table.
     values: Dict[str, Any] = {}
@@ -674,9 +700,9 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
         return machines, issues
     for key in doc:
         if key != "machines":
-            _issue(issues, "warning", "registry.%s" % (key,), "unknown top-level key %r" % (key,))
+            _issue(issues, "warning", "registry.%s" % (key,), "unknown top-level key %s" % (_r(key),))
     for key in getattr(doc, "dups", ()):
-        _issue(issues, "error", "registry.%s" % (key,), "top-level key %r is written more than once" % (key,))
+        _issue(issues, "error", "registry.%s" % (key,), "top-level key %s is written more than once" % (_r(key),))
     if "machines" in getattr(doc, "dups", ()):
         _issue(issues, "error", "machines", "the 'machines' key is written more than once; no machines are loaded")
         return machines, issues
@@ -686,19 +712,19 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
         return machines, issues
     repeated = set(getattr(entries, "dups", ()))
     for name in sorted(repeated, key=str):
-        _issue(issues, "error", "machines", "machine name %r is written more than once; it is left out" % (name,))
+        _issue(issues, "error", "machines", "machine name %s is written more than once; it is left out" % (_r(name),))
     pattern = re.compile(NAME_PATTERN)
     for name, raw in entries.items():
         if name in repeated:
             continue
         if not isinstance(name, str) or not pattern.fullmatch(name) or name.isdigit():
             _issue(issues, "error", "machines",
-                   "machine name %r is not allowed: use letters, digits, '-' and '_', starting with a letter or "
-                   "digit, and not digits only (YAML would read it as a number)" % (name,))
+                   "machine name %s is not allowed: use letters, digits, '-' and '_', starting with a letter or "
+                   "digit, and not digits only (YAML would read it as a number)" % (_r(name),))
             continue
         if name in RESERVED_NAMES:
             _issue(issues, "error", "machines",
-                   "machine name %r is reserved (%s)" % (name, ", ".join(sorted(RESERVED_NAMES))))
+                   "machine name %s is reserved (%s)" % (_r(name), ", ".join(sorted(RESERVED_NAMES))))
             continue
         machines[name] = _machine(name, raw, issues)
     locals_ = [m.name for m in machines.values() if m.is_local]
