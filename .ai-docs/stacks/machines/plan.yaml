@@ -7,6 +7,7 @@ plan:
     brief: ~/maplelog/hq/briefs/sdlc/20261025-machines.md
     adr: ~/maplelog/hq/docs/adrs/009-machines.md
 
+  epic: 135
   epic_title: "Machines: registry, placement, remote hint, sdlc delegate"
   epic_body: |
     ## Goal
@@ -70,7 +71,8 @@ plan:
     over ssh (GitHub is the return path). Installing the guard hook on devbox-n2.
 
 issues:
-  - key: machine-registry
+  - key: psc-136
+    key_original: machine-registry
     title: "Machine registry: schema, loader, `sdlc machines` list/check, example file"
     layer: L0
     depends_on: []
@@ -107,10 +109,11 @@ issues:
       - `machines check` on the example file exits 0; on a broken fixture exits 1.
       - CHANGELOG entry with the why; README section "Machines".
 
-  - key: placement-resolver
+  - key: psc-137
+    key_original: placement-resolver
     title: "Placement in sdlc.yml: phase_machines, agent_machines, default_machine, needs + resolver"
     layer: L1
-    depends_on: [machine-registry]
+    depends_on: [psc-136]
     parallel_with: []
     labels: [gate:auto]
     description: |
@@ -142,11 +145,12 @@ issues:
         no registry → local; grouped beats flat.
       - CHANGELOG + README updated.
 
-  - key: phase-tuning-remote-hint
+  - key: psc-138
+    key_original: phase-tuning-remote-hint
     title: "phase-tuning hook: hint to start a remotely-placed phase as a herdr agent"
     layer: L2
-    depends_on: [placement-resolver]
-    parallel_with: [sdlc-delegate]
+    depends_on: [psc-137]
+    parallel_with: [psc-139]
     labels: [gate:auto]
     description: |
       When an `Agent` / `TeamCreate` spawn's role resolves to a machine other
@@ -170,11 +174,12 @@ issues:
         placing validator on the worker box surfaces the hint.
       - CHANGELOG + README updated.
 
-  - key: sdlc-delegate
+  - key: psc-139
+    key_original: sdlc-delegate
     title: "`sdlc delegate <phase|agent>`: place, start in workdir, clear first-start gates"
     layer: L2
-    depends_on: [placement-resolver]
-    parallel_with: [phase-tuning-remote-hint]
+    depends_on: [psc-137]
+    parallel_with: [psc-138]
     labels: [gate:auto]
     description: |
       `sdlc delegate <role> [--issue N] [--machine auto|<name>] [--prompt TEXT|@file]
