@@ -5,6 +5,42 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.42] — 2026-10-25
+
+### Added — sdlc delegate: start a phase or agent on another machine
+
+The registry (0.2.40) and placement (0.2.41) say where work may run, but starting it there was still done by hand,
+including the dialogs a fresh Claude Code shows. `sdlc delegate` picks the machine (trust first, then load), starts the
+agent in that machine's `workdir`, answers the first-start dialogs the registry declares, and briefs it. Results come
+back through GitHub only.
+
+- **Grammar.** `sdlc delegate ROLE [--issue N] [--machine auto|any|local|NAME] [--prompt TEXT|@FILE] [--name NAME]
+  [--kind phase|agent] [--dry-run] [--keep-failed] [--start-timeout SECS]`, also as `just sdlc::delegate`. `auto` (the
+  default) follows the repo's placement; `any`, `local` or a machine name overrides it, which works in a repo that
+  places nothing. The first output line is the answer, e.g. `reviewer-139: worker-2`.
+- **Picking.** Fit first, then the fewest live agents, ties to fit order (local first for `any`). `limits.agents` and
+  `limits.browser_jobs` are caps. A full or unreachable machine is skipped, and load never widens the candidate set.
+  Finished agents keep their slot until you stop them with the printed `stop:` command.
+- **The busy flag.** A heavy role (`full-suite`, `browser` or `docker`) is refused on a machine whose `busy_flag` file
+  exists, an explicit `--machine` included. The flag is read on the box you run `delegate` from; remove the file when
+  the box is free, or name another machine.
+- **Refusals** (exit 1) are decided before any herdr call: an unassignable, unfit or not-`ok` machine, a broken
+  registry or `sdlc.yml`, broken `needs`, a bad `model` or `effort`, or an issue with no resolvable repo.
+- **The agent.** A plain Claude Code session started with `--permission-mode auto`, plus `model` and `effort` from
+  `phases` (grouped wins over `phase_models` and `phase_effort`).
+- **First start.** The loop reads the screen before every key and answers only the dialogs the registry declares
+  (`trust-prompt`, `fullscreen-notice`). It re-checks the screen right before each key and the selection before Enter,
+  never answers an undeclared dialog, and never answers the "Teach auto mode" prompt: answer that once by hand.
+  A new pane must open in the `workdir`, or it is closed before the agent starts.
+- **GitHub is the only return path.** A job that comments or opens a pull request needs `gh` logged in on the worker
+  and prints `sdlc-delegate: gh is not logged in on <machine>` when it isn't; a job that only pushes a branch needs
+  only push access.
+- **`--dry-run`** decides and prints the exact commands and the mission without changing anything.
+- **The record.** Each placement is written to `${XDG_STATE_HOME:-~/.local/state}/sdlc/delegates/<machine>/<name>.json`.
+  Exit 3 means a machine was chosen and the start failed; the output says what was left behind.
+- **`machines.evaluate` and `machines.short_repr`** are new public names, rule 10 of the module's consumer contract.
+- **Tests.** `plugin/lib/delegate.test.sh` runs in CI against a fake `herdr` (`plugin/lib/fake-herdr.py`).
+
 ## [0.2.41] — 2026-10-25
 
 ### Added — placement: where each phase and agent runs

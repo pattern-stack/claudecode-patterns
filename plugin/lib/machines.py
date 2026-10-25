@@ -60,6 +60,10 @@ Consumer contract for placement code (#137 resolve, #139 delegate):
    `Issue`s are withheld then). A consumer that reads `config.needs` outside `resolve()` (#139's
    `--machine`) MUST refuse when `not config.usable`, when `config.needs_broken` is set, or when
    `not needs.ok` for the role.
+10. Consumers outside `resolve()` (#139's `sdlc delegate`) judge an explicit target with
+   `evaluate(target, registry, needs)`, which applies the same fit filters and texts as `resolve()`.
+   They quote user values with `short_repr(value)`. They use these public names, never the private
+   helpers behind them.
 """
 from __future__ import annotations
 
@@ -233,6 +237,11 @@ _BOUNDED = _BoundedRepr()
 def _r(value: Any) -> str:
     """A short repr of a user value for messages. Never walks more than a few entries."""
     return _BOUNDED.repr(value)
+
+
+def short_repr(value: Any) -> str:
+    """Public name for `_r`: the bounded repr placement uses for user values in messages (rule 10)."""
+    return _r(value)
 
 
 class _Map(dict):
@@ -1360,6 +1369,14 @@ def _evaluate(target: str, registry: Registry, needs: Needs, skip: FrozenSet[str
     if why is None:
         return [machine.name], [], ""
     return [], [(machine.name, why)], why
+
+
+def evaluate(target: str, registry: Registry, needs: Needs) -> Tuple[List[str], List[Tuple[str, str]], str]:
+    """Judge an explicit target (`any`, `local` or a machine name) like resolve() does (rule 10).
+
+    Returns (fitting machine names, [(key, why)] refusals, refusal text when none fit).
+    """
+    return _evaluate(target, registry, needs)
 
 
 def resolve(role: str, kind: Optional[str] = None, *,

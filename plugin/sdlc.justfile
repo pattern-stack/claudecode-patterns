@@ -93,6 +93,12 @@ tour-verify tour_file *args:
 machines *args:
     @cd .. && python3 "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/bin/sdlc" machines "$@"
 
+# start a phase or agent on the machine its placement picks; --dry-run shows the decision first.
+[group('machines')]
+[positional-arguments]
+delegate *args:
+    @cd .. && python3 "${CLAUDE_PLUGIN_DIR:-$(dirname "$(realpath .claude/sdlc.justfile)")}/bin/sdlc" delegate "$@"
+
 # ─── Canvas reconciliation ────────────────────────────────────────────
 
 # list canvases vs sdlc.yml.canvases
