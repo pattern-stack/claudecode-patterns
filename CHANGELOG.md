@@ -39,6 +39,9 @@ release only answers "where"; acting on the answer comes later.
   because of an error; 2 for a usage error.
 - **`sdlc machines check`** gains a repo pass: one line per role the file names, and an error for every refusal.
 - **No registry, no change.** `check` prints exactly what it printed in 0.2.40.
+- **Bounded work.** Messages and `where` output are capped at 300 characters, and long lists are cut ("+k more").
+  When yq reads a file it runs with a 1 GiB address-space limit (never above the limit the environment already sets),
+  so an alias-heavy `sdlc.yml` makes yq fail instead of eating the box; a failure to apply the limit is a parse error.
 - **The tests run in CI** under both YAML backends (`plugin/lib/placement.test.sh`).
 
 ## [0.2.40] — 2026-10-25

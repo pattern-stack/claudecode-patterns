@@ -72,6 +72,9 @@ REGS = {
     "REG_LOCKED": registry({"machines": {"workstation": dict(WS, assignable=False), "worker-1": W1, "vault": VAULT,
                                          "control": CONTROL, "broken": BROKEN}}),
     "INERT": M.Registry(Path("/nope/machines.yaml"), "default", False, {}, []),
+    "MANY": registry({"machines": dict([("here", {"transport": "local"})]
+                                     + [("m%d" % i, {"assignable": False}) for i in range(30)]
+                                     + [("n" * 200, {"assignable": False})])}),
     "TWO_LOCAL": registry({"machines": {"a": {"transport": "local"}, "b": {"transport": "local"}}}),
 }
 
@@ -257,6 +260,19 @@ row("O2 machine repeated under phases.<role>, the last one null: opted in, an er
 row("O3 a repeated role in agent_machines followed by a bare one: opted in",
     {"agent_machines": repeated(("browser-pilot", "worker-1"), ("browser-pilot", None))}, "browser-pilot",
     status="fallback", fn=lambda p, c, r: c.opted_in)
+row("O5 default_machine: worker-1 then a bare default_machine: opted in by the repeat, an error",
+    repeated(("default_machine", "worker-1"), ("default_machine", None)), "validator",
+    status="off", cause="sdlc-errors",
+    fn=lambda p, c, r: c.opted_in and c.broken and any(i.where == "sdlc.yml.default_machine" for i in errors_of(c)))
+row("O6 phases.validator repeated, machine only in the first copy: opted in by the earlier copy",
+    {"phases": repeated(("validator", {"machine": "worker-1"}), ("validator", {"model": "opus"}))}, "validator",
+    status="fallback", machine="workstation",
+    fn=lambda p, c, r: c.opted_in and any(i.where == "sdlc.yml.phases.validator" for i in errors_of(c)))
+row("C1 Placement.reason is capped at 300 characters, and so is every rejected explanation",
+    {"phase_machines": {"validator": "any"}, "needs": {"validator": ["gpu"]}}, "validator", reg="MANY",
+    status="unplaceable",
+    fn=lambda p, c, r: len(p.reason) <= 300 and p.reason.endswith("...") and all(len(w) <= 300 for _k, w in p.rejected)
+    and len(p.rejected) >= 30)
 row("O4 a repeated top-level default_machine: opted in, broken",
     repeated(("default_machine", "local"), ("default_machine", "worker-1")), "validator",
     status="off", cause="sdlc-errors",
@@ -803,6 +819,40 @@ else
   [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ] || echo "skip: B14d needs yq"
 fi
 
+echo "B14h  a lower hard address-space limit still parses (yq only)"
+if [ "$HAVE_YQ" = 1 ]; then
+  # 900 MB is above yq's start-up floor and below YQ_MEMORY_LIMIT (1 GiB). The child must use the hard limit, not
+  # try to raise it (which would fail the parse).
+  OUT=$( ulimit -v 921600 && PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" "$PY" -c '
+import sys, machines
+from pathlib import Path
+doc = machines.parse_yaml(Path(sys.argv[1]))
+print("machines" in doc)' "$EXAMPLE" 2>&1 ); RC=$?
+  t "B14h yq parses the example registry under a 900 MB limit (soft and hard)" bash -c '[ "$1" = 0 ] && [ "$2" = True ]' _ "$RC" "$OUT"
+  # As root the kernel lets a child raise its hard limit, so the parse above cannot tell. This row can: it runs the
+  # child's setup in-process with setrlimit recorded, and checks the hard limit it asks for is the one in force.
+  OUT=$( ulimit -v 921600 && PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" "$PY" -c '
+import resource, subprocess, sys
+from pathlib import Path
+import machines
+calls = []
+resource.setrlimit = lambda which, lim: calls.append(lim)
+def fake_run(*a, **kw):
+    kw["preexec_fn"]()
+    raise subprocess.TimeoutExpired(a, 1)
+subprocess.run = fake_run
+try:
+    machines.parse_yaml(Path(sys.argv[1]))
+except machines.RegistryError:
+    pass
+soft, hard = calls[0]
+current = resource.getrlimit(resource.RLIMIT_AS)[1]
+sys.exit(0 if (hard == current and soft <= hard) else 1)' "$EXAMPLE" 2>&1 ); RC=$?
+  t "B14h the child never asks for a higher hard limit than the one in force" rc_is 0
+else
+  [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ] || echo "skip: B14h needs yq"
+fi
+
 echo "B14e  YAML merge keys are not repeats"
 M_FILE="$(cfgfile merge <<'EOF'
 base: &base
@@ -1011,12 +1061,30 @@ phases:
   validator: {model: opus}
 EOF
 )"
+R_H1="$(cfgfile r-h1 <<'EOF'
+default_machine: worker-1
+default_machine:
+EOF
+)"
+R_H2="$(cfgfile r-h2 <<'EOF'
+phases: {validator: {machine: worker-1}, validator: {model: opus}}
+EOF
+)"
 for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  run $be machines check --registry "$EXAMPLE" --config "$R_H1"
+  t "[$be] B16h default_machine then a bare default_machine: exits 1, error at the key" has "error    sdlc.yml.default_machine:"
+  run $be machines check --registry "$EXAMPLE" --config "$R_H2"
+  t "[$be] B16h phases.validator repeated, machine in the first copy: error at sdlc.yml.phases.validator" has "error    sdlc.yml.phases.validator:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$R_H2"
+  t "[$be] B16h ... where falls back, rc 1" first_is "validator: workstation (local), fallback"
   run $be machines check --registry "$EXAMPLE" --config "$R_F1"
-  t "[$be] B16e a repeated default_machine: rc 1, error at sdlc.yml.default_machine" has "error    sdlc.yml.default_machine:"
+  t "[$be] B16e a repeated default_machine: check exits 1" rc_is 1
+  t "[$be] B16e a repeated default_machine: error at sdlc.yml.default_machine" has "error    sdlc.yml.default_machine:"
   t "[$be] B16e a repeated default_machine: check fails" has "check: failed"
   run $be machines where validator --registry "$EXAMPLE" --config "$R_F1"
-  t "[$be] B16e a repeated default_machine: where exits 1, sdlc.yml has errors" has "sdlc.yml has errors"
+  t "[$be] B16e a repeated default_machine: where exits 1" rc_is 1
+  t "[$be] B16e a repeated default_machine: where, sdlc.yml has errors" has "sdlc.yml has errors"
+  t "[$be] B16e where cites the error that check shows" has "default_machine is written more than once"
   run $be machines check --registry "$EXAMPLE" --config "$R_G1"
   t "[$be] B16f a repeated role then a bare one: opted in, error at the role" has "error    sdlc.yml.phase_machines.validator:"
   run $be machines where validator --registry "$EXAMPLE" --config "$R_G1"
