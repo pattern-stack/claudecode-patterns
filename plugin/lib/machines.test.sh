@@ -49,6 +49,10 @@ esac
 EOF
 chmod +x "$TMP/fakebin/herdr"
 
+if [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ]; then
+  [ "$HAVE_PYYAML" = 1 ] && ok "required backend present: PyYAML" || bad "required backend missing: PyYAML"
+  [ "$HAVE_YQ" = 1 ] && ok "required backend present: yq" || bad "required backend missing: yq"
+fi
 BACKENDS=()
 [ "$HAVE_PYYAML" = 1 ] && BACKENDS+=(py)
 [ "$HAVE_YQ" = 1 ] && BACKENDS+=(yq)
@@ -84,21 +88,20 @@ fixture() { cat > "$FX/$1.yaml"; echo "$FX/$1.yaml"; }
 # box_fixture NAME 'yaml line(s) for box'  : valid local `here` + `box` with a herdr transport and workdir
 box_fixture() {
   local name=$1; shift
+  local own_transport=0 a
+  for a in "$@"; do case "$a" in transport:*) own_transport=1 ;; esac; done
   {
     echo "machines:"
     echo "  here: {transport: local}"
     echo "  box:"
-    case "$*" in
-      transport:*|*$'\n'transport:*) ;;
-      *) echo "    transport: {herdr: box}" ;;
-    esac
+    [ "$own_transport" = 1 ] || echo "    transport: {herdr: box}"
     echo "    workdir: /w"
     printf '    %s\n' "$@"
   } > "$FX/$name.yaml"
 }
 
 if [ "$HAVE_PYYAML" = 0 ] && [ "$HAVE_YQ" = 0 ]; then
-  echo "skip: neither PyYAML nor yq is available; running only the cases that need no YAML backend (7, 8, 19, 20, 25)"
+  echo "skip: neither PyYAML nor yq is available; running only the cases that need no YAML backend (7, 8, 19, 20, 21, 23, 25, 26)"
 fi
 
 # ── 1  valid example [both] ─────────────────────────────────────────────────
@@ -150,7 +153,8 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
     box_fixture "c2_$n" "$line"
     run $be machines check --registry "$FX/c2_$n.yaml"
     t "[$be] $line: one error at $where, no warning" bash -c '[ "$1" = 1 ] && case "$2" in *"check: failed (errors=1, warnings=0)"*) ;; *) exit 1;; esac; echo "$2" | grep -q "^error .*$3"' _ "$RC" "$OUT" "$where"
-    t "[$be] $line: restrictive value, box not ok, here ok, usable" pyl $be "$FX/c2_$n.yaml" "not b.ok and ($expr) and h.ok and r.usable"
+    ik="${where#machines.box.}"
+    t "[$be] $line: restrictive value, key in invalid, here ok, usable" pyl $be "$FX/c2_$n.yaml" "not b.ok and ($expr) and h.ok and r.usable and any(k == '$ik' or k.startswith('$ik.') or '$ik'.startswith(k + '.') for k in b.invalid)"
   done
 done
 
@@ -164,7 +168,10 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   t "[$be] assignable: no -> loads False" pyl $be "$FX/c3a.yaml" 'b.assignable is False and not b.ok'
   run $be machines list --registry "$FX/c3a.yaml"
   t "[$be] assignable: no -> list shows box! and no!" bash -c 'echo "$1" | grep -qE "^box! .* no! "' _ "$OUT"
-  t "[$be] assignable: no -> list prints the ! legend" has "! = invalid value"
+  OUT=$(sdlc_run $be machines list --registry "$FX/c3a.yaml" 2>&1 >/dev/null)
+  t "[$be] assignable: no -> the ! legend goes to stderr" has "! = invalid value"
+  OUT=$(sdlc_run $be machines list --registry "$FX/c3a.yaml" 2>/dev/null)
+  t "[$be] assignable: no -> and not to stdout" bash -c '! echo "$1" | grep -q "invalid value"' _ "$OUT"
   run $be machines check --registry "$FX/c3b.yaml"; t "[$be] backup: yes -> exit 1" rc_is 1
   t "[$be] backup: yes -> loads False" pyl $be "$FX/c3b.yaml" 'b.backup is False and not b.ok'
   run $be machines check --registry "$FX/c3c.yaml"; t "[$be] gaming_sensitive: off -> exit 1" rc_is 1
@@ -449,6 +456,166 @@ YML
   t "24b it checked the broken file" has "Registry: $F24"
   run $B1 machines --registry "$F24" check --registry "$EXAMPLE"
   t "a --registry on the leaf wins" bash -c '[ "$1" = 0 ]' _ "$RC"
+fi
+
+# ── 26  the importer contract: load() never raises, never prints; usable needs a good local ──
+echo "26  load() contract"
+LONG="$(printf 'a%.0s' $(seq 1 5000))"
+t "overlong path: load() returns an error Issue, prints nothing" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, io, machines
+out, err = io.StringIO(), io.StringIO()
+sys.stdout, sys.stderr = out, err
+r = machines.load('$LONG')
+sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
+sys.exit(0 if (not r.usable and r.errors and r.errors[0].where == 'registry' and not out.getvalue() and not err.getvalue()) else 1)"
+t "unsearchable directory (PermissionError from exists): error Issue, no raise" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, pathlib, machines
+def boom(self): raise PermissionError(13, 'Permission denied')
+pathlib.Path.exists = boom
+r = machines.load()
+sys.exit(0 if (not r.usable and r.errors and 'Permission denied' in r.errors[0].message) else 1)"
+t "catch-all: a bug inside validate becomes an error Issue" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, machines
+def boom(doc): raise RuntimeError('boom')
+machines.validate = boom
+r = machines.load('$EXAMPLE')
+sys.exit(0 if (not r.usable and r.errors and 'RuntimeError' in r.errors[0].message) else 1)"
+t "empty explicit path is an error, not the default" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, machines
+r = machines.load('')
+sys.exit(0 if (r.errors and not r.inert) else 1)"
+run py machines check --registry ""
+t "--registry '' is refused (never a fallback to the default)" bash -c '[ "$1" != 0 ]' _ "$RC"
+for tm in nan inf 0 -1 abc; do
+  run py machines check --registry "$EXAMPLE" --probe --timeout "$tm"
+  t "--timeout $tm: usage error (exit 2)" rc_is 2
+done
+if [ ${#BACKENDS[@]} -gt 0 ]; then
+  HUGE="$(printf '9%.0s' $(seq 1 400))"
+  box_fixture c26h "limits: {mem_gb: $HUGE}"
+  for be in "${BACKENDS[@]}"; do
+    t "[$be] a 400-digit limit: load() returns, not usable-breaking" env PYTHONPATH="$LIB" PATH="$([ $be = yq ] && echo $TMP/pyyq || echo $PATH)" "$PY" -c "
+import sys, machines
+r = machines.load('$FX/c26h.yaml')
+sys.exit(0 if (r.errors and not r.machines['box'].ok) else 1)"
+    run $be machines check --registry "$FX/c26h.yaml"
+    t "[$be] a 400-digit limit: check exits 1 without a traceback" bash -c '[ "$1" = 1 ] && ! echo "$2" | grep -q Traceback' _ "$RC" "$OUT"
+    OUT=$(env PYTHONPATH="$LIB" PATH="$([ $be = yq ] && echo $TMP/pyyq || echo $PATH)" "$PY" -c "
+import machines
+for f in ['$EXAMPLE', '$FX/c26h.yaml', '$FX/c17.yaml', '$TMP/nope.yaml']:
+    machines.load(f)" 2>&1)
+    t "[$be] load() writes nothing to stdout or stderr" bash -c '[ -z "$1" ]' _ "$OUT"
+  done
+
+  echo "27  a broken local machine makes the registry unusable"
+  F27a="$(fixture c27a <<'YML'
+machines:
+  here: {transport: local, secrets: staging}
+  box: {transport: {herdr: box}, workdir: /w}
+YML
+)"
+  F27b="$(fixture c27b <<'YML'
+machines:
+  here: {transport: local, asignable: false}
+  box: {transport: {herdr: box}, workdir: /w}
+YML
+)"
+  for be in "${BACKENDS[@]}"; do
+    for f in "$F27a" "$F27b"; do
+      run $be machines check --registry "$f"
+      t "[$be] $(basename $f): check exits 1" rc_is 1
+      t "[$be] $(basename $f): local is here, not ok, registry not usable" pyl $be "$f" 'r.local is not None and r.local.name == "here" and not r.local.ok and not r.usable and b.ok'
+    done
+  done
+
+  echo "28  near-miss: case and separators"
+  for k in 'ASSIGNABLE: false' 'Assignable: false' 'assign-able: false' 'BusyFlag: /x' 'GAMING_SENSITIVE: true' 'Busy-Flag: /x'; do
+    box_fixture c28 "$k"
+    for be in "${BACKENDS[@]}"; do
+      run $be machines check --registry "$FX/c28.yaml"
+      t "[$be] $k: error, exit 1" rc_is 1
+    done
+    case "$k" in
+      *ssignable*|*ASSIGNABLE*|*assign-able*) t "$k: loads not assignable" pyl $B1 "$FX/c28.yaml" 'b.assignable is False and not b.ok' ;;
+      *) t "$k: gaming_sensitive loads True" pyl $B1 "$FX/c28.yaml" 'b.gaming_sensitive is True and not b.ok' ;;
+    esac
+  done
+
+  echo "29  blank trust keys and duplicate keys"
+  for k in 'assignable:' 'gaming_sensitive:' 'busy_flag:' 'gaming_flag:' 'secrets:'; do
+    box_fixture c29 "$k"
+    for be in "${BACKENDS[@]}"; do
+      run $be machines check --registry "$FX/c29.yaml"
+      t "[$be] blank $k : error, exit 1" rc_is 1
+    done
+  done
+  box_fixture c29a 'assignable:'
+  t "blank assignable loads False" pyl $B1 "$FX/c29a.yaml" 'b.assignable is False and not b.ok'
+  box_fixture c29b 'secrets:'
+  t "blank secrets loads none, not ok" pyl $B1 "$FX/c29b.yaml" 'b.secrets == "none" and not b.ok'
+  box_fixture c29c 'busy_flag:'
+  t "blank busy_flag loads gaming_sensitive True, not ok" pyl $B1 "$FX/c29c.yaml" 'b.busy_flag is None and b.gaming_sensitive is True and not b.ok'
+  box_fixture c29d 'role:'
+  run $B1 machines check --registry "$FX/c29d.yaml"; t "blank role (not a trust key) is just unset" has "check: ok (errors=0, warnings=0)"
+  F29e="$(fixture c29e <<'YML'
+machines:
+  here: {transport: local}
+  box:
+    transport: {herdr: box}
+    workdir: /w
+    assignable: false
+    assignable: true
+YML
+)"
+  F29f="$(fixture c29f <<'YML'
+machines:
+  here: {transport: local}
+  box:
+    transport: {herdr: box}
+    workdir: /w
+    role: a
+    role: b
+    limits: {cores: 2, cores: 3}
+YML
+)"
+  F29g="$(fixture c29g <<'YML'
+machines:
+  here: {transport: local}
+  box: {transport: {herdr: box}, workdir: /w}
+  box: {transport: {herdr: box}, workdir: /w}
+YML
+)"
+  for be in "${BACKENDS[@]}"; do
+    run $be machines check --registry "$F29e"; t "[$be] duplicate assignable: exit 1" rc_is 1
+    t "[$be] duplicate assignable: loads False, not ok" pyl $be "$F29e" 'b.assignable is False and not b.ok'
+    run $be machines check --registry "$F29f"; t "[$be] duplicate role and limits.cores: exit 1" rc_is 1
+    t "[$be] duplicate role/limits: not ok, limits fail closed" pyl $be "$F29f" 'not b.ok and b.limits.cores == 0'
+    run $be machines check --registry "$F29g"; t "[$be] duplicate machine name: exit 1, left out" bash -c '[ "$1" = 1 ]' _ "$RC"
+    t "[$be] duplicate machine name: box not in registry" pyl $be "$F29g" '"box" not in r.machines'
+  done
+
+  echo "30  backend agreement on numbers, names and dates"
+  box_fixture c30 'limits: {cores: 010, mem_gb: 1e3, agents: 4.0}' 'role: 2026-01-01'
+  for be in "${BACKENDS[@]}"; do
+    run $be machines check --registry "$FX/c30.yaml"; t "[$be] 010 / 1e3 / 4.0 / a date: exit 0" has "check: ok (errors=0, warnings=0)"
+    t "[$be] 010 is 10, 1e3 is 1000, 4.0 is 4, the date stays a string" pyl $be "$FX/c30.yaml" 'b.limits.cores == 10 and b.limits.mem_gb == 1000 and b.limits.agents == 4 and b.role == "2026-01-01"'
+  done
+  F30b="$(fixture c30b <<'YML'
+machines:
+  here: {transport: local}
+  123: {transport: {herdr: x}, workdir: /w}
+YML
+)"
+  F30c="$(printf 'machines:\n  here: {transport: local}\n  "box\\n": {transport: {herdr: x}, workdir: /w}\n' > "$FX/c30c.yaml"; echo "$FX/c30c.yaml")"
+  for be in "${BACKENDS[@]}"; do
+    run $be machines check --registry "$F30b"; t "[$be] digit-only name 123: exit 1, left out" bash -c '[ "$1" = 1 ]' _ "$RC"
+    t "[$be] digit-only name left out" pyl $be "$F30b" 'list(r.machines) == ["here"]'
+    run $be machines check --registry "$F30c"; t "[$be] name with a trailing newline: exit 1, left out" bash -c '[ "$1" = 1 ]' _ "$RC"
+    t "[$be] name with a trailing newline left out" pyl $be "$F30c" 'list(r.machines) == ["here"]'
+  done
+  box_fixture c30d 'workdir: ""'
+  sed -i '0,/    workdir: \/w/{//d}' "$FX/c30d.yaml"
+  run $B1 machines check --registry "$FX/c30d.yaml"; t "workdir: '' is an error" has "machines.box.workdir"
 fi
 
 echo "25  executable"

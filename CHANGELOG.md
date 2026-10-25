@@ -25,7 +25,7 @@ checks machines; placing work on them comes later. With no file, nothing changes
   booleans, so `yes`, `no`, `on` and `off` are errors rather than a value that depends on the box.
 - **A bad value loads as its restrictive value.** A mistyped `assignable` loads as `false` and a mistyped
   `gaming_sensitive` as `true`, so one typo can't open a box to work. That machine is marked not `ok`, and `list`
-  shows the cell with a `!`. A close misspelling of `assignable`, `gaming_sensitive` or `busy_flag` is an error too.
+  shows the cell with a `!`. A close misspelling of `assignable`, `gaming_sensitive` or `busy_flag` (case and `-` ignored), a blank trust key, and a repeated key are errors too.
 - **The tests run in CI** (`plugin/lib/machines.test.sh`), because the placement work builds on these modules.
 
 ## [0.2.39] — 2026-10-23

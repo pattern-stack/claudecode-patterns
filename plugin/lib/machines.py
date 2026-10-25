@@ -7,6 +7,13 @@ ${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml, or $SDLC_MACHINES, or `--regis
 Rules for importers (the `sdlc` CLI now, the phase-tuning hook in #138): this module prints
 nothing, never calls sys.exit, does no I/O at import time, imports `yaml` lazily, and `load()`
 never raises on bad input. Every problem becomes an `Issue`. Python >= 3.8, stdlib only.
+Set `sys.dont_write_bytecode = True` before importing it, or a __pycache__ lands in the plugin
+install directory (bin/sdlc does; the #138 hook must too).
+
+YAML backends: PyYAML (a private strict loader) or yq, with the same booleans, plain decimal
+integers, whole floats read as ints, and dates left as strings. Duplicate keys are reported under
+both. Known gap: hex (0x10) and 1_000 are numbers to yq but strings to PyYAML, so write plain
+decimals.
 
 Consumer contract for placement code (#137 resolve, #139 delegate):
 
@@ -47,7 +54,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional, Tupl
 REGISTRY_ENV = "SDLC_MACHINES"
 DEFAULT_RELPATH = "sdlc/machines.yaml"                  # under ${XDG_CONFIG_HOME:-~/.config}
 RESERVED_NAMES = frozenset({"any", "auto", "local"})     # placement keywords (#137, #139) + transport word
-NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"            # no dots: keeps `where` paths unambiguous
+NAME_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_-]*"              # fullmatch; no dots: keeps `where` paths unambiguous
 SECRET_LEVELS = ("none", "dev", "prod")                  # ordered; #137 compares by index
 FIRST_START_GATES = ("trust-prompt", "fullscreen-notice")
 PERSISTENCE = ("durable", "disposable")
@@ -167,7 +174,7 @@ def registry_path(explicit: Optional[str] = None,
             text = home + text[1:]
         return Path(text)
 
-    if explicit:
+    if explicit is not None:
         return expand(explicit), "flag"
     if env.get(REGISTRY_ENV):
         return expand(env[REGISTRY_ENV]), "env"
@@ -177,24 +184,98 @@ def registry_path(explicit: Optional[str] = None,
 
 # ── YAML backends ────────────────────────────────────────────────────────────
 
+class _Map(dict):
+    """A parsed mapping that remembers keys written more than once (`dups`)."""
+    dups = ()
+
+
+def _pairs_to_map(pairs: Any) -> "_Map":
+    out = _Map()
+    seen = set()
+    dups = []
+    for key, value in pairs:
+        if key in seen and key not in dups:
+            dups.append(key)
+        seen.add(key)
+        out[key] = value
+    if dups:
+        out.dups = tuple(dups)
+    return out
+
+
+def _normalise_numbers(doc: Any, seen: Optional[set] = None) -> Any:
+    """Make both backends agree on numbers: a whole float (4.0, 1e3) becomes an int."""
+    if seen is None:
+        seen = set()
+    if isinstance(doc, float):
+        return int(doc) if math.isfinite(doc) and doc == int(doc) else doc
+    if isinstance(doc, (dict, list)):
+        if id(doc) in seen:
+            return doc
+        seen.add(id(doc))
+        if isinstance(doc, dict):
+            for k in list(doc):
+                doc[k] = _normalise_numbers(doc[k], seen)
+        else:
+            for i, v in enumerate(doc):
+                doc[i] = _normalise_numbers(v, seen)
+    return doc
+
+
 _BOOL_TAG = "tag:yaml.org,2002:bool"
+_INT_TAG = "tag:yaml.org,2002:int"
+_FLOAT_TAG = "tag:yaml.org,2002:float"
+_TS_TAG = "tag:yaml.org,2002:timestamp"
+_MAP_TAG = "tag:yaml.org,2002:map"
+_MERGE_TAG = "tag:yaml.org,2002:merge"
 
 
-def _strict_bool_loader(yaml: Any) -> Any:
-    """A SafeLoader whose only booleans are true/True/TRUE/false/False/FALSE (YAML 1.2 core).
+def _strict_loader(yaml: Any) -> Any:
+    """A SafeLoader that reads the YAML subset the registry uses the way yq does.
 
-    Stock PyYAML reads yes/no/on/off as booleans (and the key `on:` as True); yq does not. This
-    makes both backends agree. SafeLoader itself is not mutated.
+    - Booleans are only true/True/TRUE/false/False/FALSE (YAML 1.2 core). Stock PyYAML reads
+      yes/no/on/off as booleans, and the key `on:` as True; yq does not.
+    - Integers are plain decimal (010 is 10, not octal 8). Floats follow the 1.2 core pattern
+      (1e3 is a number). Timestamps are not resolved (a date stays a string).
+    - Scalar mapping keys are kept as their text, as in yq's JSON (a key `123:` is "123").
+    - A mapping that repeats a key is returned as a _Map whose `dups` names the repeats.
+    SafeLoader itself is not mutated.
     """
+    drop = (_BOOL_TAG, _INT_TAG, _FLOAT_TAG, _TS_TAG)
+
     class StrictLoader(yaml.SafeLoader):
-        pass
+        def construct_mapping(self, node, deep=False):  # type: ignore
+            if not all(isinstance(k, yaml.ScalarNode) for k, _ in node.value):
+                return super().construct_mapping(node, deep=deep)
+            written = [k.value for k, _ in node.value if k.tag != _MERGE_TAG]
+            self.flatten_mapping(node)
+            pairs = [(k.value, self.construct_object(v, deep=deep)) for k, v in node.value]
+            out = _pairs_to_map(pairs)
+            repeated = tuple(dict.fromkeys(k for k in written if written.count(k) > 1))
+            out.dups = repeated
+            return out
+
+        def construct_yaml_map(self, node):  # type: ignore
+            data = _Map()
+            yield data
+            value = self.construct_mapping(node)
+            data.update(value)
+            data.dups = value.dups
 
     StrictLoader.yaml_implicit_resolvers = {
-        ch: [(tag, rx) for (tag, rx) in resolvers if tag != _BOOL_TAG]
+        ch: [(tag, rx) for (tag, rx) in resolvers if tag not in drop]
         for ch, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
     }
     StrictLoader.add_implicit_resolver(
         _BOOL_TAG, re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"), list("tTfF"))
+    StrictLoader.add_implicit_resolver(_INT_TAG, re.compile(r"^[-+]?[0-9]+$"), list("-+0123456789"))
+    StrictLoader.add_implicit_resolver(
+        _FLOAT_TAG,
+        re.compile(r"^(?:[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?"
+                   r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$"),
+        list("-+0123456789."))
+    StrictLoader.add_constructor(_INT_TAG, lambda loader, node: int(loader.construct_scalar(node)))
+    StrictLoader.add_constructor(_MAP_TAG, StrictLoader.construct_yaml_map)
     return StrictLoader
 
 
@@ -206,7 +287,12 @@ def _first_line(text: str) -> str:
 
 
 def parse_yaml(path: Path) -> object:
-    """Parse `path` with PyYAML (true/false-only booleans), else yq, else raise RegistryError."""
+    """Parse `path` with PyYAML (strict loader), else yq, else raise RegistryError.
+
+    Duplicate keys: PyYAML reports them (mapping._Map.dups). yq 4 keeps every repeated key in its
+    JSON output, so they are reported there too (checked with yq 4.44.3). A future yq that drops
+    repeats would leave that check silent; the test suite notices.
+    """
     try:
         import yaml  # type: ignore
     except ImportError:
@@ -214,18 +300,18 @@ def parse_yaml(path: Path) -> object:
     if yaml is not None:
         try:
             with open(str(path), "r", encoding="utf-8") as fh:
-                return yaml.load(fh, Loader=_strict_bool_loader(yaml))
+                return _normalise_numbers(yaml.load(fh, Loader=_strict_loader(yaml)))
         except OSError as exc:
             raise RegistryError("could not read %s: %s" % (path, exc.strerror or exc))
         except UnicodeDecodeError as exc:
             raise RegistryError("could not read %s: %s" % (path, exc))
-        except Exception as exc:  # YAMLError, or a constructor ValueError (e.g. an impossible date)
+        except Exception as exc:  # YAMLError, or a constructor ValueError (e.g. an absurdly long integer)
             raise RegistryError("could not parse %s: %s" % (path, _first_line(str(exc)) or type(exc).__name__))
     if shutil.which("yq") is None:
         raise RegistryError(
             "reading %s needs PyYAML (pip install pyyaml) or yq (mikefarah v4) on PATH" % path)
     try:
-        proc = subprocess.run(["yq", "-o=json", ".", str(path)],
+        proc = subprocess.run(["yq", "-o=json", ".", str(path)], stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=YQ_TIMEOUT)
     except subprocess.TimeoutExpired:
         raise RegistryError("yq timed out after %gs reading %s" % (YQ_TIMEOUT, path))
@@ -234,8 +320,8 @@ def parse_yaml(path: Path) -> object:
     if proc.returncode != 0:
         raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
     try:
-        return json.loads(proc.stdout)
-    except ValueError:
+        return _normalise_numbers(json.loads(proc.stdout, object_pairs_hook=_pairs_to_map))
+    except (ValueError, RecursionError):
         raise RegistryError("could not parse %s: yq printed output that is not JSON" % path)
 
 
@@ -300,7 +386,7 @@ class FieldSpec:
 # The schema is one table: #137 reads it, and unknown-key detection and did-you-mean come from it.
 SCHEMA: Dict[str, FieldSpec] = {
     "transport": FieldSpec(None, None, None),
-    "workdir": FieldSpec(None, None, _check_str),
+    "workdir": FieldSpec(None, None, _check_path),
     "limits": FieldSpec(None, None, None),
     "caps": FieldSpec((), (), _check_strlist),
     "keeps": FieldSpec((), (), _check_strlist),
@@ -321,7 +407,12 @@ def _is_int(v: Any) -> bool:
 
 
 def _is_num(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    try:
+        return math.isfinite(v)
+    except OverflowError:  # an integer too large for a float
+        return False
 
 
 _LIMIT_RULES = {
@@ -333,6 +424,8 @@ _LIMIT_RULES = {
 
 
 def _issue(out: List[Issue], level: str, where: str, message: str) -> None:
+    if len(message) > 300:  # a pasted value must not become a wall of text
+        message = message[:297] + "..."
     out.append(Issue(level, where, message))
 
 
@@ -387,6 +480,27 @@ def _limits(value: Any, base: str, out: List[Issue], invalid: set) -> Limits:
     return Limits(**got)
 
 
+# Keys whose absence means a safe default but whose blank value must not: a blank value is an
+# error and takes the restrictive fallback (`assignable:` with nothing after it is not "true").
+TRUST_KEYS = ("assignable", "gaming_sensitive", "busy_flag", "secrets")
+
+
+def _norm_key(text: str) -> str:
+    return text.lower().replace("-", "_")
+
+
+def _has_dups(value: Any, seen: Optional[set] = None) -> bool:
+    if seen is None:
+        seen = set()
+    if id(value) in seen:
+        return False
+    seen.add(id(value))
+    if isinstance(value, _Map) and value.dups:
+        return True
+    items = value.values() if isinstance(value, dict) else value if isinstance(value, list) else ()
+    return any(_has_dups(v, seen) for v in items)
+
+
 def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
     base = "machines.%s" % name
     invalid: set = set()
@@ -397,40 +511,53 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
         return Machine(name, Transport("none"), secrets="none", gaming_sensitive=True, assignable=False,
                        persistence="disposable", limits=Limits(0, 0, 0, 0), invalid=frozenset({"entry"}))
 
-    # Collect the keys as written, folding aliases. A null value means "unset".
+    # Collect the keys as written, folding aliases. A null value means "unset", except for TRUST_KEYS.
     present: Dict[str, Any] = {}
-    unknown: List[Any] = []
+    written: Dict[str, str] = {}       # canonical key -> the spelling in the file (for messages)
+    unknown: List[str] = []
     flag_keys: List[str] = []
+    forced: Dict[str, str] = {}        # canonical key -> why it is rejected without looking at its value
     for key, value in raw.items():
-        canon = ALIASES.get(key, key) if isinstance(key, str) else key
-        if isinstance(key, str) and canon in SCHEMA:
-            if canon == "busy_flag" and value is not None:
+        canon = ALIASES.get(key, key)
+        if canon in SCHEMA:
+            written[canon] = key
+            if canon == "busy_flag":
                 flag_keys.append(key)
-            if value is not None:
+            if value is None:
+                if canon in TRUST_KEYS:
+                    forced[canon] = "must not be blank"
+                    present[canon] = None
+            else:
                 present[canon] = value
         else:
-            unknown.append(key)
+            unknown.append(str(key))
+    for key in getattr(raw, "dups", ()):
+        canon = ALIASES.get(key, key)
+        forced[canon] = "is written more than once"
+        if canon in SCHEMA:
+            written.setdefault(canon, key)
+        else:
+            unknown_dup = key
+            _issue(out, "error", "%s.%s" % (base, key), "%s is written more than once" % key)
+            invalid.add(unknown_dup)
+    for canon in SCHEMA:
+        if canon in present and canon not in forced and _has_dups(present[canon]):
+            forced[canon] = "contains a key written more than once"
 
-    force_not_assignable = False
-    force_gaming = False
     near_miss_flag = False
-    for key in unknown:
-        text = str(key)
-        matches = difflib.get_close_matches(text, KNOWN_KEYS, n=3)
+    for text in unknown:
+        norm = _norm_key(text)
+        matches = difflib.get_close_matches(norm, KNOWN_KEYS, n=3)
         first = matches[0] if matches else None
         canon = ALIASES.get(first, first) if first else None
         if (first is not None and SCHEMA[canon].fail_closed
-                and difflib.SequenceMatcher(None, text, first).ratio() >= NEAR_MISS_CUTOFF):
+                and difflib.SequenceMatcher(None, norm, first).ratio() >= NEAR_MISS_CUTOFF):
             _issue(out, "error", "%s.%s" % (base, text),
                    "unknown key %r looks like a misspelling of %r; fix it (the restrictive value is used meanwhile)"
                    % (text, first))
             invalid.add(canon)
-            if canon == "assignable":
-                force_not_assignable = True
-            else:
-                force_gaming = True
-                if canon == "busy_flag":
-                    near_miss_flag = True
+            if canon == "busy_flag":
+                near_miss_flag = True
         else:
             hint = "; did you mean %r?" % first if first else ""
             _issue(out, "warning", "%s.%s" % (base, text), "unknown key %r%s" % (text, hint))
@@ -440,22 +567,31 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
     for key, spec in SCHEMA.items():
         if spec.check is None:
             continue
-        if key not in present:
-            values[key] = spec.default
-            continue
-        try:
-            values[key] = spec.check(present[key])
-        except _Bad as exc:
-            _issue(out, "error", "%s.%s" % (base, key), "%s %s" % (key, exc))
+        label = written.get(key, key)
+        if key in forced:
+            _issue(out, "error", "%s.%s" % (base, label), "%s %s" % (label, forced[key]))
             invalid.add(key)
             values[key] = spec.fallback
+        elif key not in present:
+            values[key] = spec.default
+        else:
+            try:
+                values[key] = spec.check(present[key])
+            except _Bad as exc:
+                _issue(out, "error", "%s.%s" % (base, label), "%s %s" % (label, exc))
+                invalid.add(key)
+                values[key] = spec.fallback
 
     # Derived rules read the value as written, not the fallback: "assignable is false" means
     # it was written as a valid false.
-    written_unassignable = present.get("assignable") is False
+    written_unassignable = present.get("assignable") is False and "assignable" not in forced
 
     # transport: an invalid value gives one error; "missing" applies only when the key is absent.
-    if "transport" in present:
+    if "transport" in forced:
+        _issue(out, "error", base + ".transport", "transport %s" % forced["transport"])
+        invalid.add("transport")
+        transport = Transport("none")
+    elif "transport" in present:
         transport = _transport(present["transport"], base + ".transport", out, invalid)
     else:
         transport = Transport("none")
@@ -464,7 +600,12 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
                    "transport is missing; an assignable machine needs 'local' or {herdr: <label>}, "
                    "or set assignable: false")
             invalid.add("transport")
-    limits = _limits(present.get("limits"), base + ".limits", out, invalid)
+    if "limits" in forced:
+        _issue(out, "error", base + ".limits", "limits %s" % forced["limits"])
+        invalid.add("limits")
+        limits = Limits(0, 0, 0, 0)
+    else:
+        limits = _limits(present.get("limits"), base + ".limits", out, invalid)
 
     if transport.kind == "herdr" and not written_unassignable and "workdir" not in present:
         _issue(out, "warning", base + ".workdir",
@@ -475,20 +616,17 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
         _issue(out, "error", base + ".busy_flag", "busy_flag and gaming_flag are the same setting; set only one")
         invalid.add("busy_flag")
         values["busy_flag"] = None
-        force_gaming = True
-    if "busy_flag" in invalid:
-        force_gaming = True
     flag_written = bool(flag_keys) or near_miss_flag
     flag_valid = values.get("busy_flag") is not None and "busy_flag" not in invalid
     gs_written = present.get("gaming_sensitive")
-    if gs_written is True and not flag_written:
+    if gs_written is True and not flag_written and "gaming_sensitive" not in forced:
         _issue(out, "warning", base + ".gaming_sensitive",
                "gaming_sensitive is true but there is no busy_flag, so there is nothing to check")
-    if gs_written is False and flag_valid:
+    if gs_written is False and flag_valid and "gaming_sensitive" not in forced:
         _issue(out, "warning", base + ".gaming_sensitive",
                "gaming_sensitive: false is ignored because busy_flag is set (it implies true)")
-    gaming = bool(values["gaming_sensitive"]) or flag_written or force_gaming
-    assignable = False if force_not_assignable else values["assignable"]
+    gaming = bool(values["gaming_sensitive"]) or flag_written or bool(invalid & {"gaming_sensitive", "busy_flag"})
+    assignable = bool(values["assignable"]) and "assignable" not in invalid
 
     return Machine(
         name=name, transport=transport, workdir=values["workdir"], limits=limits,
@@ -510,16 +648,23 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
     for key in doc:
         if key != "machines":
             _issue(issues, "warning", "registry.%s" % (key,), "unknown top-level key %r" % (key,))
+    for key in getattr(doc, "dups", ()):
+        _issue(issues, "error", "registry.%s" % (key,), "top-level key %r is written more than once" % (key,))
     entries = doc.get("machines")
     if not isinstance(entries, dict) or not entries:
         _issue(issues, "error", "machines", "registry needs a non-empty 'machines' map")
         return machines, issues
+    repeated = set(getattr(entries, "dups", ()))
+    for name in repeated:
+        _issue(issues, "error", "machines", "machine name %r is written more than once; it is left out" % (name,))
     pattern = re.compile(NAME_PATTERN)
     for name, raw in entries.items():
-        if not isinstance(name, str) or not pattern.match(name):
+        if name in repeated:
+            continue
+        if not isinstance(name, str) or not pattern.fullmatch(name) or name.isdigit():
             _issue(issues, "error", "machines",
-                   "machine name %r is not allowed: use letters, digits, '-' and '_', starting with a letter or digit"
-                   % (name,))
+                   "machine name %r is not allowed: use letters, digits, '-' and '_', starting with a letter or "
+                   "digit, and not digits only (YAML would read it as a number)" % (name,))
             continue
         if name in RESERVED_NAMES:
             _issue(issues, "error", "machines",
@@ -537,18 +682,30 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
 
 def load(explicit: Optional[str] = None,
          env: Optional[Mapping[str, str]] = None) -> Registry:
-    """Locate, parse and validate the registry. Never raises on bad input."""
-    path, source = registry_path(explicit, env)
-    exists = path.exists()
-    if not exists:
-        issues: List[Issue] = []
-        if source != "default":
-            _issue(issues, "error", "registry", "registry file not found: %s (from %s)" %
-                   (path, "--registry" if source == "flag" else "$" + REGISTRY_ENV))
-        return Registry(path, source, False, {}, issues)
+    """Locate, parse and validate the registry. Never raises: any failure becomes an error Issue."""
+    path, source, exists = Path(explicit or "."), "flag" if explicit is not None else "default", False
     try:
-        doc = parse_yaml(path)
-    except RegistryError as exc:
-        return Registry(path, source, True, {}, [Issue("error", "registry", str(exc))])
-    machines, issues = validate(doc)
-    return Registry(path, source, True, machines, issues)
+        if explicit == "":
+            return Registry(Path(""), "flag", False, {},
+                            [Issue("error", "registry", "--registry was given an empty path")])
+        path, source = registry_path(explicit, env)
+        try:
+            exists = path.exists()
+        except (OSError, ValueError) as exc:
+            return Registry(path, source, False, {}, [Issue(
+                "error", "registry", "cannot access %s: %s" % (path, getattr(exc, "strerror", None) or exc))])
+        if not exists:
+            issues: List[Issue] = []
+            if source != "default":
+                _issue(issues, "error", "registry", "registry file not found: %s (from %s)" %
+                       (path, "--registry" if source == "flag" else "$" + REGISTRY_ENV))
+            return Registry(path, source, False, {}, issues)
+        try:
+            doc = parse_yaml(path)
+        except RegistryError as exc:
+            return Registry(path, source, True, {}, [Issue("error", "registry", str(exc))])
+        machines, issues = validate(doc)
+        return Registry(path, source, True, machines, issues)
+    except Exception as exc:  # last resort: importers rely on load() never raising
+        return Registry(path, source, exists, {}, [Issue(
+            "error", "registry", "internal error reading the registry: %s: %s" % (type(exc).__name__, exc))])
