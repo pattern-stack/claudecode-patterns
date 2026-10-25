@@ -241,6 +241,23 @@ Two-tone observability: machine-indexable for analytics, human-skimmable for for
 
 ---
 
+## Machines
+
+A *machine* is a box agents can run on. Its entry says what it can do (`caps`), what it holds (`keeps`, `secrets`), and whether it may be given work at all (`assignable: false` means never).
+
+- **Where the file lives:** `${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml`, or the path in `$SDLC_MACHINES`.
+- **Keep it on the coordinating box only.** That is where you run Claude Code, and `transport: local` means that box. Don't copy the file to workers: a box with no file runs everything locally, which is right for a delegated agent.
+- **Start from the example:** `cp plugin/machines.example.yaml ~/.config/sdlc/machines.yaml`. Every key is commented there.
+- **Look and check:** `sdlc machines` lists, `sdlc machines check` validates (exit 1 on any error), and `sdlc machines check --probe` also asks herdr whether each herdr machine answers. From a terminal or CI, use `just sdlc::machines ...`.
+- **`sdlc` on PATH:** Claude Code adds a plugin's `bin/` to the Bash tool's PATH, so agents in a session call `sdlc` bare. A terminal doesn't get it; use the just recipe.
+- **Types:** booleans are `true` or `false` only (`yes`, `no`, `on`, `off` are errors), and `secrets` is one of `none < dev < prod`. Write plain decimal numbers.
+- **Bad values fail closed.** A value that fails validation loads as its restrictive value (a mistyped `assignable` loads as `false`), the machine is not placeable, and `list` marks the cell with `!`.
+- **No registry, no change.** Without the file, everything behaves as before.
+
+Placing phases on machines comes in a later release.
+
+---
+
 ## Agent governance — the workflow layer
 
 Running agents as a team **is** governance: deny-by-default policy hooks, least-privilege agent roles, staged human gates, and a git-native audit trail — every control a file you can read and a behavior you can **reproduce**, not a claim.
@@ -260,6 +277,9 @@ plugin/
 ├── .claude-plugin/plugin.json    # manifest (components + 30 lifecycle hooks)
 ├── sdlc.example.yml              # rendered by /sdlc:setup into your project's .claude/sdlc.yml
 ├── sdlc.justfile                 # recipes (verify, canvases, canvas-dev, etc.) imported via `mod sdlc`
+├── machines.example.yaml         # commented machine registry to copy (see Machines)
+├── bin/                          # the `sdlc` CLI (machines list/check)
+├── lib/                          # shared Python modules (machines, herdr) and the tool installer
 ├── primitives/                   # vendor-specific implementations of each domain
 │   ├── language/                 #   typescript, python, ...
 │   ├── quality/                  #   strict, fast, ...
