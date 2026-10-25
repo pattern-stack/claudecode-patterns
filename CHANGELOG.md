@@ -5,6 +5,42 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.42] — 2026-10-25
+
+### Added — the phase-tuning hook points remote-placed roles at their machine
+
+A subagent always runs on the coordinator's box. Until now, a role placed on a worker box quietly ran locally, every
+time. The phase-tuning hook now says so, and says where the next run belongs. Nothing changes for a repo that places
+nothing.
+
+- **The hint.** When `Agent` or `TeamCreate` spawns a role that `.claude/sdlc.yml` places on another machine, the hook
+  adds `additionalContext` next to any tuning it already injects. A role placed `local`, a role with no placement of its
+  own, and a role that can't be placed anywhere but isn't named in the file add nothing. A role that is named and has
+  nowhere to run gets a one-line warning.
+- **The spawn still runs.** The hook sets no permission decision and denies nothing, so your permission rules apply as
+  before. The hint redirects the next run; it can't move this one.
+- **Two wordings.** A foreground `Agent` call has already run when the hint is read: its result stands, and the next run
+  goes to the placed machine. A background `Agent` call or a `TeamCreate` teammate is still running: let it finish, or
+  stop it and start the job on the placed machine, never both.
+- **How to start it there.** `sdlc delegate <role> --issue <n>`, or a one-line `herdr --machine ...` fallback.
+- **Byte-identical otherwise.** Local roles, unplaced roles (even under a remote `default_machine`), repos that place
+  nothing, and boxes with no registry produce exactly the old output. Golden tests pin it, including the shipped
+  example's `phases:` block.
+- **Fail-open, with a deadline.** Any registry or `sdlc.yml` problem gives the tuning and no hint. The lookup is cut off
+  at 3.5 s, so a huge `sdlc.yml` read by PyYAML can't push the hook past its 5 s timeout.
+- **The tests run in CI** (`plugin/hooks/phase-tuning.test.sh`, under both YAML backends).
+
+### Fixed — phase-tuning no longer loses, corrupts or leaks knobs
+
+- **A blank knob** (a bare `machine:` under `phases.<role>`) no longer turns into a new role and takes the role's later
+  knobs with it.
+- **`null` values** (`null`, `Null`, `NULL`, `~`) are unset instead of the text `"null"` being injected, even over a flat
+  `phase_models` value. A quoted `"null"` stays a string.
+- **A prefixed or scalar role entry** (`sdlc:validator:`, or `validator: sonnet`) no longer leaks its knobs into the role
+  above it.
+- **A multi-line flow map** (`specifier: { model: opus,` with the rest on the next line) now fails closed for that
+  role: no tuning from a half-read entry. Its flat keys still apply.
+
 ## [0.2.41] — 2026-10-25
 
 ### Added — placement: where each phase and agent runs

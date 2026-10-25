@@ -266,7 +266,21 @@ A repo says where each phase and agent runs in `.claude/sdlc.yml`; the commented
 - **Write each key once.** A repeated placement key is an error, never last-wins.
 - **Ask and check:** `sdlc machines where validator` prints the answer on its first line and exits 0 when the role is placed, or when machines are off because there is no registry or the repo places nothing. `sdlc machines check` adds a line per role and an error for every refusal.
 
-Nothing moves yet: this only answers "where". Starting work on another box comes in a later release.
+Placement only answers "where". The phase-tuning hook uses the answer to point the coordinator at the right box (next section); starting work on another box comes in a later release.
+
+### The remote hint
+
+A subagent always runs on the coordinator's box, so a role the repo places elsewhere used to run locally without a word. Now the phase-tuning hook adds a hint.
+
+- **When it appears:** a role that `.claude/sdlc.yml` places on another machine is spawned with `Agent` or `TeamCreate`.
+- **The spawn still runs here, the first run of a placed role included.** The hook never decides permission (no allow, no deny), so your permission rules still apply, and the hint can't move a run. It redirects the next one:
+  - a foreground run has already finished when the hint is read, so the hint says the result stands, not to run the call again, and to start the *next* run on the placed machine;
+  - a background run or a teammate is still going, so the hint says to let it finish, or stop it and start the job on the placed machine, never both.
+- **What it offers:** `sdlc delegate <role> --issue <n>`, then a one-line raw `herdr --machine ...` fallback for when `sdlc delegate` isn't available. Results come back through GitHub, so the brief should ask for a pushed branch or a PR comment.
+- **To place the first run too,** check `sdlc machines where <role>` before spawning, or start the role with `sdlc delegate` directly.
+- **No change** for local roles, roles the repo doesn't place (even under a remote `default_machine`), repos that place nothing, and boxes with no registry. The hook's output is byte-for-byte what it was.
+- **An unplaceable role** (nowhere in the registry fits it) gets a one-line warning; the spawn runs here anyway.
+- **Time:** none added unless the repo places something. A slow registry or `sdlc.yml` read is cut off by the hook's own 3.5 s deadline (`HOOK_DEADLINE`), and the spawn then gets its tuning with no hint.
 
 ---
 

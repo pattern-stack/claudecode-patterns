@@ -175,7 +175,11 @@ develop_team:
 # `default_machine`. `needs:` here is not the `needs:*` issue labels (those add /develop
 # teammates). Write each key once: a repeated placement key is an error, never last-wins.
 #
-# phase_machines:                 # same keys as phase_models / phases
+# A subagent always runs on this box. When a role placed elsewhere is spawned as one, it still
+# runs here, and the phase-tuning hook tells the coordinator to start the next run on the
+# placed machine (`sdlc delegate <role>`).
+#
+# phase_machines:               # same keys as phase_models / phases
 #   validator: worker-1           # full suite + browser off the workstation
 #   implementer: local            # needs this box's checkout and services
 #   reviewer: any                 # read-only: wherever it fits
@@ -188,7 +192,7 @@ develop_team:
 #
 # Grouped form: `phases.<role>.machine: worker-1` works too and wins over
 # `phase_machines.<role>`, as for the other knobs. To unset it, delete the line or write
-# `machine: null`; never leave a bare `machine:` (the tuning hook misreads it).
+# `machine: null`.
 
 # === Loop iteration caps + Gate-1 timeout ===
 # Consumed by the coordinator-driven impl⇄val loop (issue #44 wires these in).
