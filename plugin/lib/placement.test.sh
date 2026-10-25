@@ -1151,5 +1151,196 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   t "[$be] B17 where: nowhere" first_is "validator: nowhere"
 done
 
+echo "B18  YAML merge keys: repeats hidden by a merge are still repeats (both backends)"
+MG_N1="$(cfgfile mg-n1 <<'EOF'
+nb: &nb {secrets: none}
+phase_machines: {validator: worker-1}
+needs:
+  validator:
+    <<: *nb
+    keeps: [datasets]
+    keeps: []
+EOF
+)"
+MG_N2="$(cfgfile mg-n2 <<'EOF'
+top: &top {develop_team: [a]}
+<<: *top
+phase_machines: {validator: worker-1}
+needs: {validator: {keeps: [datasets]}}
+needs: {validator: [browser]}
+EOF
+)"
+MG_N3="$(cfgfile mg-n3 <<'EOF'
+nb: &nb {implementer: [edit]}
+phase_machines: {validator: worker-1}
+needs:
+  <<: *nb
+  validator: {keeps: [datasets]}
+  validator: [browser]
+EOF
+)"
+MG_M3="$(cfgfile mg-m3 <<'EOF'
+pm: &pm {validator: worker-1}
+phase_machines:
+  <<: *pm
+  validator: worker-9
+  validator:
+EOF
+)"
+MG_M7="$(cfgfile mg-m7 <<'EOF'
+tune: &tune {machine: worker-1}
+phases:
+  validator:
+    <<: *tune
+    machine: workstation
+    machine: null
+EOF
+)"
+MG_S="$(cfgfile mg-s <<'EOF'
+base: &base {keeps: [datasets], caps: [browser]}
+default_machine: local
+needs:
+  validator:
+    <<: *base
+    keeps: []
+phases:
+  validator: {machine: worker-1, model: opus}
+  validator: {model: fable}
+EOF
+)"
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  run $be machines check --registry "$EXAMPLE" --config "$MG_N1"
+  t "[$be] B18 needs.validator: <<, keeps, keeps: error at the key" has "error    sdlc.yml.needs.validator.keeps:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$MG_N1"
+  t "[$be] B18 needs.validator: <<, keeps, keeps: the role is unplaceable" first_is "validator: nowhere"
+  run $be machines check --registry "$EXAMPLE" --config "$MG_N2"
+  t "[$be] B18 a repeated top-level needs beside a top-level merge: error at sdlc.yml.needs" has "error    sdlc.yml.needs:"
+  run $be machines check --registry "$EXAMPLE" --config "$MG_N3"
+  t "[$be] B18 a repeated needs role beside a merge in needs: error at sdlc.yml.needs.validator" has "error    sdlc.yml.needs.validator:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$MG_N3"
+  t "[$be] B18 a repeated needs role beside a merge in needs: unplaceable" first_is "validator: nowhere"
+  run $be machines check --registry "$EXAMPLE" --config "$MG_M3"
+  t "[$be] B18 phase_machines: <<, role, role: error at the role" has "error    sdlc.yml.phase_machines.validator:"
+  run $be machines where validator --registry "$EXAMPLE" --config "$MG_M3"
+  t "[$be] B18 phase_machines: <<, role, role: falls back" first_is "validator: workstation (local), fallback"
+  run $be machines check --registry "$EXAMPLE" --config "$MG_M7"
+  t "[$be] B18 phases.validator: <<, machine, machine: error at the key" has "error    sdlc.yml.phases.validator.machine:"
+  run $be machines check --registry "$EXAMPLE" --config "$MG_S"
+  t "[$be] B18 repeated phases.validator beside a merged needs: error at sdlc.yml.phases.validator" has "error    sdlc.yml.phases.validator:"
+done
+
+echo "B18b  100 random merge-key sdlc.yml files: PyYAML and yq agree on every role"
+if [ "$HAVE_PYYAML" = 1 ] && [ "$HAVE_YQ" = 1 ]; then
+  mkdir -p "$FX/rand"
+  cat > "$TMP/gen.py" <<'PYGEN'
+import random, sys
+out_dir, count = sys.argv[1], int(sys.argv[2])
+T = ["worker-1", "workstation", "local", "any", "worker-9", "null", ""]
+R = ["validator", "implementer", "reviewer"]
+
+
+def tgt(r):
+    return r.choice(T)
+
+
+def line(ind, key, val):
+    return "%s%s:%s" % (" " * ind, key, (" " + val) if val else "")
+
+
+def make(seed):
+    r = random.Random(seed)
+    L = []
+    pm = r.random() < 0.5
+    nb = r.random() < 0.5
+    tune = r.random() < 0.5
+    if pm:
+        L.append("pm: &pm {validator: %s, reviewer: %s}" % (tgt(r) or "null", tgt(r) or "null"))
+    if nb:
+        L.append("nb: &nb {caps: [browser], keeps: [%s]}" % r.choice(["datasets", "", "services"]))
+    if tune:
+        L.append("tune: &tune {machine: %s}" % (tgt(r) or "null"))
+    if r.random() < 0.3:
+        L.append("top: &top {develop_team: [a]}")
+        L.append("<<: *top")
+    blocks = []
+    if r.random() < 0.85:
+        b = ["phase_machines:"]
+        if pm and r.random() < 0.6:
+            b.append("  <<: *pm")
+        for role in r.sample(R, r.randint(1, 3)):
+            b.append(line(2, role, tgt(r)))
+            if r.random() < 0.25:
+                b.append(line(2, role, tgt(r)))
+        blocks.append(b)
+    if r.random() < 0.5:
+        b = ["needs:"]
+        for role in r.sample(R, r.randint(1, 2)):
+            if r.random() < 0.3:
+                b.append(line(2, role, "[%s]" % r.choice(["browser", "full-suite", ""])))
+                continue
+            b.append("  %s:" % role)
+            if nb and r.random() < 0.6:
+                b.append("    <<: *nb")
+            for key in r.sample(["caps", "keeps", "secrets"], r.randint(0, 2)):
+                v = {"caps": "[browser]", "keeps": r.choice(["[datasets]", "[]", "[checkouts]"]), "secrets": "dev"}[key]
+                b.append(line(4, key, v))
+                if r.random() < 0.25:
+                    b.append(line(4, key, {"caps": "[gpu]", "keeps": "[]", "secrets": "none"}[key]))
+        if r.random() < 0.15:
+            b.append("  %s: [gpu]" % r.choice(R))
+        blocks.append(b)
+        if r.random() < 0.15:
+            blocks.append(["needs:", "  validator: [browser]"])
+    if r.random() < 0.45:
+        b = ["phases:"]
+        for role in r.sample(R, r.randint(1, 2)):
+            b.append("  %s:" % role)
+            if tune and r.random() < 0.6:
+                b.append("    <<: *tune")
+            if r.random() < 0.7:
+                b.append(line(4, "machine", tgt(r)))
+                if r.random() < 0.25:
+                    b.append(line(4, "machine", tgt(r)))
+            if r.random() < 0.4:
+                b.append("    model: opus")
+            if r.random() < 0.15:
+                b.append("  %s: {model: fable}" % role)
+        blocks.append(b)
+    if r.random() < 0.3:
+        blocks.append([line(0, "default_machine", tgt(r))] + ([line(0, "default_machine", tgt(r))] if r.random() < 0.2 else []))
+    r.shuffle(blocks)
+    for b in blocks:
+        L.extend(b)
+    return "\n".join(L) + "\n"
+
+
+for i in range(count):
+    open("%s/%03d.yml" % (out_dir, i), "w").write(make(i))
+PYGEN
+  cat > "$TMP/cmp.py" <<'PYCMP'
+import json, sys, glob
+import machines
+reg = machines.load(sys.argv[1])
+for f in sorted(glob.glob(sys.argv[2] + "/*.yml")):
+    c = machines.load_placement(f)
+    row = {"opted": c.opted_in, "broken": c.broken, "nb": c.needs_broken,
+           "issues": sorted((i.level, i.where) for i in c.issues)}
+    for role in ("validator", "implementer", "reviewer"):
+        p = machines.resolve(role, registry=reg, config=c)
+        row[role] = [p.status, p.machine]
+    print(f.rsplit("/", 1)[1], json.dumps(row, sort_keys=True))
+PYCMP
+  "$PY" "$TMP/gen.py" "$FX/rand" 100
+  PYTHONPATH="$LIB" "$PY" "$TMP/cmp.py" "$EXAMPLE" "$FX/rand" > "$TMP/rand-py.txt" 2>&1
+  PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" "$PY" "$TMP/cmp.py" "$EXAMPLE" "$FX/rand" > "$TMP/rand-yq.txt" 2>&1
+  OUT="$(diff "$TMP/rand-py.txt" "$TMP/rand-yq.txt" | head -10)"
+  t "B18b 100 files read by each backend, with merge keys in about half" bash -c '[ "$(wc -l < "$1")" = 100 ] && [ "$(grep -l "<<" "$2"/*.yml | wc -l)" -ge 30 ]' _ "$TMP/rand-py.txt" "$FX/rand"
+  t "B18b the two backends give the same answer for every file" test -z "$OUT"
+  t "B18b the sample is not trivial: some files opt in, some break, some resolve" bash -c '
+    grep -q "\"opted\": true" "$1" && grep -q "\"broken\": true" "$1" && grep -q "\"placed\"" "$1"' _ "$TMP/rand-py.txt"
+else
+  [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ] && bad "B18b needs both backends" || echo "skip: B18b needs both backends"
+fi
+
 echo "placement: $pass passed, $fail failed"
 [ "$fail" = 0 ]
