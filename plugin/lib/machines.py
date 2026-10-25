@@ -12,8 +12,8 @@ install directory (bin/sdlc does; the #138 hook must too).
 
 YAML backends: PyYAML (a private strict loader) or yq, with the same booleans, plain decimal
 integers, whole floats read as ints, and dates left as strings. Duplicate keys are reported under
-both. Known gap: hex (0x10) and 1_000 are numbers to yq but strings to PyYAML, so write plain
-decimals.
+both. Known gap: hex (0x10), octal (0o10) and 1_000 are numbers to yq but strings to PyYAML, so write
+plain decimals. yq rejects the whole file for .inf, .nan, 0b11 and integers above 2^63.
 
 Consumer contract for placement code (#137 resolve, #139 delegate):
 
@@ -34,7 +34,7 @@ Consumer contract for placement code (#137 resolve, #139 delegate):
    there is nothing to test, so rely on `ok` for that machine.
 4. Warnings never change placement.
 5. `Issue.where` tells registry-level problems from per-machine ones:
-   "registry" or "registry.<key>" (file unreadable, unparseable, missing at an explicit path,
+   "registry", "registry.<key>" or "probe" (file unreadable, unparseable, missing at an explicit path,
    unknown top-level key), "machines" (structure, local-machine count, bad machine name), and
    "machines.<name>[.<key>[.<sub>]]" (one machine's entry).
 """
@@ -71,7 +71,7 @@ class RegistryError(Exception):
 @dataclass(frozen=True)
 class Issue:
     level: str      # "error" | "warning" | "info" (info: CLI passes only)
-    where: str      # "registry" | "machines" | "machines.<name>[.<key>[.<sub>]]"
+    where: str      # "registry" | "registry.<key>" | "probe" | "machines" | "machines.<name>[.<key>[.<sub>]]"
     message: str
 
 
@@ -135,7 +135,7 @@ class Registry:
 
     @property
     def inert(self) -> bool:
-        return self.source == "default" and not self.exists
+        return self.source == "default" and not self.exists and not self.issues
 
     @property
     def usable(self) -> bool:
@@ -537,9 +537,8 @@ def _machine(name: str, raw: Any, out: List[Issue]) -> Machine:
         if canon in SCHEMA:
             written.setdefault(canon, key)
         else:
-            unknown_dup = key
             _issue(out, "error", "%s.%s" % (base, key), "%s is written more than once" % key)
-            invalid.add(unknown_dup)
+            invalid.add(key)
     for canon in SCHEMA:
         if canon in present and canon not in forced and _has_dups(present[canon]):
             forced[canon] = "contains a key written more than once"
@@ -650,12 +649,15 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
             _issue(issues, "warning", "registry.%s" % (key,), "unknown top-level key %r" % (key,))
     for key in getattr(doc, "dups", ()):
         _issue(issues, "error", "registry.%s" % (key,), "top-level key %r is written more than once" % (key,))
+    if "machines" in getattr(doc, "dups", ()):
+        _issue(issues, "error", "machines", "the 'machines' key is written more than once; no machines are loaded")
+        return machines, issues
     entries = doc.get("machines")
     if not isinstance(entries, dict) or not entries:
         _issue(issues, "error", "machines", "registry needs a non-empty 'machines' map")
         return machines, issues
     repeated = set(getattr(entries, "dups", ()))
-    for name in repeated:
+    for name in sorted(repeated, key=str):
         _issue(issues, "error", "machines", "machine name %r is written more than once; it is left out" % (name,))
     pattern = re.compile(NAME_PATTERN)
     for name, raw in entries.items():

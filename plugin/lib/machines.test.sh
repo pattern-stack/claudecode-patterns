@@ -494,13 +494,15 @@ if [ ${#BACKENDS[@]} -gt 0 ]; then
   HUGE="$(printf '9%.0s' $(seq 1 400))"
   box_fixture c26h "limits: {mem_gb: $HUGE}"
   for be in "${BACKENDS[@]}"; do
-    t "[$be] a 400-digit limit: load() returns, not usable-breaking" env PYTHONPATH="$LIB" PATH="$([ $be = yq ] && echo $TMP/pyyq || echo $PATH)" "$PY" -c "
+    PYP="$LIB"; PPATH="$PATH"
+    [ "$be" = yq ] && { PYP="$LIB:$TMP/noyaml"; PPATH="$TMP/pyyq"; }
+    t "[$be] a 400-digit limit: load() returns, not usable-breaking" env PYTHONPATH="$PYP" PATH="$PPATH" "$PY" -c "
 import sys, machines
 r = machines.load('$FX/c26h.yaml')
 sys.exit(0 if (r.errors and not r.machines['box'].ok) else 1)"
     run $be machines check --registry "$FX/c26h.yaml"
     t "[$be] a 400-digit limit: check exits 1 without a traceback" bash -c '[ "$1" = 1 ] && ! echo "$2" | grep -q Traceback' _ "$RC" "$OUT"
-    OUT=$(env PYTHONPATH="$LIB" PATH="$([ $be = yq ] && echo $TMP/pyyq || echo $PATH)" "$PY" -c "
+    OUT=$(env PYTHONPATH="$PYP" PATH="$PPATH" "$PY" -c "
 import machines
 for f in ['$EXAMPLE', '$FX/c26h.yaml', '$FX/c17.yaml', '$TMP/nope.yaml']:
     machines.load(f)" 2>&1)
@@ -539,6 +541,21 @@ YML
       *ssignable*|*ASSIGNABLE*|*assign-able*) t "$k: loads not assignable" pyl $B1 "$FX/c28.yaml" 'b.assignable is False and not b.ok' ;;
       *) t "$k: gaming_sensitive loads True" pyl $B1 "$FX/c28.yaml" 'b.gaming_sensitive is True and not b.ok' ;;
     esac
+  done
+
+  echo "31  a repeated top-level machines: key"
+  F31="$(fixture c31 <<'YML'
+machines:
+  here: {transport: local}
+  ctl: {assignable: false}
+machines:
+  here: {transport: local}
+  ctl: {transport: {herdr: ctl}, workdir: /w}
+YML
+)"
+  for be in "${BACKENDS[@]}"; do
+    run $be machines check --registry "$F31"; t "[$be] repeated machines: exit 1" rc_is 1
+    t "[$be] repeated machines: no machines, not usable" pyl $be "$F31" 'r.machines == {} and not r.usable'
   done
 
   echo "29  blank trust keys and duplicate keys"
@@ -615,7 +632,7 @@ YML
   done
   box_fixture c30d 'workdir: ""'
   sed -i '0,/    workdir: \/w/{//d}' "$FX/c30d.yaml"
-  run $B1 machines check --registry "$FX/c30d.yaml"; t "workdir: '' is an error" has "machines.box.workdir"
+  run $B1 machines check --registry "$FX/c30d.yaml"; t "workdir: '' is an error at machines.box.workdir" bash -c 'echo "$1" | grep -q "^error .*machines.box.workdir"' _ "$OUT"
 fi
 
 echo "25  executable"
