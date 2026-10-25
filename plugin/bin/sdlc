@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """sdlc: command line for the sdlc plugin.
 
-    sdlc machines [--registry PATH] [list [--registry PATH]]
-    sdlc machines [--registry PATH] check [--registry PATH] [--probe] [--timeout SECS]
+    sdlc machines [--registry PATH] [--config FILE] [list [--registry PATH]]
+    sdlc machines [--registry PATH] [--config FILE] check [--registry PATH] [--config FILE] [--probe] [--timeout SECS]
+    sdlc machines [--registry PATH] [--config FILE] where ROLE [--kind phase|agent] [--registry PATH] [--config FILE]
+
+`where ROLE` answers "where does ROLE run?" from the repo's .claude/sdlc.yml and the registry; its
+first line is the answer. `check` also checks the repo's placement once the registry is usable.
 
 Exit codes: 0 ok or inert (no registry), 1 an error was found (check) or list had nothing to
-show, 2 usage error.
+show, 2 usage error. `where` exits 0 when the role is placed, or when machines are off because
+there is no registry or the repo places nothing; 1 for a fallback, nowhere to run, or machines
+off because of an error (a broken registry or sdlc.yml); 2 for usage (including `--config ""`).
 
-Reserved for later releases, not built here: `sdlc machines where <role>` (#137) and
-`sdlc delegate <role> ...` (#139).
+Reserved for a later release, not built here: `sdlc delegate <role> ...` (#139).
 
 Claude Code puts a plugin's bin/ on the PATH of its Bash tool, so agents in a session call `sdlc`
 bare. Humans and CI use `just sdlc::machines ...`, which runs this file by absolute path.
@@ -32,9 +37,21 @@ import machines  # noqa: E402
 LEGEND = "! = invalid value, shown as the restrictive value it loads as; run: sdlc machines check"
 
 
-def _path_arg(text: str) -> str:
-    if not text.strip():
-        raise argparse.ArgumentTypeError("--registry needs a path, got an empty value")
+def _nonempty(flag: str):
+    def convert(text: str) -> str:
+        if not text.strip():
+            raise argparse.ArgumentTypeError("%s needs a path, got an empty value" % flag)
+        return text
+    return convert
+
+
+_path_arg = _nonempty("--registry")
+_config_arg = _nonempty("--config")
+
+
+def _role_arg(text: str) -> str:
+    if not machines._strip_role(text):
+        raise argparse.ArgumentTypeError("a role needs a name, got %r" % text)
     return text
 
 
@@ -153,23 +170,96 @@ def _probe(reg: "machines.Registry", timeout: float) -> List["machines.Issue"]:
     return out
 
 
+def _placement_line(cfg: "machines.PlacementConfig") -> str:
+    if cfg.path is None or (not cfg.exists and not cfg.issues):
+        text = "none (no %s found)" % machines.SDLC_RELPATH
+    else:
+        text = str(cfg.path)
+    if cfg.usable and not cfg.opted_in:
+        text += " (places nothing; everything runs on this box)"
+    return "Placement: " + text
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     reg = _load(args)
     if reg.inert and not reg.errors:
         _inert(reg)
         return 0
     print("Registry: %s" % reg.path)
-    issues = list(reg.issues)
     if reg.machines:
         print(_summary(reg))
-    if getattr(args, "probe", False):
-        issues += _probe(reg, args.timeout)
+    issues = list(reg.issues)
     for issue in issues:
         print("%-8s %s: %s" % (issue.level, issue.where, issue.message))
+    if reg.usable:
+        cfg = machines.load_placement(getattr(args, "config", None))
+        print(_placement_line(cfg))
+        extra = machines.placement_issues(reg, cfg)
+    else:
+        print("Placement: not checked (the registry is not usable)")
+        extra = []
+    if getattr(args, "probe", False):
+        extra += _probe(reg, args.timeout)
+    for issue in extra:
+        print("%-8s %s: %s" % (issue.level, issue.where, issue.message))
+    issues += extra
     errors = sum(1 for i in issues if i.level == "error")
     warnings = sum(1 for i in issues if i.level == "warning")
     print("check: %s (errors=%d, warnings=%d)" % ("failed" if errors else "ok", errors, warnings))
     return 1 if errors else 0
+
+
+def _needs_text(needs: "machines.Needs") -> str:
+    parts = []
+    if needs.caps:
+        parts.append("caps " + ", ".join(needs.caps))
+    if needs.keeps:
+        parts.append("keeps " + ", ".join(needs.keeps))
+    if needs.secrets != "none":
+        parts.append("secrets " + needs.secrets)
+    return "; ".join(parts) or "-"
+
+
+def _print_where(p: "machines.Placement", reg: "machines.Registry",
+                 cfg: Optional["machines.PlacementConfig"]) -> None:
+    def line(label: str, text: str) -> None:
+        print("  %-13s%s" % (label + ":", text))
+
+    if p.status == "off":
+        print("%s: this box (machines are off)" % p.role)
+    elif p.status == "unplaceable":
+        print("%s: nowhere" % p.role)
+    else:
+        print("%s: %s%s%s" % (p.role, p.machine, " (local)" if p.local else "",
+                              ", fallback" if p.status == "fallback" else ""))
+    if p.status != "off":
+        line("kind", p.kind or "unplaced")
+        req = p.requested
+        line("placement", "none (default target)" if req is None else "%s (%s)" % (req.value or "invalid", req.at))
+        needs = cfg.needs.get(p.role) if cfg is not None else None
+        line("needs", _needs_text(needs) if needs is not None else "-")
+        if p.machine is not None:
+            extra = "   (local first; sdlc delegate picks by load)" if p.target == "any" else ""
+            line("candidates", ", ".join(p.candidates) + extra)
+        for key, why in p.rejected:
+            line("refused", "%s: %s" % (key, why))
+    line("reason", p.reason)
+    line("registry", str(reg.path))
+    if cfg is None:
+        line("sdlc.yml", "not read (the registry is not usable)")
+    else:
+        line("sdlc.yml", str(cfg.path) if cfg.path is not None else "none found")
+
+
+def cmd_where(args: argparse.Namespace) -> int:
+    p, reg, cfg = machines.locate(args.role, args.kind, registry_file=getattr(args, "registry", None),
+                                  config_file=getattr(args, "config", None), budget=None)
+    _print_where(p, reg, cfg)
+    if p.status == "placed":
+        return 0
+    if p.status == "off":
+        return 0 if p.off_cause in ("no-registry", "no-placement") else 1
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,7 +270,9 @@ def build_parser() -> argparse.ArgumentParser:
     mp = top.add_parser("machines", help="show and check the machine registry")
     mp.add_argument("--registry", metavar="PATH", type=_path_arg, default=None,
                     help="registry file (default: $SDLC_MACHINES, then ${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml)")
-    sub = mp.add_subparsers(dest="machines_command", metavar="{list,check}")
+    mp.add_argument("--config", metavar="FILE", type=_config_arg, default=None,
+                    help="the repo's sdlc.yml (default: $CLAUDE_PROJECT_DIR, then .claude/sdlc.yml found by walking up)")
+    sub = mp.add_subparsers(dest="machines_command", metavar="{list,check,where}")
 
     lp = sub.add_parser("list", help="print the machines")
     # SUPPRESS: a leaf default would overwrite a --registry given before the subcommand.
@@ -189,10 +281,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     cp = sub.add_parser("check", help="validate the registry (exit 1 on any error)")
     cp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
+    cp.add_argument("--config", metavar="FILE", type=_config_arg, default=argparse.SUPPRESS, help="the repo's sdlc.yml")
     cp.add_argument("--probe", action="store_true", help="also ask herdr whether each herdr machine answers")
     cp.add_argument("--timeout", type=_timeout_arg, default=herdr.DEFAULT_TIMEOUT, metavar="SECS",
                     help="per-machine probe timeout (default: %g)" % herdr.DEFAULT_TIMEOUT)
     cp.set_defaults(func=cmd_check)
+
+    wp = sub.add_parser("where", help="say where a phase or agent runs (exit 1 on a fallback, nowhere, or an error)")
+    wp.add_argument("role", type=_role_arg, help="a phase or agent name, e.g. validator (a leading sdlc: is ignored)")
+    wp.add_argument("--kind", choices=machines.KINDS, default=None,
+                    help="read only the phase or only the agent placement (default: whichever names the role)")
+    wp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
+    wp.add_argument("--config", metavar="FILE", type=_config_arg, default=argparse.SUPPRESS, help="the repo's sdlc.yml")
+    wp.set_defaults(func=cmd_where)
 
     mp.set_defaults(func=cmd_list)
     return parser

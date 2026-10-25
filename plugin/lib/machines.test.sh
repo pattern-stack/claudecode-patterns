@@ -18,6 +18,9 @@ trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
 mkdir -p "$HOME"
 unset SDLC_MACHINES XDG_CONFIG_HOME
+# Keep the placement pass deterministic: no sdlc.yml here, rather than walking up into the repo the suite runs in.
+export CLAUDE_PROJECT_DIR="$TMP/proj"
+mkdir -p "$TMP/proj"
 export PYTHONDONTWRITEBYTECODE=1
 FX="$TMP/fx"; mkdir -p "$FX"
 
@@ -556,6 +559,34 @@ YML
   for be in "${BACKENDS[@]}"; do
     run $be machines check --registry "$F31"; t "[$be] repeated machines: exit 1" rc_is 1
     t "[$be] repeated machines: no machines, not usable" pyl $be "$F31" 'r.machines == {} and not r.usable'
+  done
+
+  echo "32  alias-nested values are bounded in time and message length"
+  "$PY" - "$FX/c32.yaml" <<'PYG'
+import sys
+lines = ["l0: &l0 {a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9}"]
+for n in range(1, 8):
+    lines.append("l%d: &l%d {%s}" % (n, n, ", ".join("k%d: *l%d" % (i, n - 1) for i in range(9))))
+lines += ["machines:", "  here: {transport: local}",
+          "  w: {transport: {herdr: w}, workdir: /w, caps: *l7, limits: *l7, keeps: *l7}"]
+open(sys.argv[1], "w").write("\n".join(lines) + "\n")
+PYG
+  for be in "${BACKENDS[@]}"; do
+    PYP="$LIB"; PPATH="$PATH"; BOUND=2
+    # yq expands aliases itself and gives up after YQ_TIMEOUT (2 s), so its bound is that plus slack.
+    [ "$be" = yq ] && { PYP="$LIB:$TMP/noyaml"; PPATH="$TMP/pyyq"; BOUND=4; }
+    t "[$be] alias bomb: load() returns in under ${BOUND}s, every message <= 300 chars" env PYTHONPATH="$PYP" PATH="$PPATH" "$PY" -c "
+import sys, time, machines
+t0 = time.time()
+r = machines.load('$FX/c32.yaml')
+dt = time.time() - t0
+longest = max([len(i.message) for i in r.issues] or [0])
+sys.exit(0 if (dt < $BOUND and longest <= 300) else 1)"
+    t0=$(date +%s%N)
+    run $be machines check --registry "$FX/c32.yaml"
+    t1=$(date +%s%N)
+    t "[$be] alias bomb: check returns in under ${BOUND}s with no traceback" bash -c '[ $(( ($1 - $2) / 1000000 )) -lt $(( $3 * 1000 )) ] && ! echo "$4" | grep -q Traceback' _ "$t1" "$t0" "$BOUND" "$OUT"
+    t "[$be] alias bomb: no printed line over 400 chars" bash -c '! echo "$1" | awk "length > 400 {f=1} END {exit !f}"' _ "$OUT"
   done
 
   echo "29  blank trust keys and duplicate keys"
