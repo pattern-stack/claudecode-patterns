@@ -594,6 +594,94 @@ sys.exit(0 if (dt < $BOUND and longest <= 300) else 1)"
     t "[$be] alias bomb: no printed line over 400 chars" bash -c '! echo "$1" | awk "length > 400 {f=1} END {exit !f}"' _ "$OUT"
   done
 
+  echo "33  merge keys: repeated keys are still caught (yq resolves << before we look)"
+  F33a="$(fixture c33a <<'YML'
+base: &base {transport: {herdr: w}, workdir: /w}
+machines:
+  here: {transport: local}
+  box:
+    <<: *base
+    assignable: false
+    assignable: true
+YML
+)"
+  F33b="$(fixture c33b <<'YML'
+base: &base {transport: {herdr: w}, workdir: /w}
+machines:
+  here: {transport: local}
+  box:
+    <<: *base
+    role: a
+    role: b
+YML
+)"
+  F33c="$(fixture c33c <<'YML'
+base: &base {transport: {herdr: w}, workdir: /w, assignable: false}
+machines:
+  here: {transport: local}
+  box:
+    <<: *base
+    assignable: true
+YML
+)"
+  for be in "${BACKENDS[@]}"; do
+    run $be machines check --registry "$F33a"; t "[$be] merge + repeated assignable: exit 1" rc_is 1
+    t "[$be] merge + repeated assignable: does not load as assignable" pyl $be "$F33a" 'b.assignable is False and not b.ok'
+    run $be machines check --registry "$F33b"; t "[$be] merge + repeated role: exit 1" rc_is 1
+    t "[$be] merge + repeated role: box not ok" pyl $be "$F33b" 'not b.ok and "role" in b.invalid'
+    run $be machines check --registry "$F33c"; t "[$be] merge then an explicit override is not a repeat" has "check: ok (errors=0, warnings=1)"
+    t "[$be] explicit override wins over the merged value" pyl $be "$F33c" 'b.assignable is True and b.ok'
+  done
+
+  echo "34  random merge-key registries: the backends agree"
+  if [ "$HAVE_PYYAML" = 1 ] && [ "$HAVE_YQ" = 1 ]; then
+    mkdir -p "$TMP/rnd"
+    "$PY" - "$TMP/rnd" <<'PYG'
+import random, sys
+random.seed(7)
+pool = {
+    "assignable": ["true", "false", "no"],
+    "workdir": ["/w", "/x"],
+    "secrets": ["none", "dev", "prod", "staging"],
+    "role": ["a", "b"],
+    "caps": ["[edit]", "[test]"],
+    "gaming_sensitive": ["true", "false"],
+    "backup": ["true", "false"],
+}
+def pairs(n):
+    out = []
+    for k in random.sample(sorted(pool), n):
+        out.append((k, random.choice(pool[k])))
+        if random.random() < 0.3:
+            out.append((k, random.choice(pool[k])))     # a repeat
+    random.shuffle(out)
+    return out
+for i in range(200):
+    lines = []
+    lines.append("base: &base {%s}" % ", ".join("%s: %s" % kv for kv in pairs(random.randint(0, 3))))
+    lines.append("other: &other {%s}" % ", ".join("%s: %s" % kv for kv in pairs(random.randint(0, 2))))
+    lines += ["machines:", "  here: {transport: local}", "  box:"]
+    lines.append("    " + random.choice(["<<: *base", "<<: [*base, *other]", "<<: [*other, *base]"]))
+    lines.append("    transport: {herdr: w}")
+    for k, v in pairs(random.randint(0, 3)):
+        lines.append("    %s: %s" % (k, v))
+    open("%s/r%03d.yaml" % (sys.argv[1], i), "w").write("\n".join(lines) + "\n")
+PYG
+    cat > "$TMP/rnd_dump.py" <<'PYD'
+import glob, sys
+import machines
+for f in sorted(glob.glob(sys.argv[1] + "/r*.yaml")):
+    r = machines.load(f)
+    b = r.machines.get("box")
+    print(f[-8:], r.usable, b and (b.ok, b.assignable, b.gaming_sensitive, b.secrets, b.role, sorted(b.invalid)), len(r.errors))
+PYD
+    env PYTHONPATH="$LIB" "$PY" "$TMP/rnd_dump.py" "$TMP/rnd" > "$TMP/rnd_py.txt" 2>&1
+    env PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" "$PY" "$TMP/rnd_dump.py" "$TMP/rnd" > "$TMP/rnd_yq.txt" 2>&1
+    t "200 random merge registries: PyYAML and yq agree on usable, ok, assignable, invalid keys, error count" cmp -s "$TMP/rnd_py.txt" "$TMP/rnd_yq.txt"
+    t "random registries: the sample has both ok and not-ok boxes" bash -c 'grep -q "(True," "$1" && grep -q "(False," "$1"' _ "$TMP/rnd_py.txt"
+    if ! cmp -s "$TMP/rnd_py.txt" "$TMP/rnd_yq.txt"; then diff "$TMP/rnd_py.txt" "$TMP/rnd_yq.txt" | head -6; fi
+  fi
+
   echo "29  blank trust keys and duplicate keys"
   for k in 'assignable:' 'gaming_sensitive:' 'busy_flag:' 'gaming_flag:' 'secrets:'; do
     box_fixture c29 "$k"
