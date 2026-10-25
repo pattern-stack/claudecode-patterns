@@ -380,22 +380,66 @@ def parse_yaml(path: Path, timeout: Optional[float] = None) -> object:
     extra: Dict[str, Any] = {}
     try:
         import resource  # POSIX only; without it yq runs unlimited
-        extra["preexec_fn"] = lambda: resource.setrlimit(resource.RLIMIT_AS, (YQ_MEMORY_LIMIT, YQ_MEMORY_LIMIT))
+
+        def _limit_child() -> None:
+            # Lower the soft limit only. Never try to raise the hard one: where it is already lower than
+            # YQ_MEMORY_LIMIT, use it, so a restricted environment still parses.
+            _soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+            cap = YQ_MEMORY_LIMIT if hard == resource.RLIM_INFINITY else min(YQ_MEMORY_LIMIT, hard)
+            resource.setrlimit(resource.RLIMIT_AS, (cap, hard))
+
+        extra["preexec_fn"] = _limit_child
     except ImportError:
         pass
+    deadline = time.monotonic() + limit      # one budget for every yq call below, each under the memory limit
+
+    def run_yq(expr: str) -> str:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
+        try:
+            proc = subprocess.run(["yq", "-o=json", "-I=0", expr, str(path)], stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, timeout=left, **extra)
+        except subprocess.TimeoutExpired:
+            raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
+        except (OSError, subprocess.SubprocessError) as exc:      # incl. a setrlimit failure in the child: fail closed
+            raise RegistryError("could not run yq on %s: %s" % (path, exc))
+        if proc.returncode != 0:
+            raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
+        return proc.stdout
+
+    out = run_yq(".")
     try:
-        proc = subprocess.run(["yq", "-o=json", ".", str(path)], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=limit, **extra)
-    except subprocess.TimeoutExpired:
-        raise RegistryError("yq timed out after %gs reading %s" % (limit, path))
-    except (OSError, subprocess.SubprocessError) as exc:      # incl. a setrlimit failure in the child: fail closed
-        raise RegistryError("could not run yq on %s: %s" % (path, exc))
-    if proc.returncode != 0:
-        raise RegistryError("could not parse %s: %s" % (path, _first_line(proc.stderr) or "yq failed"))
-    try:
-        return _normalise_numbers(json.loads(proc.stdout, object_pairs_hook=_pairs_to_map))
+        doc = json.loads(out, object_pairs_hook=_pairs_to_map)
     except (ValueError, RecursionError):
         raise RegistryError("could not parse %s: yq printed output that is not JSON" % path)
+    if _has_merge_key(path):
+        # yq resolves `<<` merges before printing, which drops repeated keys (the last copy wins).
+        # Ask for the repeats on the unresolved tree, and put them back on the parsed document.
+        try:
+            repeats = json.loads(run_yq(_YQ_REPEATS))
+            for entry in repeats:
+                node = doc
+                for step in entry["p"]:
+                    node = node[step]
+                node.dups = tuple(dict.fromkeys(tuple(node.dups) + tuple(entry["d"])))
+        except RegistryError:
+            raise
+        except Exception:
+            raise RegistryError("could not parse %s: cannot tell whether a merged mapping repeats a key" % path)
+    return _normalise_numbers(doc)
+
+
+_YQ_REPEATS = ('[.. | select(kind == "map") | select((keys|length) != (keys|unique|length)) '
+               '| {"p": path, "d": (keys | group_by(.) | map(select(length>1) | .[0]))}]')
+
+
+def _has_merge_key(path: Path) -> bool:
+    try:
+        with open(str(path), "rb") as fh:
+            return b"<<" in fh.read()
+    except OSError:
+        return True
 
 
 # ── schema ───────────────────────────────────────────────────────────────────
@@ -1228,6 +1272,12 @@ def unfit_reason(machine: Machine, needs: Needs) -> Optional[str]:
     return None
 
 
+def _block_errors(config: PlacementConfig) -> List[Issue]:
+    """The errors that explain a broken config: at `sdlc.yml` or at a placement key as a whole."""
+    levels = {"sdlc.yml"} | {_w(k) for k in PLACEMENT_KEYS}
+    return [i for i in config.issues if i.level == "error" and i.where in levels]
+
+
 def _first_error(issues: List[Issue], fallback: str) -> str:
     for issue in issues:
         if issue.level == "error":
@@ -1332,7 +1382,7 @@ def _resolve(role: str, kind: Optional[str], registry: Registry, config: Placeme
                     _first_error(registry.issues, "it is not usable"))
     if not config.usable:
         return _off(role, kind_in, "sdlc-errors", "machines are off: sdlc.yml has errors (%s)" %
-                    _first_error(config.issues, "it is not usable"))
+                    _first_error(_block_errors(config), "it is not usable"))
     if not config.opted_in:
         return _off(role, kind_in, "no-placement", "machines are off: sdlc.yml places nothing")
 
@@ -1439,8 +1489,7 @@ def placement_issues(registry: Registry, config: PlacementConfig) -> List[Issue]
     """The repo pass of `check`. Call only when registry.usable."""
     if not config.usable:
         # A broken config shows only its file- or block-level errors, and no role lines.
-        levels = {"sdlc.yml"} | {_w(k) for k in PLACEMENT_KEYS}
-        return [i for i in config.issues if i.level == "error" and i.where in levels]
+        return _block_errors(config)
     out = list(config.issues)
     if not config.opted_in:
         return out
