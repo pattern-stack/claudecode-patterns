@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """sdlc: command line for the sdlc plugin.
 
-    sdlc machines [--registry PATH] [--config FILE] [list [--registry PATH]]
+    sdlc machines [--registry PATH] [list [--registry PATH]]
     sdlc machines [--registry PATH] [--config FILE] check [--registry PATH] [--config FILE] [--probe] [--timeout SECS]
     sdlc machines [--registry PATH] [--config FILE] where ROLE [--kind phase|agent] [--registry PATH] [--config FILE]
 
@@ -50,7 +50,7 @@ _config_arg = _nonempty("--config")
 
 
 def _role_arg(text: str) -> str:
-    if not machines._strip_role(text):
+    if not machines.strip_role(text):
         raise argparse.ArgumentTypeError("a role needs a name, got %r" % text)
     return text
 
@@ -212,9 +212,9 @@ def cmd_check(args: argparse.Namespace) -> int:
 def _needs_text(needs: "machines.Needs") -> str:
     parts = []
     if needs.caps:
-        parts.append("caps " + ", ".join(needs.caps))
+        parts.append("caps " + machines.shown_list(needs.caps))
     if needs.keeps:
-        parts.append("keeps " + ", ".join(needs.keeps))
+        parts.append("keeps " + machines.shown_list(needs.keeps))
     if needs.secrets != "none":
         parts.append("secrets " + needs.secrets)
     return "; ".join(parts) or "-"
@@ -222,16 +222,18 @@ def _needs_text(needs: "machines.Needs") -> str:
 
 def _print_where(p: "machines.Placement", reg: "machines.Registry",
                  cfg: Optional["machines.PlacementConfig"]) -> None:
+    cap = machines.cap_text
+
     def line(label: str, text: str) -> None:
-        print("  %-13s%s" % (label + ":", text))
+        print(cap("  %-13s%s" % (label + ":", text)))
 
     if p.status == "off":
-        print("%s: this box (machines are off)" % p.role)
+        print(cap("%s: this box (machines are off)" % p.role))
     elif p.status == "unplaceable":
-        print("%s: nowhere" % p.role)
+        print(cap("%s: nowhere" % p.role))
     else:
-        print("%s: %s%s%s" % (p.role, p.machine, " (local)" if p.local else "",
-                              ", fallback" if p.status == "fallback" else ""))
+        print(cap("%s: %s%s%s" % (p.role, p.machine, " (local)" if p.local else "",
+                                  ", fallback" if p.status == "fallback" else "")))
     if p.status != "off":
         line("kind", p.kind or "unplaced")
         req = p.requested
@@ -240,9 +242,11 @@ def _print_where(p: "machines.Placement", reg: "machines.Registry",
         line("needs", _needs_text(needs) if needs is not None else "-")
         if p.machine is not None:
             extra = "   (local first; sdlc delegate picks by load)" if p.target == "any" else ""
-            line("candidates", ", ".join(p.candidates) + extra)
-        for key, why in p.rejected:
+            line("candidates", machines.shown_list(p.candidates) + extra)
+        for key, why in p.rejected[:machines.LIST_SHOWN]:
             line("refused", "%s: %s" % (key, why))
+        if len(p.rejected) > machines.LIST_SHOWN:
+            line("refused", "(+%d more)" % (len(p.rejected) - machines.LIST_SHOWN))
     line("reason", p.reason)
     line("registry", str(reg.path))
     if cfg is None:

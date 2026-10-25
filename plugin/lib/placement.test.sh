@@ -741,15 +741,21 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
 done
 
 echo "B14a  nested aliases stay bounded"
-mkdir -p "$FX/alias/.claude"
-"$PY" - "$FX/alias/.claude/sdlc.yml" <<'PYA'
+# Depth 8 for PyYAML (aliases share objects). yq expands aliases itself, so its leg uses depth 5, which it can
+# finish; a deeper expansion is B14d's job (it must fail, not allocate).
+mkdir -p "$FX/alias/.claude" "$FX/alias5/.claude" "$FX/alias8y/.claude"
+for spec in "alias 8" "alias5 5" "alias8y 8"; do
+  set -- $spec
+  "$PY" - "$FX/$1/.claude/sdlc.yml" "$2" <<'PYA'
 import sys
+depth = int(sys.argv[2])
 lines = ["a0: &a0 {" + ", ".join("k%d: 1" % i for i in range(9)) + "}"]
-for n in range(1, 9):
+for n in range(1, depth + 1):
     lines.append("a%d: &a%d {" % (n, n) + ", ".join("k%d: *a%d" % (i, n - 1) for i in range(9)) + "}")
-lines += ["phase_machines: {validator: *a8}", "needs: {validator: *a8}"]
+lines += ["phase_machines: {validator: *a%d}" % depth, "needs: {validator: *a%d}" % depth]
 open(sys.argv[1], "w").write("\n".join(lines) + "\n")
 PYA
+done
 t "B14a the alias file is about 1 KB" bash -c '[ "$(wc -c < "$1")" -ge 700 ] && [ "$(wc -c < "$1")" -le 1400 ]' _ "$FX/alias/.claude/sdlc.yml"
 TIMEOUT="$(command -v timeout || true)"
 ALIAS='import sys, time, machines
@@ -762,9 +768,9 @@ msgs = [i.message for i in machines.placement_issues(reg, c)] + [p.reason]
 t2 = time.monotonic()
 print("lookup=%.2f check=%.2f longest=%d status=%s" % (t1 - t0, t2 - t1, max(len(m) for m in msgs), p.status))'
 for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
-  limit=2; [ "$be" = yq ] && limit=4
+  limit=2; adir="$FX/alias"; [ "$be" = yq ] && { limit=4; adir="$FX/alias5"; }
   if [ "$be" = yq ]; then
-    OUT=$(PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c "$ALIAS" "$FX/alias" "$EXAMPLE" 2>&1); RC=$?
+    OUT=$(PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c "$ALIAS" "$adir" "$EXAMPLE" 2>&1); RC=$?
   else
     OUT=$(PYTHONPATH="$LIB" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c "$ALIAS" "$FX/alias" "$EXAMPLE" 2>&1); RC=$?
   fi
@@ -774,8 +780,95 @@ for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
 import re, sys
 m = re.search(r\"lookup=([0-9.]+) check=([0-9.]+) longest=([0-9]+)\", sys.stdin.read())
 sys.exit(0 if m and float(m.group(1)) < $4 and float(m.group(2)) < $4 and int(m.group(3)) <= 300 else 1)"' _ "$RC" "$OUT" "$PY" "$limit"
-  run $be machines check --registry "$EXAMPLE" --config "$FX/alias/.claude/sdlc.yml"
+  run $be machines check --registry "$EXAMPLE" --config "$adir/.claude/sdlc.yml"
   t "[$be] B14a the CLI check finishes and every line is bounded" bash -c '[ "$(printf "%s\n" "$1" | awk "{ if (length(\$0) > m) m = length(\$0) } END { print m }")" -le 420 ]' _ "$OUT"
+done
+
+
+echo "B14d  a too-large yq expansion fails instead of allocating (yq only)"
+if [ "$HAVE_YQ" = 1 ]; then
+  OUT=$(PYTHONPATH="$LIB:$TMP/noyaml" PATH="$TMP/pyyq" ${TIMEOUT:+$TIMEOUT 30} "$PY" -c '
+import resource, sys, time, machines
+t0 = time.monotonic()
+try:
+    machines.parse_yaml(__import__("pathlib").Path(sys.argv[1]))
+    outcome = "parsed"
+except machines.RegistryError as exc:
+    outcome = "error"
+peak_mb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024.0
+print("outcome=%s seconds=%.1f peak_mb=%d" % (outcome, time.monotonic() - t0, peak_mb))
+sys.exit(0 if (outcome == "error" and peak_mb < 1100) else 1)' "$FX/alias8y/.claude/sdlc.yml" 2>&1); RC=$?
+  t "B14d depth-8 yq expansion: a parse error, child peak under 1.1 GB" rc_is 0
+else
+  [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ] || echo "skip: B14d needs yq"
+fi
+
+echo "B14e  YAML merge keys are not repeats"
+M_FILE="$(cfgfile merge <<'EOF'
+base: &base
+  phase_machines: {validator: worker-1}
+<<: *base
+phase_machines: {}
+EOF
+)"
+ANS=""
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  pyrun $be 'import sys, machines
+c = machines.load_placement(sys.argv[1])
+print(c.opted_in, c.broken, [i.where for i in c.issues])' "$M_FILE"
+  t "[$be] B14e merge key then an explicit empty phase_machines: not opted in, not broken, no issue" bash -c '[ "$1" = "False False []" ]' _ "$OUT"
+  run $be machines where validator --registry "$EXAMPLE" --config "$M_FILE"
+  t "[$be] B14e where: machines off, places nothing, rc 0" rc_is 0
+  t "[$be] B14e where: reason" has "sdlc.yml places nothing"
+done
+
+echo "B14f  reasons and where lines are capped"
+LONGT="$("$PY" -c 'print("t" * 3000)')"
+"$PY" - "$FX/caps.yml" "$FX/many.yml" "$FX/manyreg.yaml" <<'PYC'
+import sys
+open(sys.argv[1], "w").write("phase_machines: {validator: %s}\n" % ("t" * 3000))
+caps = ", ".join("cap%d" % i for i in range(400))
+open(sys.argv[2], "w").write("phase_machines: {validator: worker-1}\nneeds: {validator: [%s]}\n" % caps)
+lines = ["machines:", "  here: {transport: local}"]
+lines += ["  m%d: {assignable: false}" % i for i in range(40)]
+open(sys.argv[3], "w").write("\n".join(lines) + "\n")
+PYC
+CAPS_ANY="$(cfgfile caps-any <<'EOF'
+phase_machines: {validator: any}
+needs: {validator: [gpu]}
+EOF
+)"
+longest_line() { printf '%s\n' "$OUT" | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }'; }
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  run $be machines where validator --registry "$EXAMPLE" --config "$FX/caps.yml"
+  t "[$be] B14f a 3000-character target: where lines are 300 chars or fewer" bash -c '[ "$1" -le 300 ]' _ "$(longest_line)"
+  t "[$be] B14f a 3000-character target: still a fallback, rc 1" rc_is 1
+  run $be machines check --registry "$EXAMPLE" --config "$FX/caps.yml"
+  t "[$be] B14f a 3000-character target: check lines are bounded" bash -c '[ "$1" -le 420 ]' _ "$(longest_line)"
+  run $be machines where validator --registry "$EXAMPLE" --config "$FX/many.yml"
+  t "[$be] B14f a needs list of 400 caps: where lines are 300 chars or fewer" bash -c '[ "$1" -le 300 ]' _ "$(longest_line)"
+  t "[$be] B14f a needs list of 400 caps: the list is cut with (+k more)" has "(+390 more)"
+  run $be machines where validator --registry "$FX/manyreg.yaml" --config "$CAPS_ANY"
+  t "[$be] B14f 41 refusals: at most 10 refused lines and a (+k more) line" bash -c '[ "$(printf "%s\n" "$1" | grep -c "refused:")" -le 11 ]' _ "$OUT"
+  t "[$be] B14f 41 refusals: the cut is announced" has "(+"
+done
+
+echo "B14g  the base parser is linear in the number of keys"
+mkdir -p "$FX/big/.claude"
+"$PY" - "$FX/big/.claude/sdlc.yml" <<'PYB'
+import sys
+open(sys.argv[1], "w").write("phase_machines: {validator: worker-1}\n" + "".join("k%d: 1\n" % i for i in range(20000)))
+PYB
+BIGQ='import sys, time, machines
+t0 = time.monotonic()
+p = machines.lookup("validator", project_dir=sys.argv[1], registry_file=sys.argv[2])
+print("seconds=%.2f status=%s" % (time.monotonic() - t0, p.status))'
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
+  pyrun $be "$BIGQ" "$FX/big" "$EXAMPLE"
+  t "[$be] B14g a 20,000-key sdlc.yml: lookup returns in under 2 s with a placement (a quadratic parser takes about 3 s)" bash -c '
+    case "$1" in *status=placed*) ;; *) exit 1 ;; esac
+    s=${1#seconds=}; s=${s%% *}
+    awk -v s="$s" "BEGIN { exit !(s < 2) }"' _ "$OUT"
 done
 
 echo "B14c  an empty role is a usage error"
