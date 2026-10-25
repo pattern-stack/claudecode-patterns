@@ -170,10 +170,17 @@ def read_nested_block(lines, key):
         elif role is not None:
             if knob_indent is None:
                 knob_indent = ind
-            if ind == knob_indent and not clean.startswith("{"):
-                v = scalar(rest)
-                if v is not None:
-                    out[role][name] = v
+            if ind == knob_indent:
+                if clean.startswith("{"):
+                    if not clean.endswith("}"):
+                        # a multi-line flow map under a knob: its continuation lines
+                        # would read as knobs, so fail closed and close the role.
+                        role = None
+                        knob_indent = None
+                else:
+                    v = scalar(rest)
+                    if v is not None:
+                        out[role][name] = v
     return {r: k for r, k in out.items() if k}
 
 
@@ -194,7 +201,7 @@ def timing(tool_name, tool_input):
     Claude Code, and 'ran' is the wording that is safe when wrong."""
     if tool_name == "TeamCreate":
         return "running"
-    if tool_name == "Agent" and tool_input.get("run_in_background") is True:
+    if tool_input.get("run_in_background") is True:
         return "running"
     return "ran"
 
@@ -215,9 +222,18 @@ def _armed_hint(tool_name, raw_role, role, project_dir, spawn):
     Accepted: an alarm landing in subprocess.Popen's fork-to-exec window (where
     machines.py's preexec_fn applies RLIMIT_AS) raises before run() holds the
     child, so that one yq child is orphaned. The window is well under a
-    millisecond, and the orphan has DEVNULL stdin and a 1 GiB memory limit."""
+    millisecond, and the orphan has DEVNULL stdin and a 1 GiB memory limit.
+
+    Also accepted, both vanishingly rare: (1) the alarm fires while a __del__ or
+    GC callback is running. Python prints and drops an exception raised there, the
+    one-shot timer is spent, and that lookup then runs unbounded by this deadline.
+    (2) the alarm lands at the very top of the finally, before the disarm: the
+    _Deadline escapes from the finally, the handler is not restored, and the outer
+    guard returns None. No timer is armed by then, so the leftover handler is
+    inert."""
     armed = False
     old = None
+    inserted = None
     try:
         if hasattr(signal, "setitimer") and threading.current_thread() is threading.main_thread():
             old = signal.signal(signal.SIGALRM, _on_alarm)
@@ -226,6 +242,7 @@ def _armed_hint(tool_name, raw_role, role, project_dir, spawn):
         sys.dont_write_bytecode = True
         lib = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib")
         sys.path.insert(0, lib)
+        inserted = lib
         with contextlib.redirect_stdout(io.StringIO()):
             import machines
             placement, registry, _cfg = machines.locate(
@@ -236,6 +253,8 @@ def _armed_hint(tool_name, raw_role, role, project_dir, spawn):
         if armed:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, old if old is not None else signal.SIG_DFL)
+        if inserted is not None and inserted in sys.path:
+            sys.path.remove(inserted)
 
 
 def placement_hint(tool_name, raw_role, role, project_dir, spawn):
@@ -252,10 +271,6 @@ def placement_hint(tool_name, raw_role, role, project_dir, spawn):
         return None
     finally:
         sys.stdout = real
-
-
-def _cap(text, n):
-    return text if len(text) <= n else text[:n - 3] + "..."
 
 
 def format_hint(tool_name, raw_role, role, placement, registry, when):
@@ -275,7 +290,8 @@ def format_hint(tool_name, raw_role, role, placement, registry, when):
         return None
     what = "Agent subagent" if tool_name == "Agent" else "TeamCreate teammate"
     as_what = "as an Agent subagent" if tool_name == "Agent" else "as a TeamCreate teammate"
-    reason = _cap(str(p.reason).replace("**", "").replace("`", ""), VALUE_MAX)
+    import machines  # already imported by _armed_hint; cap_text is #137's
+    reason = machines.cap_text(str(p.reason).replace("**", "").replace("`", ""), VALUE_MAX)
     head = "sdlc machines: %s." % reason
     if not remote:
         text = (head + "\nThis %s runs on this box anyway: the hook never blocks a spawn, and sdlc delegate "
@@ -288,7 +304,7 @@ def format_hint(tool_name, raw_role, role, placement, registry, when):
     q_role = shlex.quote(role)
     delegate = "  sdlc delegate %s --issue <n>" % q_role
     tail = ("Results come back through GitHub (a pushed branch or a PR comment), so ask for that in the "
-            "brief. Explain: sdlc machines where %s" % role)
+            "brief. Explain: sdlc machines where %s" % q_role)
     any_line = None
     if len(p.candidates) > 1:
         shown = list(p.candidates[:ANY_SHOWN])
@@ -299,7 +315,7 @@ def format_hint(tool_name, raw_role, role, placement, registry, when):
     mach = registry.get(m)
     if mach is not None and mach.transport.kind == "herdr" and mach.transport.herdr:
         label, workdir = mach.transport.herdr, mach.workdir
-        vals = [label, raw_role] + ([workdir] if workdir else [])
+        vals = [label] + ([workdir] if workdir else [])
         if all(len(v) <= VALUE_MAX for v in vals):
             ql = shlex.quote(label)
             herdr_line = ("Without sdlc delegate: herdr --machine %s tab create --no-focus%s, then herdr "
@@ -373,7 +389,7 @@ def main():
         fail_open()
 
     try:
-        with open(sdlc_path, "r") as f:
+        with open(sdlc_path, "r", encoding="utf-8-sig") as f:
             lines = f.read().splitlines()
     except Exception:
         fail_open()

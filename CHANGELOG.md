@@ -38,8 +38,9 @@ nothing.
   `phase_models` value. A quoted `"null"` stays a string.
 - **A prefixed or scalar role entry** (`sdlc:validator:`, or `validator: sonnet`) no longer leaks its knobs into the role
   above it.
-- **A multi-line flow map** (`specifier: { model: opus,` with the rest on the next line) now fails closed for that
-  role: no tuning from a half-read entry. Its flat keys still apply.
+- **A multi-line flow map** (`specifier: { model: opus,` with the rest on the next line), at role level or under a
+  knob, now fails closed for that role: no tuning from a half-read entry. Its flat keys still apply.
+- **A UTF-8 byte-order mark** at the start of `sdlc.yml` no longer hides a leading `phases:` block from the hook.
 
 ## [0.2.41] — 2026-10-25
 

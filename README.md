@@ -279,7 +279,7 @@ A subagent always runs on the coordinator's box, so a role the repo places elsew
 - **What it offers:** `sdlc delegate <role> --issue <n>`, then a one-line raw `herdr --machine ...` fallback for when `sdlc delegate` isn't available. Results come back through GitHub, so the brief should ask for a pushed branch or a PR comment.
 - **To place the first run too,** check `sdlc machines where <role>` before spawning, or start the role with `sdlc delegate` directly.
 - **No change** for local roles, roles the repo doesn't place (even under a remote `default_machine`), repos that place nothing, and boxes with no registry. The hook's output is byte-for-byte what it was.
-- **An unplaceable role** (nowhere in the registry fits it) gets a one-line warning; the spawn runs here anyway.
+- **An unplaceable role** that the repo places (nowhere in the registry fits it) gets a one-line warning; the spawn runs here anyway. A role the repo doesn't place stays silent.
 - **Time:** none added unless the repo places something. A slow registry or `sdlc.yml` read is cut off by the hook's own 3.5 s deadline (`HOOK_DEADLINE`), and the spawn then gets its tuning with no hint.
 
 ---

@@ -45,6 +45,9 @@ if [ "${SDLC_REQUIRE_BOTH_BACKENDS:-0}" = 1 ]; then
   [ "$HAVE_YQ" = 1 ] && ok "required backend present: yq" || bad "required backend missing: yq"
 fi
 BACKENDS=()
+TIMEOUT="$(command -v timeout || true)"
+# tmo CMD...: run under `timeout 10` when it exists (a timeout then shows up as exit 124).
+tmo() { if [ -n "$TIMEOUT" ]; then "$TIMEOUT" 10 "$@"; else "$@"; fi; }
 [ "$HAVE_PYYAML" = 1 ] && BACKENDS+=(py)
 [ "$HAVE_YQ" = 1 ] && BACKENDS+=(yq)
 mkdir -p "$TMP/.claude"
@@ -208,7 +211,7 @@ printf '%s\n' "${REGBASE/WORKDIR//srv/$(printf 'a%.0s' $(seq 1 300))}" | mkreg R
   for n in 3 4 5; do printf '  worker-%s:\n    transport: { herdr: worker-%s }\n    caps: [edit, test, browser]\n' "$n" "$n"; done
 } | mkreg REG_MANY
 HROLE="r$(printf 'a%.0s' $(seq 1 189))"
-"$PY" - "$REGD/REG_HUGE.yaml" "$FIX" "$HROLE" <<'PYEOF'
+"$PY" -B - "$REGD/REG_HUGE.yaml" "$FIX" "$HROLE" <<'PYEOF'
 import os, sys
 reg, fix, role = sys.argv[1:4]
 def name(c):
@@ -481,7 +484,7 @@ golden mlf sdlc:specifier Agent '-'
 golden mlf sdlc:reviewer Agent '{"subagent_type": "sdlc:reviewer", "prompt": "x", "model": "fable"}'
 
 echo "T1/T1b/T16: a remote role gets a hint, never a decision:"
-for be in "${BACKENDS[@]}"; do
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   out="$(runp p REG $be "$VAL")"; c="$(ctx "$out")"
   [ "$(got "$out" model)" = sonnet ] && ok "[$be] T1 tuning kept (model=sonnet)" || bad "[$be] T1 model (got: $(got "$out" model))"
   [ -z "$(got "$out" machine)" ] && ok "[$be] T1 no machine key in updatedInput" || bad "[$be] T1 machine leaked into updatedInput"
@@ -534,7 +537,7 @@ c="$(ctx "$(runp p REG_LONG $B0 "$VAL")")"
 want "T17 long command value" "$c" "sdlc delegate validator --issue <n>"; unwant "T17 herdr line dropped" "$c" "herdr --machine" "Without sdlc delegate"
 
 echo "T7: nowhere hint:"
-for be in "${BACKENDS[@]}"; do
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   out="$(runp p REG $be '{"subagent_type":"tester","prompt":"x"}')"; c="$(ctx "$out")"
   want "[$be] T7 nowhere hint" "$c" "has nowhere to run" "runs on this box anyway"
   unwant "[$be] T7 no delegate command, herdr or bold" "$c" '**' "sdlc delegate tester" "--issue" "herdr"
@@ -542,7 +545,7 @@ for be in "${BACKENDS[@]}"; do
 done
 
 echo "T10-T12: fail-open:"
-for be in "${BACKENDS[@]}"; do
+for be in ${BACKENDS[@]+"${BACKENDS[@]}"}; do
   [ "$(runp p REG_BAD $be "$VAL")" = "$G_VAL_P" ] && ok "[$be] T10 broken registry: tuning only" || bad "[$be] T10 validator"
   empty "$(runp p REG_BAD $be '{"subagent_type":"sdlc:reviewer","prompt":"x"}')" && ok "[$be] T10 reviewer silent" || bad "[$be] T10 reviewer"
 done
@@ -579,15 +582,18 @@ out="$(runfp p REG)"
 { [ -e "$TMP/imported" ] && [ "$out" = "$G_VAL_P" ]; } && ok "T15 probe: a placing sdlc.yml does import" || bad "T15 probe"
 
 # T18: the hook's own deadline. Each variant under `timeout 10`; a timeout is a failure.
+DL="$(sed -n 's/^HOOK_DEADLINE = \([0-9.]*\).*/\1/p' "$HOOKPY")"
+SLP="31.$$${RANDOM}"   # unique per run, so the orphan check and cleanup touch only our own child
 dl_case() {  # label stub-body
   local label=$1 s e out rc
-  printf 'LOOKUP_BUDGET = 2.5\n%s\n' "$2" > "$FP/lib/machines.py"
+  printf 'LOOKUP_BUDGET = 2.5\n%s\n' "${2//@SLP@/$SLP}" > "$FP/lib/machines.py"
   s=$(now)
-  out="$(payload "$VAL" Agent | timeout 10 env CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$BASH" "$FPH" 2>/dev/null)"; rc=$?
+  out="$(payload "$VAL" Agent | tmo env CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$BASH" "$FPH" 2>/dev/null)"; rc=$?
   e=$(now)
   echo "    T18 $label: $(secs "$s" "$e")s, exit $rc"
   [ $rc -eq 124 ] && { bad "T18 $label hit the 10 s timeout (no working deadline)"; return; }
-  [ "$out" = "$G_VAL_P" ] && [ $rc -eq 0 ] && under "$s" "$e" 5 && ok "T18 $label: tuning only, under 5 s" || bad "T18 $label: rc=$rc out=[$out]"
+  [ "$out" = "$G_VAL_P" ] && [ $rc -eq 0 ] && under "$s" "$e" 5 && ! under "$s" "$e" "$(awk -v d="$DL" 'BEGIN{print d-0.2}')" \
+    && ok "T18 $label: tuning only, between HOOK_DEADLINE-0.2 and 5 s" || bad "T18 $label: rc=$rc out=[$out]"
 }
 dl_case "(a) time.sleep(30)" 'import time
 def locate(*a, **k):
@@ -597,9 +603,16 @@ dl_case "(b) busy loop" 'def locate(*a, **k):
         pass'
 dl_case "(c) subprocess.run sleep" 'import subprocess
 def locate(*a, **k):
-    subprocess.run(["sleep", "31.77"], capture_output=True)'
-orphans="$(ps -eo pid,args | awk '$2=="sleep" && $3=="31.77"')"
-[ -z "$orphans" ] && ok "T18 (c) no child left behind" || { bad "T18 (c) orphan: $orphans"; pkill -x -f 'sleep 31.77' 2>/dev/null; }
+    subprocess.run(["sleep", "@SLP@"], capture_output=True)'
+dl_case "(d) swallows Exception in a loop" 'import time
+def locate(*a, **k):
+    while True:
+        try:
+            time.sleep(30)
+        except Exception:
+            pass'
+orphans="$(ps -eo pid,args | awk -v a="$SLP" '$2=="sleep" && $3==a {print $1}')"
+[ -z "$orphans" ] && ok "T18 (c) no child left behind" || { bad "T18 (c) orphan: $orphans"; kill $orphans 2>/dev/null; }
 
 # T20: an alarm inside redirect_stdout leaves stdout alone, and arming is conditional.
 cat > "$TMP/imp.py" <<'PYEOF'
@@ -642,9 +655,9 @@ elif mode == "armed":
     assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
     print("armed-ok")
 PYEOF
-out="$(env HOOKPY="$HOOKPY" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$PY" -I "$TMP/imp.py" stdout 2>"$TMP/imp.err")"; rc=$?
+out="$(env HOOKPY="$HOOKPY" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$PY" -I -B "$TMP/imp.py" stdout 2>"$TMP/imp.err")"; rc=$?
 [ "$out" = "$G_VAL_P" ] && [ $rc -eq 0 ] && ok "T20 deadline inside redirect_stdout: stdout restored, tuning printed" || bad "T20 stdout: rc=$rc out=[$out] $(cat "$TMP/imp.err")"
-out="$(env HOOKPY="$HOOKPY" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$PY" -I "$TMP/imp.py" armed 2>"$TMP/imp.err")"; rc=$?
+out="$(env HOOKPY="$HOOKPY" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$PY" -I -B "$TMP/imp.py" armed 2>"$TMP/imp.err")"; rc=$?
 [ "$out" = "armed-ok" ] && [ $rc -eq 0 ] && ok "T20 disarms and restores only when it armed" || bad "T20 armed: rc=$rc out=[$out] $(cat "$TMP/imp.err")"
 
 # T14/T14b: yq hangs; the hook must still finish well inside its 5 s kill.
@@ -652,7 +665,7 @@ echo "T14/T14b: a hanging yq:"
 hang_case() {  # label PATHDIR
   local s e out rc
   s=$(now)
-  out="$(payload "$VAL" Agent | timeout 10 env PATH="$2" PYTHONPATH="$TMP/noyaml" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$BASH" "$HOOK" 2>/dev/null)"; rc=$?
+  out="$(payload "$VAL" Agent | tmo env PATH="$2" PYTHONPATH="$TMP/noyaml" CLAUDE_PROJECT_DIR="$FIX/p" SDLC_MACHINES="$REGD/REG.yaml" "$BASH" "$HOOK" 2>/dev/null)"; rc=$?
   e=$(now)
   echo "    $1: $(secs "$s" "$e")s, exit $rc"
   [ "$out" = "$G_VAL_P" ] && [ $rc -eq 0 ] && under "$s" "$e" 5 && ok "$1: tuning only, under 5 s" || bad "$1: rc=$rc out=[$out]"
@@ -663,7 +676,7 @@ if [ "$HAVE_YQ" = 1 ]; then hang_case "T14b yq hangs only on sdlc.yml" "$TMP/slo
 echo "T19: still over 2000 characters -> no hint:"
 out="$(runp hugep REG_HUGE $B0 "$(jq -nc --arg r "$HROLE" '{subagent_type:$r,prompt:"x"}')")"
 [ -z "$(ctx "$out")" ] && ok "T19 over-long hint is dropped whole" || bad "T19 hint present: $(ctx "$out" | wc -c) chars"
-chk="$(env SDLC_MACHINES="$REGD/REG_HUGE.yaml" "$PY" -I -c '
+chk="$(env SDLC_MACHINES="$REGD/REG_HUGE.yaml" "$PY" -I -B -c '
 import sys; sys.path.insert(0, sys.argv[1])
 import machines
 p, r, _ = machines.locate(sys.argv[3], None, project_dir=sys.argv[2])
@@ -744,6 +757,42 @@ phases:
 YML
 out="$(runp q5 "" $B0 "$VAL")"
 { [ "$(got "$out" model)" = sonnet ] && [ "$(got "$out" effort)" = low ]; } && ok "Q5 nested map ignored, later knob kept" || bad "Q5: $out"
+
+echo "Deadline vs hooks.json, BOM, 2000-char first stage, nested flow maps:"
+HJ="$(cd "$(dirname "$HOOK")" && pwd)/hooks.json"
+HT="$(jq -r '[.. | objects | select((.command? // "") | contains("phase-tuning.sh")) | .timeout] | first' "$HJ" 2>/dev/null)"
+awk -v d="$DL" -v t="$HT" 'BEGIN{exit !(t+0 > 0 && d+0 < t+0)}' && ok "HOOK_DEADLINE ($DL) is below the hooks.json timeout ($HT)" || bad "HOOK_DEADLINE ($DL) vs hooks.json timeout ($HT)"
+
+mkdir -p "$FIX/bom/.claude"; { printf '\xef\xbb\xbf'; cat "$FIX/p/.claude/sdlc.yml"; } > "$FIX/bom/.claude/sdlc.yml"
+out="$(runp bom REG $B0 "$VAL")"; c="$(ctx "$out")"
+{ [ "$(got "$out" model)" = sonnet ] && has "$c" "already ran here"; } && ok "BOM: tuning and hint both read the file" || bad "BOM: $out"
+mkdir -p "$FIX/bom2/.claude"; { printf '\xef\xbb\xbf'; printf 'phases:\n  validator:\n    model: fable\n'; } > "$FIX/bom2/.claude/sdlc.yml"
+out="$(runp bom2 "" $B0 "$VAL")"; [ "$(got "$out" model)" = fable ] && ok "BOM on the first key does not hide the block" || bad "BOM2: $out"
+
+"$PY" -B - "$REGD/REG_MID.yaml" "$FIX" <<'PYEOF'
+import os, sys
+reg, fix = sys.argv[1:3]
+M, L, Z = "m" * 190, "y" * 190, "/" + "z" * 190
+body = "machines:\n  here:\n    transport: local\n    caps: [edit]\n"
+body += "  %s:\n    transport: { herdr: %s }\n    workdir: %s\n    caps: [edit, browser]\n" % (M, L, Z)
+for c in "pq":
+    body += "  %s:\n    transport: { herdr: %s }\n    caps: [edit, browser]\n" % (c * 190, c * 190)
+open(reg, "w").write(body)
+os.makedirs(os.path.join(fix, "midp", ".claude"), exist_ok=True)
+open(os.path.join(fix, "midp", ".claude", "sdlc.yml"), "w").write("phase_machines:\n  validator: any\nneeds:\n  validator: [browser]\n")
+PYEOF
+out="$(runp midp REG_MID $B0 "$VAL")"; c="$(ctx "$out")"
+want "T19b first stage: over 2000 with the herdr line, the hint stays without it" "$c" "sdlc delegate validator --issue <n>" "Its result stands"
+unwant "T19b herdr line dropped" "$c" "herdr --machine" "Without sdlc delegate"
+[ "${#c}" -gt 1000 ] && [ "${#c}" -le 2000 ] && ok "T19b length ${#c} is within 2000" || bad "T19b length ${#c}"
+
+mkfix q4c <<'YML'
+phases:
+  specifier:
+    model: {
+    effort: high }
+YML
+empty "$(runp q4c "" $B0 '{"subagent_type":"sdlc:specifier","prompt":"x"}')" && ok "Q4c nested multi-line flow map fails closed" || bad "Q4c"
 
 echo "Every hint context:"
 nfiles="$(ls "$TMP/ctxs" | wc -l)"
