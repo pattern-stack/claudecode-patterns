@@ -1141,6 +1141,33 @@ t "the dialog was answered twice, then shown a third time: still showing after 2
 t "exit 3" rc_is 3
 t "only two Enters were sent" chk 'n(r"send-keys \S+ enter") == 2'
 
+echo "D68 the fallback lock directory must be ours, a real directory, and private"
+: > "$TMP/notadir"; rm -rf "$TMP/run" "$TMP/other"; mkdir -p "$TMP/run" "$TMP/other"
+lockrow() {   # lockrow LABEL : a delegate whose records directory is unwritable, so the lock goes under $TMP/run
+  newrow; XENV=(XDG_STATE_HOME="$TMP/notadir" XDG_RUNTIME_DIR="$TMP/run"); D $B1 "$CFG_W1" reviewer --issue 139
+}
+mkdir -p "$TMP/run/sdlc-delegate"; chmod 0777 "$TMP/run/sdlc-delegate"
+lockrow
+t "(a) a pre-created directory writable by others: exit 3, not safe" rc_is 3
+t "(a) the refusal says why" has "is not safe to use"
+t "(a) nothing was started" chk 'not mut()'
+chmod 0750 "$TMP/run/sdlc-delegate"; lockrow
+t "(b) a group-writable-or-not mode 0750 directory is fine" rc_is 0
+chmod 0770 "$TMP/run/sdlc-delegate"; lockrow
+t "(c) mode 0770 (group writable): exit 3" rc_is 3
+rm -rf "$TMP/run/sdlc-delegate"; ln -s "$TMP/other" "$TMP/run/sdlc-delegate"; lockrow
+t "(d) a symlink to a directory: exit 3, not safe" rc_is 3
+t "(d) nothing was written through the link" bash -c '[ -z "$(ls -A "$1")" ]' _ "$TMP/other"
+rm -f "$TMP/run/sdlc-delegate"
+if [ "$(id -u)" = 0 ]; then
+  mkdir -p "$TMP/run/sdlc-delegate"; chmod 0700 "$TMP/run/sdlc-delegate"; chown 65534 "$TMP/run/sdlc-delegate"; lockrow
+  t "(e) a directory owned by another user: exit 3" rc_is 3
+  rm -rf "$TMP/run/sdlc-delegate"
+fi
+mkdir -p "$TMP/run/sdlc-delegate"; chmod 0700 "$TMP/run/sdlc-delegate"; lockrow
+t "(f) our own 0700 directory is used: exit 0" rc_is 0
+rm -rf "$TMP/run"
+
 echo "D46 plugin/bin/sdlc is executable; the fake herdr is executable"
 t "sdlc is executable" test -x "$SDLC"
 t "fake-herdr.py is executable" test -x "$FAKE"

@@ -20,6 +20,7 @@ import os
 import re
 import shlex
 import signal
+import stat
 import subprocess
 import time
 from dataclasses import dataclass, replace
@@ -646,10 +647,17 @@ def _lock_file(machine: str, env: Optional[Mapping[str, str]]) -> LockInfo:
     for directory in options:
         try:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if os.access(str(directory), os.W_OK):
-                return LockInfo(directory / ("%s.lock" % machine), True)
+            st = os.lstat(str(directory))                   # lstat: a symlink is not a directory of ours
         except OSError:
             continue
+        # /tmp is shared: another user may have created the name first. Use the directory only if it is a real
+        # directory, ours, and not writable by group or others; otherwise another user could hold or redirect the lock.
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o022:
+            raise StartFailed("the lock directory %s is not safe to use (it must be a real directory owned by you "
+                              "and not writable by others, mode 0700); remove it or fix it, then retry. An unlocked "
+                              "start could overrun the machine's limits, so nothing was started" % directory, machine)
+        if os.access(str(directory), os.W_OK):
+            return LockInfo(directory / ("%s.lock" % machine), True)
     raise Refused("cannot take the lock for %s: neither the records directory nor a runtime directory is writable, "
                   "so concurrent starts can't be ruled out" % machine)
 
@@ -659,7 +667,7 @@ def machine_lock(machine: str, env: Optional[Mapping[str, str]] = None, wait: fl
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
     """An exclusive per-machine lock (flock), held from the load recheck through `agent start` and the provisional
     record, so two delegates can't pick the same pane or both take the last slot. Waits up to `wait` seconds,
-    then raises Refused (busy). Yields a LockInfo."""
+    then raises Refused (busy). Raises StartFailed when the fallback lock directory is not safe. Yields a LockInfo."""
     info = _lock_file(machine, env)
     try:
         handle = open(str(info.path), "a")
