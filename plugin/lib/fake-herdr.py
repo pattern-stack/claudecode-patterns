@@ -11,7 +11,7 @@ JSON errors on stderr (exit 1), and herdr's text error for an unknown machine (e
 
 Scenario keys per machine: agents (count of busy agents), unreachable, hang, workspaces, gates, idle_with_gate,
 unnamed_after_gate, focus_target, marker_stuck, stuck, redraw_lag, swap_before_enter, marker_glyph, missing_cwd,
-no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd, slow_create, slow_recent, fail_visible_read_n, ticker, slow_close, prompt_hang, start_error_once, slow_start.
+no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd, slow_create, slow_recent, fail_visible_read_n, ticker, slow_close, prompt_hang, start_error_once, slow_start, concurrent_workspace.
 """
 import json
 import os
@@ -308,6 +308,14 @@ def main():
         f.s["panes"].append({"pane_id": pid, "tab_id": tid, "workspace_id": wid, "foreground_cwd": cwd,
                              "fg": "bash", "dialog": None, "remaining": [], "marker": 0})
         f.commit()
+        if scen.get("concurrent_workspace") and group == "workspace":
+            m = f.new_id()                               # another coordinator made an sdlc-delegate workspace meanwhile
+            ow, ot, op = "w%d" % m, "w%d:t%d" % (m, m), "w%d:p%d" % (m, m)
+            f.s["workspaces"].append({"workspace_id": ow, "label": "sdlc-delegate"})
+            f.s["tabs"].append({"tab_id": ot, "workspace_id": ow, "label": "sdlc:other"})
+            f.s["panes"].append({"pane_id": op, "tab_id": ot, "workspace_id": ow, "foreground_cwd": "/elsewhere",
+                                 "fg": "bash", "dialog": None, "remaining": [], "marker": 0})
+            f.commit()
         if scen.get("slow_create"):
             time.sleep(float(scen["slow_create"]))      # the server has created it; the reply is slow
         result = {"type": "%s_created" % group, "tab": {"tab_id": tid, "workspace_id": wid},
@@ -315,6 +323,11 @@ def main():
         if group == "workspace":
             result["workspace"] = {"workspace_id": wid, "label": opt("--label", "")}
         out(cmd, result)
+    elif (group, verb) == ("workspace", "rename"):
+        for w in f.s["workspaces"]:
+            if w["workspace_id"] == rest[0]:
+                w["label"] = " ".join(rest[1:])
+        f.commit()
     elif (group, verb) == ("tab", "rename"):
         for t in f.s["tabs"]:
             if t["tab_id"] == rest[0]:

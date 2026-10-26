@@ -627,7 +627,7 @@ t "with repo: set, exit 0" rc_is 0
 echo "D26 dry run"
 newrow; D $B1 "$CFG_ANY" reviewer --issue 139 --dry-run
 t "exit 0; first line ends (dry run: nothing started)" bash -c '[ "$1" = 0 ] && printf "%s\n" "$2" | head -1 | grep -q "(dry run: nothing started)$"' _ "$RC" "$OUT"
-t "would run / workspace create / agent start / dialog step / mission" bash -c 'for s in "would run:" "workspace create --label sdlc-delegate" "agent start reviewer-139 --kind claude" "--permission-mode auto" "then, for each dialog" "mission:" "GitHub only"; do case "$1" in *"$s"*) ;; *) echo "missing: $s" >&2; exit 1;; esac; done' _ "$OUT"
+t "would run / workspace create / agent start / dialog step / mission" bash -c 'for s in "would run:" "workspace create --label" "sdlc-delegate.<nonce>" "workspace rename" "<new-workspace>" "agent start reviewer-139 --kind claude" "--permission-mode auto" "then, for each dialog" "mission:" "GitHub only"; do case "$1" in *"$s"*) ;; *) echo "missing: $s" >&2; exit 1;; esac; done' _ "$OUT"
 t "only read-only verbs were called" chk 'not mut()'
 t "no record file exists" bash -c '[ ! -e "$1" ]' _ "$TMP/home/.local/state/sdlc"
 
@@ -650,7 +650,7 @@ rm -rf "$TMP/st"
 echo "D28 workspace and pane reuse"
 WS_B='{"worker-2":{"agents":0,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/w2","fg":"bash"}]}]}]}}'
 newrow '{"worker-2":{"agents":0}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
-t "(a) workspace create --label sdlc-delegate --cwd /w2 --no-focus, then a tab rename" chk 'inorder(r"^workspace create --label sdlc-delegate --cwd /w2 --no-focus", r"^tab rename \S+ sdlc:reviewer-139")'
+t "(a) workspace create with a temporary label, renamed to sdlc-delegate, then the tab rename" chk 'inorder(r"^workspace create --label sdlc-delegate\.[0-9a-f]+ --cwd /w2 --no-focus", r"^workspace rename \S+ sdlc-delegate$", r"^tab rename \S+ sdlc:reviewer-139")'
 newrow "$WS_B"; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
 t "(b) a free pane is reused: no tab create, tab renamed" chk 'n(r"^tab create") == 0 and n(r"^workspace create") == 0 and n(r"^tab rename \S+ sdlc:reviewer-139") == 1'
 newrow '{"worker-2":{"agents":0,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/w2","fg":"node"}]}]}]}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
@@ -670,6 +670,7 @@ t "already live" has "already live"
 newrow '{"worker-2":{"agents":0,"name_taken_once":true}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
 t "(c) agent_name_taken once: a second start with reviewer-139-2 on the same pane" chk 'n(r"^agent start reviewer-139 ") == 1 and n(r"^agent start reviewer-139-2 ") == 1 and len({c["argv"][c["argv"].index("--pane") + 1] for c in calls if c["j"].startswith("agent start")}) == 1'
 t "(c) exit 0" rc_is 0
+t "(c) the tab label follows the final name" chk 'n(r"^tab rename \S+ sdlc:reviewer-139-2$") == 1'
 
 echo "D30 brief failures"
 newrow '{"worker-1":{"prompt_error":"agent_prompt_stalled"}}'; D $B1 "$CFG_W1" reviewer --issue 139
@@ -1239,6 +1240,14 @@ t "a browser role is refused when only the fallback lock is available" has "no r
 t "exit 1 and nothing was started" bash -c '[ "$1" = 1 ]' _ "$RC"
 t "no pane was made" chk 'not mut()'
 rm -rf "$TMP/run"
+
+echo "D75 an interrupted workspace create closes only the workspace with this run's label"
+set -m
+bgrun '{"worker-1":{"agents":0,"slow_create":4,"concurrent_workspace":true}}' '^workspace create' 'INT'
+t "Ctrl-C during workspace create: exit 130" rc_is 130
+t "the other coordinator's sdlc-delegate workspace and its pane survive" chk '[(w["label"], [p["pane_id"] for p in json.load(open(d + "/state.json"))["worker-1"]["panes"]]) for w in json.load(open(d + "/state.json"))["worker-1"]["workspaces"]] == [("sdlc-delegate", ["w%d:p%d" % (101, 101)])]'
+t "only our own workspace was closed" chk 'n(r"^pane close") == 1'
+set +m
 
 echo "D46 plugin/bin/sdlc is executable; the fake herdr is executable"
 t "sdlc is executable" test -x "$SDLC"

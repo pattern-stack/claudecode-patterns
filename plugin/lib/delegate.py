@@ -830,7 +830,9 @@ def plan_commands(decision: Decision, plan: PanePlan, *, start_timeout: float = 
 
     tab_label = TAB_PREFIX + name
     if plan.action == "create-workspace":
-        pane, out = "<new-pane>", [q("workspace", "create", "--label", WORKSPACE_LABEL, "--cwd", wd, "--no-focus"),
+        pane, out = "<new-pane>", [q("workspace", "create", "--label", WORKSPACE_LABEL + ".<nonce>", "--cwd", wd,
+                                     "--no-focus"),
+                                   q("workspace", "rename", "<new-workspace>", WORKSPACE_LABEL),
                                    q("tab", "rename", "<new-tab>", tab_label)]
     elif plan.action == "reuse-pane":
         pane, out = plan.pane_id or "<pane>", [q("tab", "rename", plan.tab_id or "<tab>", tab_label)]
@@ -1084,7 +1086,6 @@ class _Run:
         self.prompting = False                      # agent prompt has been invoked and not definitely rejected
         self.lock_info: Optional[LockInfo] = None
         self.nonce = os.urandom(3).hex()            # makes this run's temporary tab label unique
-        self.ws_before: FrozenSet[Any] = frozenset()
 
     def save(self, s: Started) -> Started:
         try:
@@ -1099,6 +1100,10 @@ class _Run:
                        "unknown", None, None, self.name, False, ())
         return replace(base, **changes)
 
+    def _temp_workspace_label(self) -> str:
+        """A workspace label no other run uses, for the same reason as the tab's."""
+        return "%s.%s" % (WORKSPACE_LABEL, self.nonce)
+
     def _temp_label(self) -> str:
         """A tab label no other run uses, so an interrupted create can find exactly its own tab."""
         return "%s%s.%s" % (TAB_PREFIX, self.d.name, self.nonce)
@@ -1107,15 +1112,15 @@ class _Run:
         d, label = self.d, self.d.label
         tab_label = TAB_PREFIX + self.name
         if plan.action == "create-workspace":
-            self.ws_before = frozenset(w.get("workspace_id") for w in herdr.workspace_list(label))
             self.creating = plan
-            made = herdr.workspace_create(label, WORKSPACE_LABEL, d.workdir)
+            made = herdr.workspace_create(label, self._temp_workspace_label(), d.workdir)
             self.creating = None
             self.ws, self.tab, self.pane = (made["workspace"].get("workspace_id"), made["tab"].get("tab_id"),
                                             made["root_pane"].get("pane_id"))
             if not (self.ws and self.tab and self.pane):
                 raise herdr.HerdrError("unexpected output")
             _wait_cwd(d, self.ws, self.pane, self.sleep, self.clock)
+            herdr.workspace_rename(label, self.ws, WORKSPACE_LABEL)     # now other runs may find and reuse it
             herdr.tab_rename(label, self.tab, tab_label)
         elif plan.action == "reuse-pane":
             self.ws, self.tab, self.pane = plan.workspace_id, plan.tab_id, plan.pane_id
@@ -1141,6 +1146,8 @@ class _Run:
         while True:
             try:
                 herdr.agent_start(label, self.name, self.pane, args=d.claude_args, start_timeout=self.start_timeout)
+                if tries and self.tab:
+                    herdr.tab_rename(label, self.tab, TAB_PREFIX + self.name)   # the label follows the final name
                 return
             except herdr.HerdrError as exc:
                 if exc.code == "agent_not_ready":
@@ -1164,7 +1171,7 @@ class _Run:
             if plan.action == "create-workspace":
                 found: List[str] = []
                 for w in herdr.workspace_list(label):
-                    if w.get("label") == WORKSPACE_LABEL and w.get("workspace_id") not in self.ws_before:
+                    if w.get("label") == self._temp_workspace_label():
                         found += [p.get("pane_id") for p in herdr.pane_list(label, w.get("workspace_id"))]
                 return [p for p in found if p]
             tabs = set(t.get("tab_id") for t in herdr.tab_list(label, plan.workspace_id or "")

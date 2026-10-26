@@ -128,6 +128,11 @@ def workspace_create(machine: Optional[str], label: str, cwd: str, *, timeout: f
     return _entry(result, "workspace", "tab", "root_pane")
 
 
+def workspace_rename(machine: Optional[str], workspace_id: str, label: str, *,
+                     timeout: float = DEFAULT_TIMEOUT) -> None:
+    _run(machine, ["workspace", "rename", workspace_id, label], timeout)
+
+
 def tab_list(machine: Optional[str], workspace_id: str, *, timeout: float = DEFAULT_TIMEOUT) -> List[dict]:
     return _list(_call(machine, ["tab", "list", "--workspace", workspace_id], timeout), "tabs")
 
