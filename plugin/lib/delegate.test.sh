@@ -50,6 +50,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
 from pathlib import Path
 import delegate as dg
+import herdr as hd
 import machines as m
 
 TRUST = "Quick safety check: Is this a project you created or one you trust?\n\n /w\n ❯ No, exit\n   Yes, I trust this folder\n"
@@ -145,6 +146,21 @@ rows = [
         and m.evaluate("local", r, m.Needs())[0] == ["workstation"]),
     ("A13 machines.short_repr is pinned", lambda: all(
         m.short_repr(v) == m._r(v) and len(m.short_repr(v)) <= 2000 for v in ("x" * 5000, nested(6)))),
+    ("A8e never_answer matches the dialog title, not release notes or /auto-mode-setup text", lambda:
+        dg.never_answer("Teach auto mode about your environment?\n") == "auto-mode-teach"
+        and dg.never_answer("Release notes: reads your project and recent sessions to teach auto mode about your environment, "
+                            "now also the repo\n") is None
+        and dg.never_answer("/auto-mode-setup  Teach auto mode about your environment.\n") is None),
+    ("A14 the elevated trust dialog is never answered", lambda:
+        dg.never_answer("Quick safety check: Is this a project you created or one you trust?\n"
+                        " ❯ No, continue without these permissions\n   Yes, I trust this folder\n") == "trust-elevated"
+        and "No, continue without these permissions" not in dg.GATES["trust-prompt"].options
+        and dg.never_answer(TRUST) is None),
+    ("A15 the mission is counted in bytes", lambda: raises(lambda: dg.mission_text(
+        machine=mach_d, prompt="é" * 40000, **ARGS), "bytes")),
+    ("A16 herdr finds the JSON error after a warning line", lambda: hd._error_from(
+        'warning: something\n{"error": {"code": "agent_not_ready", "message": "x"}, "id": "i"}\n', 1).code == "agent_not_ready"
+        and hd._error_from("error: unknown machine 'x'\n", 2).code is None),
 ]
 print("rows: %d" % len(rows))
 bad = 0
@@ -157,7 +173,7 @@ for name, fn in rows:
     bad += 0 if good else 1
 sys.exit(1 if bad else 0)
 PYEOF
-OUT=$("$PY" -I "$PARTA" "$LIB" 2>&1); RC=$?
+OUT=$(timeout 120 "$PY" -I "$PARTA" "$LIB" 2>&1); RC=$?
 NROWS=$(printf '%s\n' "$OUT" | sed -n 's/^rows: //p')
 while IFS= read -r line; do
   case "$line" in "ok: "*) ok "${line#ok: }" ;; "FAIL: "*) bad "${line#FAIL: }" ;; esac
@@ -325,7 +341,7 @@ newrow '{"":{"agents":9},"worker-2":{"unreachable":true}}'; D $B1 "$CFG_ANY" rev
 t "(a) exit 0 on worker-1" first_is "reviewer-139: worker-1"
 t "(a) worker-2 is unreachable with herdr's text" has "worker-2: unreachable: error: unknown machine 'worker-2'"
 newrow '{"":{"agents":9},"worker-2":{"hang":true}}'
-OUT=$(env PATH="$TMP/pybin" HERDR_ENV=1 HOME="$TMP/home" "$PY" -I - "$LIB" "$REGF" "$CFG_ANY" <<'PYEOF' 2>&1
+OUT=$(timeout 120 env PATH="$TMP/pybin" HERDR_ENV=1 HOME="$TMP/home" "$PY" -I - "$LIB" "$REGF" "$CFG_ANY" <<'PYEOF' 2>&1
 import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
@@ -363,7 +379,7 @@ t "calls is empty" nocalls
 echo "D7 unknown and not-ok machines"
 newrow; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-9
 t "unknown: exit 1, did you mean" bash -c '[ "$1" = 1 ]' _ "$RC"
-t "'worker-9' is not in the registry; did you mean" has "'worker-9' is not in the registry; did you mean"
+t "'worker-9' is not in the registry; did you mean 'worker-2'?" has "'worker-9' is not in the registry; did you mean 'worker-2'?"
 D $B1 "$CFG_ANY" reviewer --issue 139 --machine broken
 t "broken: has registry errors in:" has "has registry errors in:"
 t "calls is empty" nocalls
@@ -551,6 +567,7 @@ newrow '{"worker-1":{"gates":["trust-prompt"],"stuck":true}}'; D $B1 "$CFG_W1" r
 t "exit 3, no pane close" bash -c '[ "$1" = 3 ]' _ "$RC"
 t "no pane close call" chk 'n(r"^pane close") == 0'
 t "left behind: pane, with the stop command" bash -c 'case "$1" in *"left behind: pane "*) ;; *) exit 1;; esac; case "$1" in *"stop:"*"pane close"*) ;; *) exit 1;; esac' _ "$ERR"
+K
 
 echo "D21 agent arguments"
 newrow; D $B1 "$CFG_ANY" reviewer --issue 139
@@ -683,6 +700,7 @@ newrow '{"worker-1":{"gates":["trust-prompt"],"marker_stuck":true}}'; D $B1 "$CF
 t "exit 3: after Down the selection is" bash -c '[ "$1" = 3 ]' _ "$RC"
 t "after Down the selection is" has "after Down the selection is"
 t "exactly one down and zero enter" chk 'n(r"send-keys \S+ down") == 1 and n(r"send-keys \S+ enter") == 0'
+K
 
 echo "D35 the selection is already on the target"
 newrow '{"worker-1":{"gates":["fullscreen-notice"],"focus_target":true}}'; D $B1 "$CFG_W1" reviewer --issue 139
@@ -711,7 +729,7 @@ K
 echo "D39 pane read is text"
 SCREENJSON='{"result": {"read": {"text": "x"}}}'
 newrow "{\"worker-1\":{\"gates\":[\"trust-prompt\"]}}"
-OUT=$(env PATH="$TMP/pybin" "$PY" -I - "$LIB" <<'PYEOF' 2>&1
+OUT=$(timeout 120 env PATH="$TMP/pybin" "$PY" -I - "$LIB" <<'PYEOF' 2>&1
 import json, os, sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
@@ -771,7 +789,7 @@ newrow '{"worker-1":{"missing_cwd":true}}'; D $B1 "$CFG_W1" reviewer --issue 139
 t "(a) exit 3: workdir /w1 doesn't exist on worker-1 (the new pane opened in /)" has "workdir /w1 doesn't exist on worker-1 (the new pane opened in /)"
 t "(a) exit 3" rc_is 3
 t "(a) the pane was closed; no agent start" chk 'n(r"^pane close") == 1 and n(r"^agent start") == 0'
-t "(a) no record" bash -c '[ ! -e "$1" ]' _ "$TMP/home/.local/state/sdlc"
+t "(a) no record" bash -c '! find "$1" -name "*.json" 2>/dev/null | grep -q .' _ "$TMP/home/.local/state/sdlc"
 newrow '{"worker-1":{"missing_cwd":true,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:x","panes":[{"cwd":"/other","fg":"bash"}]}]}]}}'; D $B1 "$CFG_W1" reviewer --issue 139
 t "(b) tab create path: the same message" has "workdir /w1 doesn't exist on worker-1 (the new pane opened in /)"
 t "(b) tab create, pane close, no agent start" chk 'n(r"^tab create") == 1 and n(r"^pane close") == 1 and n(r"^agent start") == 0'
@@ -782,17 +800,197 @@ newrow; REGU="$TMP/reg-relwd.yaml" D $B1 "$CFG_ANY" reviewer --issue 139 --machi
 t "exit 1: workdir 'work' must be an absolute path on a remote machine" has "workdir 'work' must be an absolute path on a remote machine"
 t "rc 1 and calls empty" bash -c '[ "$1" = 1 ]' _ "$RC"; t "calls is empty" nocalls
 
+echo "D47 a late redraw after Enter never gets a second Enter"
+LAGW='{"worker-1":{"gates":["fullscreen-notice","trust-prompt"],"focus_target":true,"lag_enter_only":true,"redraw_lag":12}}'
+newrow "$LAGW"; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 60
+t "(a) fullscreen then trust, redraw lags past CLEAR_WAIT: exit 0" rc_is 0
+t "(a) exactly one Enter per dialog" chk 'n(r"send-keys \S+ enter") == 2'
+K
+newrow '{"worker-1":{"gates":["trust-prompt","fullscreen-notice"],"lag_enter_only":true,"redraw_lag":12}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 60
+t "(b) trust then fullscreen, redraw lags past CLEAR_WAIT: exit 0" rc_is 0
+t "(b) exactly one Enter per dialog" chk 'n(r"send-keys \S+ enter") == 2'
+K
+newrow '{"worker-1":{"gates":["trust-prompt"],"lag_enter_only":true,"redraw_lag":60}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 12
+t "(c) a screen that never redraws: exit 3, did not respond to Enter" has "did not respond to Enter"
+t "(c) exit 3" rc_is 3
+t "(c) one Enter in total" chk 'n(r"send-keys \S+ enter") == 1'
+K
+
+echo "D48 Ctrl-C and SIGTERM leave no pane behind"
+set -m
+bg_delegate() {   # bg_delegate SIGNAL [extra args] : a delegate stuck on an unknown dialog, signalled once started
+  local sig=$1; shift
+  newrow '{"worker-1":{"agents":0,"gates":["unknown"]}}'
+  ( cd "$TMP/cwd" && exec env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate reviewer --issue 139 \
+      --registry "$REGF" --config "$CFG_W1" --start-timeout 60 "$@" >"$TMP/out" 2>"$TMP/err" ) &
+  local pid=$! i
+  for i in $(seq 1 100); do chk 'n(r"^agent start") >= 1' && break; sleep 0.2; done
+  sleep 1; kill -s "$sig" "$pid"; wait "$pid"; RC=$?
+  OUT=$(cat "$TMP/out"); ERR=$(cat "$TMP/err")
+}
+NOPANES='not json.load(open(d + "/state.json")).get("worker-1", {}).get("panes") and not json.load(open(d + "/state.json")).get("worker-1", {}).get("agents")'
+bg_delegate INT
+t "SIGINT: exit 130" rc_is 130
+t "SIGINT: no pane or agent is left" chk "$NOPANES"
+t "SIGINT: left behind: nothing (pane closed)" bash -c 'case "$1" in *"left behind: nothing (pane "*" closed)"*) ;; *) exit 1;; esac' _ "$ERR"
+bg_delegate TERM
+t "SIGTERM: exit 143" rc_is 143
+t "SIGTERM: no pane or agent is left" chk "$NOPANES"
+bg_delegate INT --keep-failed
+t "SIGINT with --keep-failed: exit 130, the pane stays with a stop: line" bash -c '[ "$1" = 130 ] && case "$2" in *"left behind: pane "*"stop:"*"pane close"*) ;; *) exit 1;; esac' _ "$RC" "$ERR"
+set +m
+
+echo "D49 an unexpected exception exits 3 and leaves no pane"
+cat > "$TMP/inject.py" <<'PYEOF'
+import importlib.machinery, importlib.util, json, os, sys, io
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+loader = importlib.machinery.SourceFileLoader("sdlcbin", sys.argv[2])
+spec = importlib.util.spec_from_loader("sdlcbin", loader)
+mod = importlib.util.module_from_spec(spec)
+loader.exec_module(mod)
+args = ["delegate", "reviewer", "--issue", "139", "--registry", sys.argv[3], "--config", sys.argv[4]]
+
+
+def boom(*a, **k):
+    raise RuntimeError("injected")
+
+
+real = mod.herdr.pane_processes
+mod.herdr.pane_processes = boom                      # after the agent is ready, before the brief
+rc1 = mod.main(args)
+mod.herdr.pane_processes = real
+real_decide = mod.delegate.decide
+mod.delegate.decide = boom                           # before anything is started
+rc2 = mod.main(args)
+d = os.environ["FAKE_HERDR_DIR"]
+st = json.load(open(os.path.join(d, "state.json"))).get("worker-1", {})
+print("rc", rc1, rc2, "panes", len(st.get("panes", [])), "agents", len(st.get("agents", [])))
+PYEOF
+newrow '{"worker-1":{"agents":0}}'
+OUT=$(cd "$TMP/cwd" && timeout 120 env PATH="$TMP/pybin" HERDR_ENV=1 "$PY" -I "$TMP/inject.py" "$LIB" "$SDLC" "$REGF" "$CFG_W1" 2>"$TMP/err"); RC=$?; ERR=$(cat "$TMP/err")
+t "injected exceptions: exit 3 (never 1), and no pane or agent is left" has "rc 3 3 panes 0 agents 0"
+t "the unexpected error is reported" has "unexpected error: RuntimeError: injected"
+
+echo "D50 a brief that certainly did not arrive leaves nothing behind"
+newrow '{"worker-1":{"prompt_error":"agent_blocked"}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "exit 3; the pane is closed and there is no record" bash -c '[ "$1" = 3 ]' _ "$RC"
+t "pane close was called" chk 'n(r"^pane close") == 1'
+t "left behind: nothing" has "left behind: nothing (pane"
+t "no record file" bash -c '[ ! -e "$1" ]' _ "$TMP/home/.local/state/sdlc/delegates/worker-1/reviewer-139.json"
+newrow '{"worker-1":{"prompt_error":"agent_blocked"}}'; D $B1 "$CFG_W1" reviewer --issue 139 --keep-failed
+t "--keep-failed keeps the pane and the record" bash -c '[ "$1" = 3 ] && [ -f "$2" ]' _ "$RC" "$TMP/home/.local/state/sdlc/delegates/worker-1/reviewer-139.json"
+
+echo "D51 the elevated trust dialog is never answered"
+newrow '{"worker-1":{"gates":["trust-elevated"]}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 20
+t "exit 3, never answered automatically" has "is never answered automatically"
+t "exit 3" rc_is 3
+t "no key was sent" chk 'len(keys) == 0'
+t "the screen is shown" has "No, continue without these permissions"
+
+echo "D52 a dialog added next to a gate, or swapped before Down, gets no key"
+newrow '{"worker-1":{"gates":["trust-prompt"],"augment_at_read":{"n":2,"text":"auto-mode-teach"}}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 20
+t "(a) auto-mode prompt beside the gate: exit 3, never answered, zero keys" has "is never answered automatically"
+t "(a) zero keys" chk 'len(keys) == 0'
+newrow '{"worker-1":{"gates":["trust-prompt"],"swap_at_read":{"n":3,"to":"auto-mode-teach"}}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 20
+t "(b) dialog swapped before Down: exit 3, never answered, zero keys" has "is never answered automatically"
+t "(b) zero keys" chk 'len(keys) == 0'
+
+echo "D53 a dialog after ready is never typed into"
+newrow '{"worker-1":{"late_dialog":"fullscreen-notice"}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "(a) a declared late dialog is answered first: exit 0" rc_is 0
+t "(a) the mission never went into a dialog" chk 'len(prompts) == 1 and all(p["into_dialog"] is None for p in prompts) and inorder(r"send-keys \S+ enter", r"^agent prompt")'
+K
+newrow '{"worker-1":{"late_dialog":"auto-mode-teach"}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 20
+t "(b) a late never-answer dialog: exit 3, no prompt, no key" chk 'len(prompts) == 0 and len(keys) == 0'
+t "(b) never answered automatically" has "is never answered automatically"
+
+echo "D54 a half-drawn frame after Down is retried"
+newrow '{"worker-1":{"gates":["trust-prompt"],"torn_reads":2}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 30
+t "exit 0; one Down and one Enter" chk 'n(r"send-keys \S+ down") == 1 and n(r"send-keys \S+ enter") == 1'
+t "exit 0" rc_is 0
+K
+
+echo "D55 workdir paths: symlinks, relative local workdirs"
+mkdir -p "$TMP/ws"; ln -sfn "$TMP/ws" "$TMP/ws-link"
+reg_file "$TMP/reg-link.yaml" "s#workdir: $TMP/ws#workdir: $TMP/ws-link#"
+newrow '{"":{"agents":2,"resolve_cwd":true}}'; REGU="$TMP/reg-link.yaml" D $B1 "$CFG_ANY" reviewer --issue 139 --machine workstation
+t "a local workdir with a symlink matches the resolved pane cwd" first_is "reviewer-139: workstation"
+reg_file "$TMP/reg-relws.yaml" 's#workdir: .*/ws$#workdir: rel/ws#'
+newrow; REGU="$TMP/reg-relws.yaml" D $B1 "$CFG_ANY" reviewer --issue 139 --machine workstation
+t "a relative local workdir is refused up front" has "workdir 'rel/ws' must be an absolute path"
+t "no herdr call" nocalls
+newrow '{"worker-1":{"missing_cwd":true}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "the cwd failure says a remote workdir must be canonical" has "must be its canonical path"
+newrow '{"worker-1":{"missing_cwd":true}}'; D $B1 "$CFG_W1" reviewer --issue 139 --keep-failed
+t "(--keep-failed) exit 3 and no pane close" bash -c '[ "$1" = 3 ]' _ "$RC"
+t "(--keep-failed) no pane close call" chk 'n(r"^pane close") == 0'
+
+echo "D56 one delegate at a time per machine"
+cat > "$TMP/holdlock.py" <<'PYEOF'
+import sys, time
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+import delegate
+env = {"HOME": sys.argv[2]}
+if sys.argv[3] == "refuse":
+    import fcntl, os
+    from pathlib import Path
+    path = delegate._state_dir(env) / "worker-1" / ".lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    held = open(str(path), "a")
+    fcntl.flock(held, fcntl.LOCK_EX)
+    try:
+        with delegate.machine_lock("worker-1", env, wait=0.5):
+            print("no-refusal")
+    except delegate.Refused as exc:
+        print("refused:", exc.reason)
+else:
+    with delegate.machine_lock("worker-1", env):
+        print("held", flush=True)
+        time.sleep(float(sys.argv[3]))
+PYEOF
+newrow
+OUT=$(timeout 60 "$PY" -I "$TMP/holdlock.py" "$LIB" "$TMP/home" refuse 2>&1); RC=$?; ERR=""
+t "a held lock makes the second run refuse as busy after a bounded wait" has "refused: worker-1 is busy: another sdlc delegate"
+newrow
+( timeout 60 "$PY" -I "$TMP/holdlock.py" "$LIB" "$TMP/home" 3 >"$TMP/held.out" 2>&1 ) &
+HOLD=$!
+for i in $(seq 1 50); do grep -q held "$TMP/held.out" 2>/dev/null && break; sleep 0.1; done
+T0=$SECONDS; D $B1 "$CFG_W1" reviewer --issue 139; T1=$SECONDS; wait $HOLD
+t "a second run waits for the lock, then starts (exit 0)" rc_is 0
+t "it waited" bash -c '[ $(( $2 - $1 )) -ge 2 ]' _ "$T0" "$T1"
+newrow '{"worker-1":{"agents":3}}'
+conc() {   # conc N : one background delegate to worker-1 for issue N
+  ( cd "$TMP/cwd" && timeout 120 env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate reviewer --issue "$1" \
+      --registry "$REGF" --config "$CFG_W1" --machine worker-1 >"$TMP/c$1.out" 2>"$TMP/c$1.err"; echo $? >"$TMP/c$1.rc" ) &
+}
+rm -f "$TMP"/c13?.rc
+conc 139; conc 138; wait
+RCS="$(cat "$TMP/c139.rc" "$TMP/c138.rc" | sort | tr '\n' ' ')"
+OUT="$RCS"; ERR="$(cat "$TMP/c139.err" "$TMP/c138.err")"
+t "two concurrent runs for the last slot: exactly one starts, the other is refused" has "0 1 "
+t "the loser says the machine is full" has "full"
+t "nobody closed the winner's pane" chk 'n(r"^pane close") == 0 and n(r"^agent start") == 1'
+
+echo "D57 finished agents count until they are stopped"
+newrow '{"worker-1":{"agents":0,"done_agents":4}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "4 done agents fill a limit of 4: exit 1" rc_is 1
+t "full: 4 agents, limit 4" has "full: 4 agents, limit 4"
+newrow '{"worker-1":{"agents":0,"done_agents":3}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "3 done agents leave a slot" first_is "reviewer-139: worker-1"
+
+echo "D58 usage and the override line"
+newrow
+D $B1 "$CFG_W1" reviewer --prompt ""; t "--prompt \"\" is a usage error" rc_is 2
+D $B1 "$CFG_W1" reviewer --issue 139 --machine worker-1
+t "--machine equal to the repo's own placement: no overrides line" hasnt "overrides"
+newrow; D $B1 "$CFG_W1" reviewer --issue 139 --machine worker-2
+t "--machine different from it: overrides ... ('worker-1')" has "overrides phase_machines.reviewer ('worker-1')"
+
 echo "D46 plugin/bin/sdlc is executable; the fake herdr is executable"
 t "sdlc is executable" test -x "$SDLC"
 t "fake-herdr.py is executable" test -x "$FAKE"
-
-echo "D32 the #136/#137 suites still pass"
-if [ "${SDLC_DELEGATE_SKIP_NESTED:-0}" = 1 ]; then
-  echo "  (skipped: SDLC_DELEGATE_SKIP_NESTED=1)"
-else
-  OUT=$(SDLC_REQUIRE_BOTH_BACKENDS="${SDLC_REQUIRE_BOTH_BACKENDS:-0}" bash "$HERE/machines.test.sh" 2>&1); RC=$?; ERR=""
-  t "machines.test.sh exits 0" rc_is 0
-fi
 
 echo
 echo "delegate: $pass passed, $fail failed"

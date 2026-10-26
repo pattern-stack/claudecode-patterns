@@ -15,7 +15,7 @@ agent in that machine's `workdir`, answers the first-start dialogs the registry 
 back through GitHub only.
 
 - **Grammar.** `sdlc delegate ROLE [--issue N] [--machine auto|any|local|NAME] [--prompt TEXT|@FILE] [--name NAME]
-  [--kind phase|agent] [--dry-run] [--keep-failed] [--start-timeout SECS]`, also as `just sdlc::delegate`. `auto` (the
+  [--kind phase|agent] [--dry-run] [--keep-failed] [--start-timeout SECS] [--registry PATH] [--config FILE]`, also as `just sdlc::delegate`. `auto` (the
   default) follows the repo's placement; `any`, `local` or a machine name overrides it, which works in a repo that
   places nothing. The first output line is the answer, e.g. `reviewer-139: worker-2`.
 - **Picking.** Fit first, then the fewest live agents, ties to fit order (local first for `any`). `limits.agents` and
@@ -24,14 +24,21 @@ back through GitHub only.
 - **The busy flag.** A heavy role (`full-suite`, `browser` or `docker`) is refused on a machine whose `busy_flag` file
   exists, an explicit `--machine` included. The flag is read on the box you run `delegate` from; remove the file when
   the box is free, or name another machine.
-- **Refusals** (exit 1) are decided before any herdr call: an unassignable, unfit or not-`ok` machine, a broken
-  registry or `sdlc.yml`, broken `needs`, a bad `model` or `effort`, or an issue with no resolvable repo.
+- **Refusals** (exit 1) leave nothing started. An unassignable, unfit or not-`ok` machine, a broken registry or
+  `sdlc.yml`, broken `needs`, a bad `model` or `effort`, or an issue with no resolvable repo is decided before any herdr
+  call. A full or unreachable machine, or a live `--name`, is found when the machines are probed.
 - **The agent.** A plain Claude Code session started with `--permission-mode auto`, plus `model` and `effort` from
   `phases` (grouped wins over `phase_models` and `phase_effort`).
 - **First start.** The loop reads the screen before every key and answers only the dialogs the registry declares
   (`trust-prompt`, `fullscreen-notice`). It re-checks the screen right before each key and the selection before Enter,
   never answers an undeclared dialog, and never answers the "Teach auto mode" prompt: answer that once by hand.
-  A new pane must open in the `workdir`, or it is closed before the agent starts.
+  It sends no second Enter while the screen is unchanged since the last one. Only the plain trust dialog is
+  answered: the stronger variant ("No, continue without these permissions", shown when the folder pre-approves
+  permissions or configures MCP servers) fails the start, so a settings file planted in the `workdir` is never
+  accepted automatically. A new pane must open in the `workdir`, or it is closed before the agent starts.
+- **Cleanup.** Ctrl-C (exit 130), SIGTERM (143) and any failure before the brief arrives close the pane and remove the
+  record, unless `--keep-failed`; an unexpected error exits 3, never 1. One delegate runs at a time per machine
+  (a lock under the records directory; a second run waits, then refuses as busy).
 - **GitHub is the only return path.** A job that comments or opens a pull request needs `gh` logged in on the worker
   and prints `sdlc-delegate: gh is not logged in on <machine>` when it isn't; a job that only pushes a branch needs
   only push access.

@@ -13,6 +13,8 @@ names only (rule 10). Python >= 3.8, stdlib only. YAML only through `machines.pa
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -27,7 +29,6 @@ from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Mapping, Opti
 import herdr
 import machines
 
-MACHINE_WORDS = ("auto", "any", "local")        # plus a registered name
 HEAVY_CAPS = ("full-suite", "browser", "docker")  # D5
 BROWSER_CAP = "browser"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -50,6 +51,10 @@ MISSION_MAX = 64 * 1024
 STATE_RELPATH = "sdlc/delegates"                # under ${XDG_STATE_HOME:-~/.local/state}
 GH_NOT_LOGGED_IN = "sdlc-delegate: gh is not logged in on {machine}"
 OUTPUT_LINES = 40                               # pane lines shown after a failed start
+LOCK_WAIT = 15.0                                # seconds a run waits for another delegate on the same machine
+LOCK_POLL = 0.2
+# Delivery of the brief is certain not to have happened for these herdr codes: the pane may be closed.
+NOT_DELIVERED = ("agent_blocked", "agent_not_ready", "agent_not_found")
 GIT_TIMEOUT = 5.0
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
@@ -79,8 +84,9 @@ class StartFailed(Exception):
 
     def __init__(self, reason: str, machine: str, pane_id: Optional[str] = None, output: str = "",
                  pane_closed: bool = False, record_path: Optional[Path] = None,
-                 close_error: Optional[str] = None):
+                 close_error: Optional[str] = None, interrupt: Optional[BaseException] = None):
         super().__init__(reason)
+        self.interrupt = interrupt                  # the KeyboardInterrupt / Terminated that stopped the start, if any
         self.reason = reason
         self.machine = machine
         self.pane_id = pane_id
@@ -90,13 +96,17 @@ class StartFailed(Exception):
         self.close_error = close_error
 
 
-class _Fail(Exception):
-    """Internal: a start step failed. `closed` is true when the pane was already closed."""
+class Terminated(KeyboardInterrupt):
+    """SIGTERM, raised by bin/sdlc's handler so it takes the same cleanup path as Ctrl-C."""
 
-    def __init__(self, reason: str, closed: bool = False):
+
+class _Fail(Exception):
+    """Internal: a start step failed before the agent was ready (or the brief certainly did not arrive)."""
+
+    def __init__(self, reason: str, delivered: bool = False):
         super().__init__(reason)
         self.reason = reason
-        self.closed = closed
+        self.delivered = delivered                  # true: the mission may have reached the agent
 
 
 @dataclass(frozen=True)
@@ -111,7 +121,7 @@ GATES: Dict[str, Gate] = {
     "trust-prompt": Gate(
         "trust-prompt",
         ("yes, i trust this folder", "is this a project you created or one you trust"),
-        ("No, exit", "No, continue without these permissions", "Yes, I trust this folder"),
+        ("No, exit", "Yes, I trust this folder"),
         "Yes, I trust this folder"),
     "fullscreen-notice": Gate(
         "fullscreen-notice",
@@ -120,7 +130,12 @@ GATES: Dict[str, Gate] = {
         "Not now"),
 }
 NEVER_ANSWER: Dict[str, Tuple[str, ...]] = {
-    "auto-mode-teach": ("teach auto mode about your environment",),
+    # The title with its "?", so release notes and the /auto-mode-setup description don't match.
+    "auto-mode-teach": ("teach auto mode about your environment?",),
+    # The trust dialog's stronger variant: the folder pre-approves permissions, adds directories, configures MCP
+    # servers or runs headersHelper commands. A settings file planted in the workdir must never be accepted
+    # automatically, so only the plain dialog is answered.
+    "trust-elevated": ("no, continue without these permissions",),
 }
 
 
@@ -183,11 +198,7 @@ class Started:
 # ── pure helpers ─────────────────────────────────────────────────────────────
 
 def _norm(text: str) -> str:
-    return " ".join((text or "").replace(" ", " ").split()).casefold()
-
-
-def _ptext(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
+    return " ".join((text or "").split()).casefold()     # str.split() also splits on U+00A0
 
 
 def tuning_for(doc: object, role: str) -> Tuning:
@@ -241,9 +252,9 @@ def _expand(path: str, env: Mapping[str, str]) -> str:
 def busy_reason(machine: machines.Machine, role: str, needs: machines.Needs,
                 env: Optional[Mapping[str, str]] = None) -> Optional[str]:
     """Why a heavy `role` must not go to `machine` now, or None. One os.stat on this box."""
-    heavy = [c for c in needs.caps if c in HEAVY_CAPS]
-    if not heavy or not machine.gaming_sensitive or not machine.busy_flag:
+    if not is_heavy(needs) or not machine.gaming_sensitive or not machine.busy_flag:
         return None
+    heavy = [c for c in needs.caps if c in HEAVY_CAPS]
     env = os.environ if env is None else env
     flag = _expand(machine.busy_flag, env)
     tail = "remove the file when the box is free, or delegate to another machine"
@@ -352,8 +363,9 @@ def mission_text(*, role: str, kind: Optional[str], machine: machines.Machine, w
         task = "Do the %s work, then report back as above." % role
     lines += ["", "Task:", task]
     text = "\n".join(lines)
-    if len(text) > MISSION_MAX:
-        raise Refused("the mission is %d characters, over the %d limit; shorten --prompt" % (len(text), MISSION_MAX))
+    size = len(text.encode("utf-8"))       # one argv string is limited in bytes
+    if size > MISSION_MAX:
+        raise Refused("the mission is %d bytes, over the %d limit; shorten --prompt" % (size, MISSION_MAX))
     return text
 
 
@@ -458,6 +470,8 @@ def _filter(machine: machines.Machine, role: str, needs: machines.Needs, env: Ma
         return "no workdir in the registry (sdlc delegate starts agents there)"
     if not machine.is_local and not machine.workdir.startswith("/"):
         return "workdir %s must be an absolute path on a remote machine" % machines.short_repr(machine.workdir)
+    if machine.is_local and not _expand(machine.workdir, env).startswith("/"):
+        return "workdir %s must be an absolute path (or start with ~/)" % machines.short_repr(machine.workdir)
     busy = busy_reason(machine, role, needs, env)
     if busy:
         return busy
@@ -535,7 +549,8 @@ def decide(role: str, *, kind: Optional[str] = None, machine_arg: str = "auto",
         via = "--machine %s" % machine_arg
         req = placement.requested
         overrides = ("%s (%s)" % (req.at, machines.short_repr(req.value))
-                     if req is not None and req.value is not None and req.error is None else None)
+                     if req is not None and req.value is not None and req.error is None
+                     and req.value != machine_arg else None)
 
     verdicts: List[Verdict] = []
     eligible: List[Tuple[int, machines.Machine, Optional[str], Verdict]] = []
@@ -598,10 +613,69 @@ def decide(role: str, *, kind: Optional[str] = None, machine_arg: str = "auto",
                     tuple(warnings))
 
 
+@contextlib.contextmanager
+def machine_lock(machine: str, env: Optional[Mapping[str, str]] = None, wait: float = LOCK_WAIT,
+                 sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic):
+    """An exclusive per-machine lock (flock on a file under the records directory), so two delegates can't pick
+    the same pane or both take the last slot. Waits up to `wait` seconds, then raises Refused (busy)."""
+    path = _state_dir(env) / machine / ".lock"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(str(path), "a")
+    except OSError as exc:
+        raise Refused("cannot take the lock for %s (%s), so concurrent starts can't be ruled out" % (
+            machine, getattr(exc, "strerror", None) or exc))
+    try:
+        end = clock() + wait
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if clock() >= end:
+                    raise Refused("%s is busy: another sdlc delegate is starting an agent there; try again shortly" % machine)
+                sleep(LOCK_POLL)
+        yield
+    finally:
+        handle.close()                              # releases the flock
+
+
+def recheck(decision: Decision, *, probe_timeout: float = herdr.DEFAULT_TIMEOUT) -> Decision:
+    """Under the machine lock: read the chosen machine's load again, since another delegate may have started
+    an agent after the pick. Raises Refused when the machine is now full or an explicit name is live."""
+    d = decision
+    limits = d.machine.limits
+    try:
+        agents = herdr.agent_list(d.label, timeout=probe_timeout)
+    except herdr.HerdrError as exc:
+        raise Refused("%s is unreachable: %s" % (d.machine.name, exc.detail), d.considered)
+    if limits.agents is not None and len(agents) >= limits.agents:
+        raise Refused("%s is now full: %s, limit %d" % (d.machine.name, _plural(len(agents), "agent"), limits.agents),
+                      d.considered)
+    live = set(a.get("name") for a in agents if isinstance(a.get("name"), str))
+    if d.name not in live:
+        return d
+    if d.name_explicit:
+        raise Refused("agent name %s is already live on %s" % (machines.short_repr(d.name), d.machine.name), d.considered)
+    name = default_name(d.role, d.issue, live)
+    return replace(d, name=name, mission=mission_text(
+        role=d.role, kind=d.kind, machine=d.machine, workdir=d.workdir, name=name, issue=d.issue,
+        repo=d.repo, prompt=d.prompt))
+
+
 # ── the pane ─────────────────────────────────────────────────────────────────
 
-def _same_dir(a: Any, b: str) -> bool:
-    return isinstance(a, str) and (a.rstrip("/") or "/") == (b.rstrip("/") or "/")
+def _same_dir(a: Any, b: str, local: bool = False) -> bool:
+    """Normalised path equality. herdr reports the process cwd, which the kernel resolves, so the local machine
+    compares real paths; a remote workdir must already be its canonical path."""
+    if not isinstance(a, str):
+        return False
+    if local:
+        try:
+            return os.path.realpath(a) == os.path.realpath(b)
+        except (OSError, ValueError):
+            pass
+    return os.path.normpath(a) == os.path.normpath(b)
 
 
 def choose_pane(decision: Decision, *, timeout: float = herdr.DEFAULT_TIMEOUT) -> PanePlan:
@@ -624,7 +698,7 @@ def choose_pane(decision: Decision, *, timeout: float = herdr.DEFAULT_TIMEOUT) -
             pid = p.get("pane_id")
             if tab is None or not str(tab.get("label") or "").startswith(TAB_PREFIX) or per_tab.get(p.get("tab_id")) != 1:
                 continue
-            if pid in live or not _same_dir(p.get("foreground_cwd"), decision.workdir):
+            if pid in live or not _same_dir(p.get("foreground_cwd"), decision.workdir, decision.machine.is_local):
                 continue
             fg = herdr.pane_foreground(label, pid, timeout=timeout)
             if fg and all(n in SHELLS for n in fg):
@@ -678,6 +752,8 @@ class _Startup:
         self.rounds: List[dict] = []
         self.answered: List[str] = []
         self.actions: List[str] = []
+        self.answers: Dict[str, int] = {}           # Enters per gate, kept across loop runs (the brief retry too)
+        self.after_enter: Dict[str, str] = {}       # gate -> the screen our last Enter was sent to
 
     def read(self) -> str:
         return herdr.pane_read(self.label, self.pane, source="visible")
@@ -727,9 +803,11 @@ class _Startup:
                 if never_answer(screen) is not None or match_gate(screen) != gate_name:
                     return "skipped"
                 now = selected_option(screen, gate)
-                if now != sel or self.clock() >= end:
+                if (now is not None and now != sel) or self.clock() >= end:
                     break
                 self.sleep(POLL)
+            if now is None:                          # a half-drawn frame: retry until the deadline
+                return "no-selection"
             if now != gate.target_label:
                 raise _Fail("after Down the selection is %s, not %s; nothing more was sent" % (
                     machines.short_repr(now), machines.short_repr(gate.target_label)))
@@ -737,24 +815,30 @@ class _Startup:
         screen = self.read()
         if not self._precheck(screen, gate_name) or selected_option(screen, gate) != gate.target_label:
             return "skipped"
+        self.after_enter[gate_name] = _norm(screen)
         self.send("enter")
         end = min(self.clock() + CLEAR_WAIT, deadline)
         while self.clock() < end:
             self.sleep(POLL)
             screen = self.read()
-            if match_gate(screen) != gate_name or selected_option(screen, gate) != gate.target_label:
+            if (never_answer(screen) is not None or match_gate(screen) != gate_name
+                    or selected_option(screen, gate) != gate.target_label):
                 break
         return "entered"
 
     def first_start(self, start_timeout: float) -> dict:
         """Answer the declared dialogs until the agent is ready. Returns its `agent list` entry. Raises _Fail."""
         deadline = self.clock() + start_timeout
-        answers: Dict[str, int] = {}
         unreadable: Optional[str] = None
+        unresponsive: Optional[str] = None
         while True:
             if self.clock() > deadline:
-                raise _Fail("could not read the selection on %s" % unreadable if unreadable
-                            else "agent was not ready within %gs" % start_timeout)
+                if unreadable:
+                    raise _Fail("could not read the selection on %s" % unreadable)
+                if unresponsive:
+                    raise _Fail("%s did not respond to Enter: the screen has not changed since it was sent, so no "
+                                "second key was sent" % unresponsive)
+                raise _Fail("agent was not ready within %gs" % start_timeout)
             screen = self.read()
             nv = never_answer(screen)
             if nv:
@@ -767,15 +851,22 @@ class _Startup:
                     self.note(gate, None, "undeclared", None)
                     raise _Fail("the screen shows %s, which %s doesn't declare; add it to first_start in the registry" % (
                         gate, self.machine.name))
-                if answers.get(gate, 0) >= MAX_ANSWERS_PER_GATE:
+                if self.after_enter.get(gate) == _norm(screen):
+                    # Unchanged since our last Enter: the redraw is late. Send nothing until it changes.
+                    unresponsive = gate
+                    self.note(gate, None, "waiting", None)
+                    self.sleep(POLL)
+                    continue
+                unresponsive = None
+                self.after_enter.pop(gate, None)
+                if self.answers.get(gate, 0) >= MAX_ANSWERS_PER_GATE:
                     self.note(gate, None, "capped", None)
                     raise _Fail("%s still showing after %d answers" % (gate, MAX_ANSWERS_PER_GATE))
                 selected = selected_option(screen, GATES[gate])
                 result = self.answer(gate, deadline)
-                self.note(gate, selected, ",".join(self.actions) if result == "entered" else
-                          ("skipped" if result == "skipped" else result), None)
+                self.note(gate, selected, ",".join(self.actions) if result == "entered" else result, None)
                 if result == "entered":
-                    answers[gate] = answers.get(gate, 0) + 1
+                    self.answers[gate] = self.answers.get(gate, 0) + 1
                     unreadable = None
                     if gate not in self.answered:
                         self.answered.append(gate)
@@ -783,7 +874,7 @@ class _Startup:
                     unreadable = gate if result == "no-selection" else None
                     self.sleep(POLL)
                 continue
-            unreadable = None
+            unreadable = unresponsive = None
             entry = self.entry()
             self.note(None, None, "read", entry)
             if (entry and entry.get("agent") == "claude" and entry.get("agent_status") in ("idle", "done")
@@ -794,25 +885,21 @@ class _Startup:
 
 def _wait_cwd(d: Decision, ws: str, pane: str, sleep: Callable[[float], None],
               clock: Callable[[], float]) -> None:
-    """A new pane must report the workdir as its foreground_cwd, else it is closed before agent start."""
+    """A new pane must report the workdir as its foreground_cwd, else start() fails before `agent start`
+    (and closes the pane in its cleanup, unless --keep-failed)."""
     end = clock() + CWD_WAIT
     seen: Any = None
     while True:
         for p in herdr.pane_list(d.label, ws):
             if p.get("pane_id") == pane:
                 seen = p.get("foreground_cwd")
-                if _same_dir(seen, d.workdir):
+                if _same_dir(seen, d.workdir, d.machine.is_local):
                     return
         if clock() >= end:
             break
         sleep(POLL)
-    reason = "workdir %s doesn't exist on %s (the new pane opened in %s)" % (d.workdir, d.machine.name, seen)
-    try:
-        herdr.pane_close(d.label, pane)
-    except herdr.HerdrError as exc:
-        raise _Fail("%s; could not close pane %s (%s): %s" % (
-            reason, pane, exc.detail, follow_up(d.label, pane)["stop"]))
-    raise _Fail(reason, closed=True)
+    raise _Fail("workdir %s doesn't exist on %s (the new pane opened in %s); a remote workdir must be its "
+                "canonical path, with no symlinks" % (d.workdir, d.machine.name, seen))
 
 
 def _intended_argv(d: Decision) -> Tuple[str, ...]:
@@ -823,7 +910,11 @@ def start(decision: Decision, plan: PanePlan, *, start_timeout: float = START_TI
           env: Optional[Mapping[str, str]] = None,
           sleep: Callable[[float], None] = time.sleep,
           clock: Callable[[], float] = time.monotonic) -> Started:
-    """Carry the plan out: pane, agent start, first-start loop, brief, record. Raises StartFailed."""
+    """Carry the plan out: pane, agent start, first-start loop, brief, record. Raises StartFailed.
+
+    Anything that stops the run before the brief is delivered (a herdr error, a dialog it can't clear, Ctrl-C,
+    SIGTERM, an unexpected exception) closes the pane unless `keep_failed`, then raises StartFailed.
+    """
     d = decision
     label = d.label
     machine_name = d.machine.name
@@ -834,8 +925,25 @@ def start(decision: Decision, plan: PanePlan, *, start_timeout: float = START_TI
     name = d.name
     argv: Tuple[str, ...] = ()
     argv_source = "intended"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state: Optional[Started] = None
+    stage = "setup"
     reason: Optional[str] = None
-    closed = False
+    maybe_delivered = False
+    interrupt: Optional[BaseException] = None
+
+    def save(s: Started) -> Started:
+        try:
+            return replace(s, record_path=write_record(s, env, started_at), record_error=None)
+        except OSError as exc:
+            return replace(s, record_path=None, record_error=getattr(exc, "strerror", None) or str(exc))
+
+    def current(**changes: Any) -> Started:
+        base = Started(d, ws or "", tab or "", pane or "", argv or _intended_argv(d), argv_source,
+                       tuple(session.answered) if session else (), tuple(session.rounds) if session else (),
+                       "unknown", None, None, name, False, ())
+        return replace(base, **changes)
+
     try:
         tab_label = TAB_PREFIX + name
         if plan.action == "create-workspace":
@@ -890,47 +998,19 @@ def start(decision: Decision, plan: PanePlan, *, start_timeout: float = START_TI
             pass
         if not argv:
             argv = _intended_argv(d)
-    except _Fail as exc:
-        reason, closed = exc.reason, exc.closed
-    except herdr.HerdrError as exc:
-        reason = "herdr failed on %s: %s" % (machine_name, exc.detail)
 
-    if reason is not None:
-        output = ""
-        close_error = None
-        if pane and not closed:
-            try:
-                output = herdr.pane_read(label, pane, source="recent-unwrapped", lines=OUTPUT_LINES)
-            except herdr.HerdrError:
-                output = ""
-            if not keep_failed:
-                try:
-                    herdr.pane_close(label, pane)
-                    closed = True
-                except herdr.HerdrError as exc:
-                    close_error = exc.detail
-        raise StartFailed(reason, machine_name, pane, output, closed, None, close_error)
-
-    assert pane is not None and ws is not None and tab is not None and session is not None
-    if name != d.name:
-        d = replace(d, name=name, mission=mission_text(
-            role=d.role, kind=d.kind, machine=d.machine, workdir=d.workdir, name=name, issue=d.issue,
-            repo=d.repo, prompt=d.prompt))
-    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    state = Started(d, ws, tab, pane, argv, argv_source, tuple(session.answered), tuple(session.rounds),
-                    "unknown", None, None, name, False, ())
-
-    def save(s: Started) -> Started:
-        try:
-            return replace(s, record_path=write_record(s, env, started_at), record_error=None)
-        except OSError as exc:
-            return replace(s, record_path=None, record_error=getattr(exc, "strerror", None) or str(exc))
-
-    state = save(state)
-    failure: Optional[str] = None
-    status = "unknown"
-    briefed = False
-    try:
+        # The agent is ready. Write the record, check the screen once more, then brief.
+        stage = "ready"
+        if name != d.name:
+            d = replace(d, name=name, mission=mission_text(
+                role=d.role, kind=d.kind, machine=d.machine, workdir=d.workdir, name=name, issue=d.issue,
+                repo=d.repo, prompt=d.prompt))
+        state = save(current())
+        late = session.read()
+        if match_gate(late) is not None or never_answer(late) is not None:
+            session.first_start(start_timeout)       # a dialog appeared after ready: answer it or fail
+        status = "unknown"
+        briefed = False
         for attempt in (1, 2):
             try:
                 result = herdr.agent_prompt(label, pane, d.mission, until=("working", "blocked"),
@@ -942,18 +1022,56 @@ def start(decision: Decision, plan: PanePlan, *, start_timeout: float = START_TI
             except herdr.HerdrError as exc:
                 if attempt == 1 and exc.code in ("agent_blocked", "agent_not_ready"):
                     session.first_start(start_timeout)
-                    state = replace(state, gates_answered=tuple(session.answered), startup=tuple(session.rounds))
                     continue
                 raise
     except _Fail as exc:
-        failure = exc.reason
+        reason = exc.reason
     except herdr.HerdrError as exc:
-        failure = "briefing failed on %s: %s" % (machine_name, exc.detail)
-    warnings: Tuple[str, ...] = ()
-    if briefed and status == "blocked":
-        warnings = ("%s is blocked on a dialog; read it with: %s" % (name, follow_up(label, pane)["read"]),)
-    state = save(replace(state, briefed=briefed, status=status, warnings=warnings,
-                         gates_answered=tuple(session.answered), startup=tuple(session.rounds)))
-    if failure is not None:
-        raise StartFailed(failure, machine_name, pane, "", False, state.record_path)
-    return state
+        if stage == "ready":
+            reason = "briefing failed on %s: %s" % (machine_name, exc.detail)
+            maybe_delivered = exc.code not in NOT_DELIVERED
+        else:
+            reason = "herdr failed on %s: %s" % (machine_name, exc.detail)
+    except BaseException as exc:                     # Ctrl-C, SIGTERM, or an unexpected error: never leak the pane
+        if isinstance(exc, KeyboardInterrupt):
+            interrupt = exc
+            reason = "interrupted (%s)" % ("SIGTERM" if isinstance(exc, Terminated) else "Ctrl-C")
+        else:
+            reason = "unexpected error: %s: %s" % (type(exc).__name__, exc)
+            if not isinstance(exc, Exception):
+                interrupt = exc
+
+    if reason is None:
+        assert state is not None and session is not None
+        warnings: Tuple[str, ...] = ()
+        if status == "blocked":
+            warnings = ("%s is blocked on a dialog; read it with: %s" % (name, follow_up(label, pane or "")["read"]),)
+        return save(replace(state, briefed=briefed, status=status, warnings=warnings,
+                            gates_answered=tuple(session.answered), startup=tuple(session.rounds)))
+
+    # Failure. If the mission may have reached the agent, leave everything. Otherwise close the pane and remove
+    # the record, unless --keep-failed.
+    output = ""
+    close_error: Optional[str] = None
+    closed = False
+    record_path = state.record_path if state is not None else None
+    if pane and not maybe_delivered:
+        try:
+            output = herdr.pane_read(label, pane, source="recent-unwrapped", lines=OUTPUT_LINES)
+        except Exception:
+            output = ""
+        if not keep_failed:
+            try:
+                herdr.pane_close(label, pane)
+                closed = True
+            except herdr.HerdrError as exc:
+                close_error = exc.detail
+            if closed and record_path is not None:
+                try:
+                    os.unlink(str(record_path))
+                except OSError:
+                    pass
+                record_path = None
+        elif record_path is None and session is not None:
+            record_path = save(current(status="failed")).record_path
+    raise StartFailed(reason, machine_name, pane, output, closed, record_path, close_error, interrupt)

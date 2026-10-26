@@ -51,16 +51,19 @@ def _first_line(text: str) -> str:
 
 def _error_from(stderr: str, returncode: int) -> HerdrError:
     """herdr's JSON error ({"error": {"code", "message"}, "id"}), else its first stderr line."""
-    text = (stderr or "").strip()
-    if text.startswith("{"):
+    # The JSON error is the last line that starts with `{`; a warning line may come before it.
+    for line in reversed((stderr or "").splitlines()):
+        if not line.strip().startswith("{"):
+            continue
         try:
-            err = json.loads(text)["error"]
+            err = json.loads(line)["error"]
             code, message = err.get("code"), err.get("message")
             if isinstance(code, str) and code:
-                line = _first_line(message) if isinstance(message, str) else ""
-                return HerdrError("%s: %s" % (code, line) if line else code, returncode, code)
+                first = _first_line(message) if isinstance(message, str) else ""
+                return HerdrError("%s: %s" % (code, first) if first else code, returncode, code)
         except (ValueError, KeyError, TypeError, AttributeError):
             pass
+        break
     return HerdrError(_first_line(stderr) or "herdr exited %d" % returncode, returncode)
 
 
@@ -96,7 +99,7 @@ def _list(result: dict, key: str) -> List[dict]:
     items = result.get(key)
     if not isinstance(items, list):
         raise HerdrError("unexpected output")
-    return items
+    return [i for i in items if isinstance(i, dict)]
 
 
 def _entry(result: dict, *keys: str) -> dict:

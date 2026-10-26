@@ -25,7 +25,7 @@ machines:
 
   worker-1:                         # a disposable box reached through herdr
     transport: { herdr: worker-1, ssh: agent@192.0.2.10 }   # herdr label from `herdr machine list`
-    workdir: /home/agent/work       # where `sdlc delegate` starts agents (it needs one on every machine it uses)
+    workdir: /home/agent/work       # where `sdlc delegate` starts agents (it needs one on every machine it uses; a remote one must be its canonical path)
     role: worker
     limits: { cores: 12, mem_gb: 16, browser_jobs: 3, agents: 4 }   # `agents` and `browser_jobs` cap what `sdlc delegate` sends here
     caps: [edit, test, browser, docker, full-suite]

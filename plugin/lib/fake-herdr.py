@@ -11,7 +11,7 @@ JSON errors on stderr (exit 1), and herdr's text error for an unknown machine (e
 
 Scenario keys per machine: agents (count of busy agents), unreachable, hang, workspaces, gates, idle_with_gate,
 unnamed_after_gate, focus_target, marker_stuck, stuck, redraw_lag, swap_before_enter, marker_glyph, missing_cwd,
-no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once.
+no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd.
 """
 import json
 import os
@@ -25,6 +25,9 @@ DIALOGS = {
     "trust-prompt": ("Quick safety check: Is this a project you created or one you trust?\n\n /w\n",
                      ["No, exit", "Yes, I trust this folder"], False),
     "fullscreen-notice": ("Try the new fullscreen renderer?\n", ["Yes, try it", "Not now"], True),
+    "trust-elevated": ("Quick safety check: Is this a project you created or one you trust?\n\n /w\n"
+                       " This folder pre-approves permissions or configures MCP servers.\n",
+                       ["No, continue without these permissions", "Yes, I trust this folder"], False),
     "auto-mode-teach": ("Teach auto mode about your environment?\n", ["Yes", "Not now", "Don't show again"], True),
     "unknown": ("Some unfamiliar dialog\n", ["Okay"], True),
 }
@@ -78,6 +81,10 @@ class Fake:
             s["agents"].append({"name": "busy%d" % (i + 1), "pane_id": "w9:p%d" % (i + 1), "agent": "claude",
                                 "agent_status": "working", "interactive_ready": True, "workspace_id": "w9",
                                 "tab_id": "w9:t%d" % (i + 1)})
+        for i in range(int(self.scen.get("done_agents", 0))):
+            s["agents"].append({"name": "done%d" % (i + 1), "pane_id": "w8:p%d" % (i + 1), "agent": "claude",
+                                "agent_status": "done", "interactive_ready": True, "workspace_id": "w8",
+                                "tab_id": "w8:t%d" % (i + 1)})
         for wi, ws in enumerate(self.scen.get("workspaces", [])):
             wid = "w%d" % (wi + 1)
             s["workspaces"].append({"workspace_id": wid, "label": ws.get("label", "")})
@@ -122,9 +129,9 @@ class Fake:
         pane["dialog"] = dialog
         pane["marker"] = self.default_marker(dialog)
 
-    def render(self, pane):
+    def render(self, pane, torn=False):
         dialog = pane.get("dialog")
-        glyph = self.scen.get("marker_glyph", "❯")
+        glyph = "none" if torn else self.scen.get("marker_glyph", "❯")
         if dialog:
             title, options, numbered = DIALOGS[dialog]
             lines = [title]
@@ -171,9 +178,11 @@ class Fake:
         if not dialog:
             return
         lag = int(self.scen.get("redraw_lag", 0))
-        if lag:
+        if lag and (key == "enter" or not self.scen.get("lag_enter_only")):
             pane["lag"] = lag
             pane["old_screen"] = self.render(pane)
+        if self.scen.get("torn_reads"):
+            pane["torn"] = int(self.scen["torn_reads"])
         if key == "down":
             if not self.scen.get("marker_stuck"):
                 pane["marker"] = min(pane["marker"] + 1, len(DIALOGS[dialog][1]) - 1)
@@ -193,6 +202,12 @@ class Fake:
         if self.scen.get("raw_screen") is not None:
             return self.scen["raw_screen"]
         swap = self.scen.get("swap_before_enter")
+        if source == "visible":
+            pane["vreads"] = pane.get("vreads", 0) + 1
+            at = self.scen.get("swap_at_read")
+            if at and pane["vreads"] == int(at["n"]):
+                self.show(pane, at["to"])
+                pane["marker"] = 0
         if swap and pane.get("swap_armed"):
             pane["swap_armed"] = False
             pane["swapped"] = True
@@ -201,7 +216,13 @@ class Fake:
         if pane.get("lag", 0) > 0 and source == "visible":
             pane["lag"] -= 1
             return pane.get("old_screen", self.render(pane))
+        if pane.get("torn", 0) > 0 and source == "visible":
+            pane["torn"] -= 1
+            return self.render(pane, torn=True)
         text = self.render(pane)
+        add = self.scen.get("augment_at_read")
+        if add and source == "visible" and pane["vreads"] >= int(add["n"]):
+            text += DIALOGS[add["text"]][0] + "\n".join(" %s" % o for o in DIALOGS[add["text"]][1]) + "\n"
         if swap and source == "visible" and not pane.get("swapped") and pane.get("dialog") in GATE_TARGET \
                 and self.selected(pane) == GATE_TARGET[pane["dialog"]]:
             pane["target_reads"] = pane.get("target_reads", 0) + 1
@@ -268,6 +289,8 @@ def main():
     elif (group, verb) in (("workspace", "create"), ("tab", "create")):
         n = f.new_id()
         cwd = "/" if scen.get("missing_cwd") else opt("--cwd", "/")
+        if scen.get("resolve_cwd"):
+            cwd = os.path.realpath(cwd)       # herdr reports the process cwd, which the kernel resolves
         if verb == "create" and group == "workspace":
             wid = "w%d" % n
             f.s["workspaces"].append({"workspace_id": wid, "label": opt("--label", "")})
@@ -304,6 +327,11 @@ def main():
         if pane is None:
             fail("pane_not_found", "no pane %s" % opt("--pane"), cmd)
         a = f.agent_on(pane)
+        if scen.get("late_dialog") and a is not None and not pane.get("late_done") and not pane.get("dialog"):
+            pane["late_done"] = True                 # a dialog drawn after the agent was ready, status stays idle
+            f.show(pane, scen["late_dialog"])
+            pane["remaining"] = []
+            f.commit()
         if a is not None and pane.get("fg") == "claude":
             proc = {"name": "claude", "pid": 4242}
             if not scen.get("no_process_argv"):
@@ -394,10 +422,11 @@ def main():
                 a["agent_status"] = "blocked"
             f.commit()
             fail(once, "prompt refused", cmd)
-        if pane is not None and pane.get("dialog"):
+        if a.get("agent_status") == "blocked":
             fail("agent_blocked", "agent is blocked on a dialog", cmd)
+        # Like real herdr: a dialog it did not classify as blocked takes the text.
         append("prompts.jsonl", {"machine": label, "target": rest[0], "pane_id": a["pane_id"], "text": rest[1],
-                                 "argv": args})
+                                 "argv": args, "into_dialog": pane.get("dialog") if pane is not None else None})
         a["agent_status"] = "working"
         f.commit()
         out(cmd, {"type": "agent_prompted", "agent": f.agent_entry(a)})

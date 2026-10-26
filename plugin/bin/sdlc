@@ -20,7 +20,8 @@ off because of an error (a broken registry or sdlc.yml); 2 for usage (including 
 fewest live agents), in that machine's `workdir`, answers the first-start dialogs the registry declares, and
 briefs it with a mission whose only return path is GitHub. Its first line is the answer. `--dry-run` decides
 and prints the commands without changing anything. Exit codes: 0 started (dry run: a machine was chosen);
-1 refused, nothing started; 2 usage; 3 start failed after a machine was chosen (the output says what was left).
+1 refused, nothing started; 2 usage; 3 start failed after a machine was chosen, or an unexpected error (the
+output says what was left); 130 Ctrl-C and 143 SIGTERM, after the pane is cleaned up.
 
 Claude Code puts a plugin's bin/ on the PATH of its Bash tool, so agents in a session call `sdlc`
 bare. Humans and CI use `just sdlc::machines ...`, which runs this file by absolute path.
@@ -38,6 +39,7 @@ import argparse  # noqa: E402
 import math  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
+import signal  # noqa: E402
 from typing import List, Optional  # noqa: E402
 
 import delegate  # noqa: E402
@@ -102,7 +104,7 @@ def _start_timeout_arg(text: str) -> float:
 
 
 def _prompt_arg(text: str) -> str:
-    limit = delegate.MISSION_MAX - 4096         # room for the rest of the mission
+    limit = delegate.MISSION_MAX - 4096         # bytes, leaving room for the rest of the mission
     if text.startswith("@"):
         try:
             with open(text[1:], "r", encoding="utf-8") as handle:
@@ -110,8 +112,11 @@ def _prompt_arg(text: str) -> str:
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             raise argparse.ArgumentTypeError("cannot read the prompt file %s: %s" % (
                 text[1:], getattr(exc, "strerror", None) or exc))
-    if len(text) > limit:
-        raise argparse.ArgumentTypeError("the prompt is %d characters; the limit is %d" % (len(text), limit))
+    if not text.strip():
+        raise argparse.ArgumentTypeError("the prompt is empty; give the task, or leave --prompt out")
+    size = len(text.encode("utf-8"))
+    if size > limit:
+        raise argparse.ArgumentTypeError("the prompt is %d bytes; the limit is %d" % (size, limit))
     return text
 
 
@@ -401,38 +406,68 @@ def _print_failure(exc: "delegate.StartFailed", label: Optional[str]) -> None:
     _eprint("  stop:        %s" % follow["stop"])
 
 
-def cmd_delegate(args: argparse.Namespace) -> int:
+def _refused(exc: "delegate.Refused") -> int:
+    _eprint(machines.cap_text("sdlc delegate: refused: %s" % exc.reason))
+    for line in _considered_lines(exc.considered):
+        _eprint("  " + line)
+    return 1
+
+
+def _delegate(args: argparse.Namespace) -> int:
     try:
         d = delegate.decide(args.role, kind=args.kind, machine_arg=args.machine, issue=args.issue,
-                            prompt=args.prompt, name=args.name, registry_file=getattr(args, "registry", None),
-                            config_file=getattr(args, "config", None))
+                            prompt=args.prompt, name=args.name, registry_file=args.registry,
+                            config_file=args.config)
     except delegate.Refused as exc:
-        _eprint(machines.cap_text("sdlc delegate: refused: %s" % exc.reason))
-        for line in _considered_lines(exc.considered):
-            _eprint("  " + line)
-        return 1
+        return _refused(exc)
     for text in d.warnings:
         _eprint(machines.cap_text("warning: %s" % text))
-    try:
-        plan = delegate.choose_pane(d)
-    except delegate.StartFailed as exc:
-        _eprint(machines.cap_text("sdlc delegate: dry run: %s" % exc.reason if args.dry_run
-                                  else "sdlc delegate: start failed on %s: %s" % (exc.machine, exc.reason)))
-        return 3
     if args.dry_run:
+        try:
+            plan = delegate.choose_pane(d)
+        except delegate.StartFailed as exc:
+            _eprint(machines.cap_text("sdlc delegate: dry run: %s" % exc.reason))
+            return 3
         _print_dry_run(d, plan, args.start_timeout)
         return 0
     try:
-        started = delegate.start(d, plan, start_timeout=args.start_timeout, keep_failed=args.keep_failed)
+        # One delegate at a time per machine from the load check through the brief.
+        with delegate.machine_lock(d.machine.name):
+            d = delegate.recheck(d)
+            plan = delegate.choose_pane(d)
+            started = delegate.start(d, plan, start_timeout=args.start_timeout, keep_failed=args.keep_failed)
+    except delegate.Refused as exc:
+        return _refused(exc)
     except delegate.StartFailed as exc:
         _print_failure(exc, d.label)
-        return 3
+        if isinstance(exc.interrupt, delegate.Terminated):
+            return 143
+        return 130 if exc.interrupt is not None else 3
     _print_started(started)
     for text in started.warnings:
         _eprint(machines.cap_text("warning: %s" % text))
     if started.record_error:
         _eprint(machines.cap_text("warning: could not write the record: %s" % started.record_error))
     return 0
+
+
+def _on_sigterm(signum, frame) -> None:
+    raise delegate.Terminated()
+
+
+def cmd_delegate(args: argparse.Namespace) -> int:
+    """Exit 0 started, 1 refused, 3 start failed or an unexpected error, 130 Ctrl-C, 143 SIGTERM."""
+    signal.signal(signal.SIGINT, signal.default_int_handler)    # a background job may have inherited SIG_IGN
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    try:
+        return _delegate(args)
+    except delegate.Terminated:
+        return 143
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        _eprint(machines.cap_text("sdlc delegate: unexpected error: %s: %s" % (type(exc).__name__, exc)))
+        return 3
 
 
 def build_parser() -> argparse.ArgumentParser:
