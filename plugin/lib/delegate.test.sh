@@ -94,12 +94,12 @@ M1 = dg.mission_text(machine=mach_d, prompt="PROMPT-TEXT", **ARGS)
 M2 = dg.mission_text(machine=mach_p, prompt=None, **ARGS)
 
 rows = [
-    ("A1 tuning: grouped beats flat", lambda: (lambda t: t.model == "fable" and t.source["model"] == "phases.r.model")(
+    ("A1 tuning: grouped beats flat", lambda: (lambda t: t.model == "fable")(
         dg.tuning_for({"phases": {"r": {"model": "fable"}}, "phase_models": {"r": "opus"}}, "r"))),
     ("A2 tuning: flat only; neither", lambda: dg.tuning_for({"phase_effort": {"r": "low"}}, "r").effort == "low"
-        and dg.tuning_for({}, "r") == dg.Tuning(None, None, {})),
+        and dg.tuning_for({}, "r") == dg.Tuning(None, None)),
     ("A3 tuning: null and blank are unset", lambda: dg.tuning_for({"phases": {"r": {"model": None, "effort": " "}}}, "r")
-        == dg.Tuning(None, None, {})),
+        == dg.Tuning(None, None)),
     ("A4 tuning: bad effort and model refuse", lambda: raises(lambda: dg.tuning_for({"phases": {"r": {"effort": "huge"}}}, "r"),
         "is not one of: low, medium, high, xhigh, max") and raises(lambda: dg.tuning_for({"phases": {"r": {"model": 3}}}, "r"),
         "phases.r.model")),
@@ -346,13 +346,13 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[1])
 import delegate, herdr
-d = delegate.decide("reviewer", issue=139, registry_file=sys.argv[2], config_file=sys.argv[3], probe_timeout=1,
+d = delegate.decide("reviewer", issue=139, registry_file=sys.argv[2], config_file=sys.argv[3], probe_timeout=3,
                     env={"HERDR_ENV": "1", "HOME": "/nonexistent"})
 print(d.machine.name)
 print([v.why for v in d.considered if v.machine == "worker-2"][0])
 PYEOF
 ); RC=$?; ERR=""
-t "(b) a hanging machine times out and worker-1 is picked" bash -c 'printf "%s\n" "$1" | grep -qx worker-1 && printf "%s\n" "$1" | grep -q "unreachable: timed out after 1s"' _ "$OUT"
+t "(b) a hanging machine times out and worker-1 is picked" bash -c 'printf "%s\n" "$1" | grep -qx worker-1 && printf "%s\n" "$1" | grep -q "unreachable: timed out after 3s"' _ "$OUT"
 
 echo "D5 everything full or unreachable"
 newrow '{"worker-1":{"agents":4},"worker-2":{"unreachable":true}}'; HENV=0; D $B1 "$CFG_ANY" reviewer --issue 139
@@ -838,6 +838,7 @@ t "SIGTERM: exit 143" rc_is 143
 t "SIGTERM: no pane or agent is left" chk "$NOPANES"
 bg_delegate INT --keep-failed
 t "SIGINT with --keep-failed: exit 130, the pane stays with a stop: line" bash -c '[ "$1" = 130 ] && case "$2" in *"left behind: pane "*"stop:"*"pane close"*) ;; *) exit 1;; esac' _ "$RC" "$ERR"
+t "SIGINT with --keep-failed: a record with status failed is written" bash -c '"$1" -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))[\"status\"]==\"failed\" else 1)" "$2"' _ "$PY" "$TMP/home/.local/state/sdlc/delegates/worker-1/reviewer-139.json"
 set +m
 
 echo "D49 an unexpected exception exits 3 and leaves no pane"
@@ -976,7 +977,8 @@ t "nobody closed the winner's pane" chk 'n(r"^pane close") == 0 and n(r"^agent s
 echo "D57 finished agents count until they are stopped"
 newrow '{"worker-1":{"agents":0,"done_agents":4}}'; D $B1 "$CFG_W1" reviewer --issue 139
 t "4 done agents fill a limit of 4: exit 1" rc_is 1
-t "full: 4 agents, limit 4" has "full: 4 agents, limit 4"
+t "the refusal is decide()'s own, from the considered line (not the recheck's)" has "no machine can take reviewer now: worker-1: full: 4 agents, limit 4"
+t "it is not the recheck's text" hasnt "is now full"
 newrow '{"worker-1":{"agents":0,"done_agents":3}}'; D $B1 "$CFG_W1" reviewer --issue 139
 t "3 done agents leave a slot" first_is "reviewer-139: worker-1"
 
@@ -987,6 +989,157 @@ D $B1 "$CFG_W1" reviewer --issue 139 --machine worker-1
 t "--machine equal to the repo's own placement: no overrides line" hasnt "overrides"
 newrow; D $B1 "$CFG_W1" reviewer --issue 139 --machine worker-2
 t "--machine different from it: overrides ... ('worker-1')" has "overrides phase_machines.reviewer ('worker-1')"
+
+echo "D59 a second signal during cleanup still leaves no pane"
+bgrun() {   # bgrun SCENARIO WAIT_REGEX 'SIG [SIG2]' [delegate args] : signal a delegate once the herdr call WAIT_REGEX was made
+  local scen=$1 rx=$2 sigs=$3; shift 3
+  newrow "$scen"
+  ( cd "$TMP/cwd" && exec env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate reviewer --issue 139 \
+      --registry "$REGF" --config "$CFG_W1" --start-timeout 60 "$@" >"$TMP/out" 2>"$TMP/err" ) &
+  local pid=$! i s n=0
+  for i in $(seq 1 100); do chk "n(r'$rx') >= 1" && break; sleep 0.2; done
+  for s in $sigs; do sleep 1; kill -s "$s" "$pid" 2>/dev/null; done
+  wait "$pid"; RC=$?
+  OUT=$(cat "$TMP/out"); ERR=$(cat "$TMP/err")
+}
+set -m
+SLOWCLOSE='{"worker-1":{"agents":0,"gates":["unknown"],"slow_close":3}}'
+for pair in "INT INT 130" "TERM TERM 143" "TERM INT 130" "INT TERM 143"; do
+  set -- $pair
+  bgrun "$SLOWCLOSE" '^agent start' "$1 $2"
+  t "$1 then $2 during a slow cleanup: exit $3" rc_is "$3"
+  t "$1 then $2: no pane or agent is left" chk "$NOPANES"
+  t "$1 then $2: left behind: nothing (pane closed)" bash -c 'case "$1" in *"left behind: nothing (pane "*" closed)"*) ;; *) exit 1;; esac' _ "$ERR"
+done
+set +m
+
+echo "D60 a status line that redraws every frame doesn't count as a changed dialog"
+TICK1='{"worker-1":{"gates":["fullscreen-notice","trust-prompt"],"focus_target":true,"lag_enter_only":true,"redraw_lag":20,"ticker":true}}'
+newrow "$TICK1"; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 60
+t "(a) fullscreen then trust, lagging redraw plus a ticker: exit 0" rc_is 0
+t "(a) one Enter per dialog, each on its target" chk 'n(r"send-keys \S+ enter") == 2 and [(k["dialog"], k["selected"]) for k in keys if k["key"] == "enter"] == [("fullscreen-notice", "Not now"), ("trust-prompt", "Yes, I trust this folder")]'
+K
+newrow '{"worker-1":{"gates":["trust-prompt","fullscreen-notice"],"lag_enter_only":true,"redraw_lag":20,"ticker":true}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 60
+t "(b) trust then fullscreen, same: exit 0, one Enter per dialog on its target" chk 'n(r"send-keys \S+ enter") == 2 and [(k["dialog"], k["selected"]) for k in keys if k["key"] == "enter"] == [("trust-prompt", "Yes, I trust this folder"), ("fullscreen-notice", "Not now")]'
+t "(b) exit 0" rc_is 0
+K
+newrow '{"worker-1":{"gates":["fullscreen-notice"],"focus_target":true,"prompt_error_once":"agent_blocked","prompt_gate":"fullscreen-notice"}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 30
+t "(c) the remembered Enter is forgotten once the dialog is gone: a dialog that comes back the same is answered (exit 0, two Enters)" chk 'n(r"send-keys \S+ enter") == 2'
+t "(c) exit 0" rc_is 0
+
+echo "D61 which brief failures leave the pane"
+newrow '{"worker-1":{"fail_visible_read_n":2}}'; D $B1 "$CFG_W1" reviewer --issue 139
+t "(a) the late screen read fails before agent prompt: exit 3, no agent prompt call" bash -c '[ "$1" = 3 ]' _ "$RC"
+t "(a) the pane is closed and there is no record" chk 'n(r"^agent prompt") == 0 and n(r"^pane close") == 1'
+t "(a) no record file" bash -c '! find "$1" -name "*.json" 2>/dev/null | grep -q .' _ "$TMP/home/.local/state/sdlc"
+set -m
+bgrun '{"worker-1":{"agents":0,"prompt_hang":20}}' '^agent prompt' 'INT'
+t "(b) Ctrl-C during agent prompt --wait: exit 130" rc_is 130
+t "(b) the pane is still there" chk 'json.load(open(d + "/state.json"))["worker-1"]["panes"] != [] and n(r"^pane close") == 0'
+t "(b) left behind: pane, with the stop line" bash -c 'case "$1" in *"left behind: pane "*"stop:"*"pane close"*) ;; *) exit 1;; esac' _ "$ERR"
+t "(b) the record file stays" test -f "$TMP/home/.local/state/sdlc/delegates/worker-1/reviewer-139.json"
+set +m
+
+echo "D62 an interrupt in the middle of a create call closes the pane the server made"
+set -m
+bgrun '{"worker-1":{"agents":0,"slow_create":4}}' '^workspace create' 'INT'
+t "(a) Ctrl-C during workspace create: exit 130" rc_is 130
+t "(a) no pane, agent or workspace is left" chk "$NOPANES"
+t "(a) left behind: nothing (pane closed)" bash -c 'case "$1" in *"left behind: nothing (pane "*" closed)"*) ;; *) exit 1;; esac' _ "$ERR"
+WSX='{"worker-1":{"agents":0,"slow_create":4,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/elsewhere","fg":"bash"}]}]}]}}'
+bgrun "$WSX" '^tab create' 'INT'
+t "(b) Ctrl-C during tab create: exit 130" rc_is 130
+t "(b) only the pre-existing pane is left" chk '[p["pane_id"] for p in json.load(open(d + "/state.json"))["worker-1"]["panes"]] == ["w1:p11"]'
+set +m
+
+echo "D63 a background job's ignored SIGINT stays ignored"
+newrow '{"worker-1":{"agents":0,"gates":["unknown"]}}'
+cd "$TMP/cwd"      # a plain `cmd &` (not a subshell) is what leaves SIGINT ignored without job control
+env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate reviewer --issue 139 \
+    --registry "$REGF" --config "$CFG_W1" --start-timeout 20 >"$TMP/out" 2>"$TMP/err" &
+BGP=$!
+cd "$HERE"
+for i in $(seq 1 100); do chk 'n(r"^agent start") >= 1' && break; sleep 0.2; done
+sleep 1; kill -s INT $BGP; sleep 1
+t "SIGINT sent to a background delegate is ignored (it is still running)" kill -0 $BGP
+kill -s TERM $BGP; wait $BGP; RC=$?
+t "it still stops on SIGTERM: exit 143" rc_is 143
+
+echo "D64 the lock covers recheck, agent start and a provisional record, and falls back to another machine"
+cat > "$TMP/fallback.py" <<'PYEOF'
+import fcntl, os, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+import delegate
+env = {"HERDR_ENV": "1", "HOME": sys.argv[2]}
+d = delegate.decide("reviewer", issue=139, registry_file=sys.argv[3], config_file=sys.argv[4], env=env)
+best = d.machine.name
+alt = [a.machine.name for a in d.alternates]
+
+
+def hold(name):
+    path = delegate._state_dir(env) / name / ".lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(str(path), "a")
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    return handle
+
+
+h1 = hold(best)
+s = delegate.start(d, lock_wait=0.5, env=env)
+print("fell back:", best, "->", s.decision.machine.name, "|", ";".join(s.warnings))
+h2 = [hold(n) for n in alt]
+try:
+    delegate.start(d, lock_wait=0.5, env=env)
+    print("no refusal")
+except delegate.Refused as exc:
+    print("refused:", exc.reason)
+PYEOF
+newrow
+OUT=$(cd "$TMP/cwd" && timeout 120 env PATH="$TMP/pybin" "$PY" -I "$TMP/fallback.py" "$LIB" "$TMP/home" "$REGF" "$CFG_ANY" 2>&1); RC=$?; ERR=""
+t "a held lock on the best machine: the next fitting machine is used, and the skip is reported" has "fell back: worker-2 -> workstation | tried worker-2: worker-2 is busy"
+t "every candidate locked: refused as no machine can take it" has "refused: no machine can take reviewer now: worker-2: worker-2 is busy"
+
+echo "D65 browser jobs: provisional records count, stale ones don't"
+BJREG="$TMP/reg-bj.yaml"; reg_file "$BJREG" '0,/browser_jobs: 2/s//browser_jobs: 1/'
+newrow '{"worker-1":{"agents":0}}'
+conc2() {   # conc2 N : a background browser-job delegate to worker-1 for issue N
+  ( cd "$TMP/cwd" && timeout 120 env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate validator --issue "$1" \
+      --registry "$BJREG" --config "$BROWSER_CFG" --machine worker-1 >"$TMP/c$1.out" 2>"$TMP/c$1.err"; echo $? >"$TMP/c$1.rc" ) &
+}
+rm -f "$TMP"/c21.rc "$TMP"/c22.rc
+conc2 21; conc2 22; wait
+OUT="$(cat "$TMP/c21.rc" "$TMP/c22.rc" | sort | tr '\n' ' ')"; ERR="$(cat "$TMP/c21.err" "$TMP/c22.err")"
+t "browser_jobs: 1 and two concurrent browser jobs: exactly one starts" has "0 1 "
+t "the loser says the browser jobs are full" has "browser job"
+t "two agents were not started" chk 'n(r"^agent start") == 1'
+# a provisional record whose process is dead doesn't count; a live one does
+DEADPID="$(sh -c 'echo $$')"
+mkrec() {   # mkrec NAME PANE STATUS PID : a browser-job record for worker-1 (limit 2 below)
+  mkdir -p "$STATE/worker-1"
+  printf '{"name":"%s","pane_id":"%s","browser_job":true,"status":"%s","pid":%s,"started_at":"%s"}\n' "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE/worker-1/$1.json"
+}
+newrow '{"worker-1":{"agents":3}}'
+mkrec busy1 w9:p1 working $$; mkrec busy2 w9:p2 starting "$DEADPID"
+D $B1 "$BROWSER_CFG" validator --issue 1 --machine worker-1
+t "a stale provisional record (dead process) isn't counted: 1 of 2 browser jobs, exit 0" first_is "validator-1: worker-1"
+newrow '{"worker-1":{"agents":3}}'
+mkrec busy1 w9:p1 working $$; mkrec busy2 w9:p2 starting $$
+D $B1 "$BROWSER_CFG" validator --issue 1 --machine worker-1
+t "a live provisional record counts: 2 of 2, exit 1" has "full: 2 browser jobs, limit 2"
+
+echo "D66 an unwritable state directory only loses the record"
+: > "$TMP/notadir"; mkdir -p "$TMP/run"
+newrow; XENV=(XDG_STATE_HOME="$TMP/notadir" XDG_RUNTIME_DIR="$TMP/run"); D $B1 "$CFG_W1" reviewer --issue 139
+t "exit 0: the start isn't refused" rc_is 0
+t "it warns that no record will be written" has "no record will be written"
+t "the lock lives under the runtime directory" test -f "$TMP/run/sdlc-delegate/worker-1.lock"
+
+echo "D67 answer counts are kept across the brief retry"
+newrow '{"worker-1":{"gates":["fullscreen-notice","fullscreen-notice"],"prompt_error_once":"agent_blocked","prompt_gate":"fullscreen-notice"}}'; D $B1 "$CFG_W1" reviewer --issue 139 --start-timeout 30
+t "the dialog was answered twice, then shown a third time: still showing after 2 answers, exit 3" has "fullscreen-notice still showing after 2 answers"
+t "exit 3" rc_is 3
+t "only two Enters were sent" chk 'n(r"send-keys \S+ enter") == 2'
 
 echo "D46 plugin/bin/sdlc is executable; the fake herdr is executable"
 t "sdlc is executable" test -x "$SDLC"

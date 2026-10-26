@@ -36,9 +36,17 @@ back through GitHub only.
   answered: the stronger variant ("No, continue without these permissions", shown when the folder pre-approves
   permissions or configures MCP servers) fails the start, so a settings file planted in the `workdir` is never
   accepted automatically. A new pane must open in the `workdir`, or it is closed before the agent starts.
-- **Cleanup.** Ctrl-C (exit 130), SIGTERM (143) and any failure before the brief arrives close the pane and remove the
-  record, unless `--keep-failed`; an unexpected error exits 3, never 1. One delegate runs at a time per machine
-  (a lock under the records directory; a second run waits, then refuses as busy).
+- **Cleanup.** Ctrl-C (exit 130), SIGTERM (143) and any failure before `agent prompt` is invoked, or a rejection from
+  it (`agent_blocked`, `agent_not_ready`, `agent_not_found`), close the pane and remove the record unless
+  `--keep-failed`. Once `agent prompt` has been invoked, including Ctrl-C during its wait, the pane and record stay and
+  the output prints `left behind:` and `stop:`. The cleanup runs with SIGINT and SIGTERM blocked, so a second signal
+  can't leave a pane behind; an interrupt during `workspace create` or `tab create` closes the pane the server made;
+  an unexpected error exits 3, never 1. An ignored SIGINT (`sdlc delegate &`) stays ignored.
+- **One at a time per machine.** A lock (flock) is held from the load recheck through `agent start` and a provisional
+  record (`status: starting`, counted as load, including `browser_jobs`; dead or timed-out ones are not). It is not
+  held through the first-start dialogs or the brief. Under `auto` or `any`, a busy lock or a failed recheck moves on to
+  the next fitting machine. If the state directory can't be written, the lock goes under `$XDG_RUNTIME_DIR` or
+  `/tmp/sdlc-delegate-<uid>` and no record is written (with a warning).
 - **GitHub is the only return path.** A job that comments or opens a pull request needs `gh` logged in on the worker
   and prints `sdlc-delegate: gh is not logged in on <machine>` when it isn't; a job that only pushes a branch needs
   only push access.

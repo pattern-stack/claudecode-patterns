@@ -417,7 +417,7 @@ def _delegate(args: argparse.Namespace) -> int:
     try:
         d = delegate.decide(args.role, kind=args.kind, machine_arg=args.machine, issue=args.issue,
                             prompt=args.prompt, name=args.name, registry_file=args.registry,
-                            config_file=args.config)
+                            config_file=args.config, start_timeout=args.start_timeout)
     except delegate.Refused as exc:
         return _refused(exc)
     for text in d.warnings:
@@ -431,18 +431,22 @@ def _delegate(args: argparse.Namespace) -> int:
         _print_dry_run(d, plan, args.start_timeout)
         return 0
     try:
-        # One delegate at a time per machine from the load check through the brief.
-        with delegate.machine_lock(d.machine.name):
-            d = delegate.recheck(d)
-            plan = delegate.choose_pane(d)
-            started = delegate.start(d, plan, start_timeout=args.start_timeout, keep_failed=args.keep_failed)
+        started = delegate.start(d, start_timeout=args.start_timeout, keep_failed=args.keep_failed)
     except delegate.Refused as exc:
         return _refused(exc)
     except delegate.StartFailed as exc:
-        _print_failure(exc, d.label)
+        _print_failure(exc, exc.label)
         if isinstance(exc.interrupt, delegate.Terminated):
+            code = 143
+        else:
+            code = 130 if exc.interrupt is not None else 3
+        try:
+            delegate.restore_signals(exc.sigmask)      # a signal that arrived during the cleanup is delivered now
+        except delegate.Terminated:
             return 143
-        return 130 if exc.interrupt is not None else 3
+        except KeyboardInterrupt:
+            return 130
+        return code
     _print_started(started)
     for text in started.warnings:
         _eprint(machines.cap_text("warning: %s" % text))
@@ -457,7 +461,8 @@ def _on_sigterm(signum, frame) -> None:
 
 def cmd_delegate(args: argparse.Namespace) -> int:
     """Exit 0 started, 1 refused, 3 start failed or an unexpected error, 130 Ctrl-C, 143 SIGTERM."""
-    signal.signal(signal.SIGINT, signal.default_int_handler)    # a background job may have inherited SIG_IGN
+    # SIGINT is left alone: Python already turns it into KeyboardInterrupt, unless it was inherited as ignored
+    # (`sdlc delegate &`), and then it stays ignored.
     signal.signal(signal.SIGTERM, _on_sigterm)
     try:
         return _delegate(args)

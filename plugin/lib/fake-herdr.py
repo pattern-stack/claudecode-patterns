@@ -11,7 +11,7 @@ JSON errors on stderr (exit 1), and herdr's text error for an unknown machine (e
 
 Scenario keys per machine: agents (count of busy agents), unreachable, hang, workspaces, gates, idle_with_gate,
 unnamed_after_gate, focus_target, marker_stuck, stuck, redraw_lag, swap_before_enter, marker_glyph, missing_cwd,
-no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd.
+no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd, slow_create, slow_recent, fail_visible_read_n, ticker, slow_close, prompt_hang.
 """
 import json
 import os
@@ -76,7 +76,7 @@ class Fake:
         self.s = state[label]
 
     def initial(self):
-        s = {"next": 11, "workspaces": [], "tabs": [], "panes": [], "agents": [], "used": {}}
+        s = {"next": 100, "workspaces": [], "tabs": [], "panes": [], "agents": [], "used": {}}
         for i in range(int(self.scen.get("agents", 0))):
             s["agents"].append({"name": "busy%d" % (i + 1), "pane_id": "w9:p%d" % (i + 1), "agent": "claude",
                                 "agent_status": "working", "interactive_ready": True, "workspace_id": "w9",
@@ -215,11 +215,16 @@ class Fake:
             pane["marker"] = 0
         if pane.get("lag", 0) > 0 and source == "visible":
             pane["lag"] -= 1
-            return pane.get("old_screen", self.render(pane))
+            old = pane.get("old_screen", self.render(pane))
+            if self.scen.get("ticker"):
+                old += "\n  esc to interrupt  %ds\n" % pane.get("vreads", 0)
+            return old
         if pane.get("torn", 0) > 0 and source == "visible":
             pane["torn"] -= 1
             return self.render(pane, torn=True)
         text = self.render(pane)
+        if self.scen.get("ticker") and source == "visible":
+            text += "\n  esc to interrupt  %ds\n" % pane.get("vreads", 0)
         add = self.scen.get("augment_at_read")
         if add and source == "visible" and pane["vreads"] >= int(add["n"]):
             text += DIALOGS[add["text"]][0] + "\n".join(" %s" % o for o in DIALOGS[add["text"]][1]) + "\n"
@@ -303,6 +308,8 @@ def main():
         f.s["panes"].append({"pane_id": pid, "tab_id": tid, "workspace_id": wid, "foreground_cwd": cwd,
                              "fg": "bash", "dialog": None, "remaining": [], "marker": 0})
         f.commit()
+        if scen.get("slow_create"):
+            time.sleep(float(scen["slow_create"]))      # the server has created it; the reply is slow
         result = {"type": "%s_created" % group, "tab": {"tab_id": tid, "workspace_id": wid},
                   "root_pane": {"pane_id": pid, "tab_id": tid, "workspace_id": wid}}
         if group == "workspace":
@@ -317,10 +324,14 @@ def main():
         pane = f.pane(rest[0])
         if pane is None:
             fail("pane_not_found", "no pane %s" % rest[0], cmd)
+        if scen.get("slow_close"):
+            time.sleep(float(scen["slow_close"]))       # a slow round trip while cleaning up
         f.s["panes"] = [p for p in f.s["panes"] if p["pane_id"] != pane["pane_id"]]
         f.s["agents"] = [a for a in f.s["agents"] if a.get("pane_id") != pane["pane_id"]]
         if not any(p["tab_id"] == pane["tab_id"] for p in f.s["panes"]):
             f.s["tabs"] = [t for t in f.s["tabs"] if t["tab_id"] != pane["tab_id"]]
+        if not any(t["workspace_id"] == pane["workspace_id"] for t in f.s["tabs"]):
+            f.s["workspaces"] = [w for w in f.s["workspaces"] if w["workspace_id"] != pane["workspace_id"]]
         f.commit()
     elif (group, verb) == ("pane", "process-info"):
         pane = f.pane(opt("--pane"))
@@ -344,6 +355,13 @@ def main():
         pane = f.pane(rest[0])
         if pane is None:
             fail("pane_not_found", "no pane %s" % rest[0], cmd)
+        if scen.get("slow_recent") and opt("--source") == "recent-unwrapped":
+            time.sleep(float(scen["slow_recent"]))      # e.g. a slow SSH round trip during cleanup
+        if scen.get("fail_visible_read_n") and opt("--source") == "visible":
+            f.s["used"]["vr"] = f.s["used"].get("vr", 0) + 1
+            f.commit()
+            if f.s["used"]["vr"] == int(scen["fail_visible_read_n"]):
+                fail(scen.get("fail_code", "internal_error"), "read failed", cmd)
         text = f.read(pane, opt("--source", "recent"))
         f.commit()
         sys.stdout.write(text)
@@ -361,6 +379,8 @@ def main():
         sep = rest.index("--") if "--" in rest else len(rest)
         if pane is None:
             fail("pane_not_found", "no pane %s" % opt("--pane"), cmd)
+        if pane.get("fg", "bash") not in ("bash", "zsh", "sh", "fish", "dash") or f.agent_on(pane) is not None:
+            fail("pane_not_at_shell", "the pane is not at an interactive shell prompt", cmd)
         if scen.get("start_error"):
             fail(scen["start_error"], "start failed", cmd)
         used = f.s["used"]
@@ -394,7 +414,7 @@ def main():
     elif (group, verb) == ("agent", "get"):
         a = f.agent(rest[0])
         pane = f.pane(a["pane_id"]) if a else None
-        if a is None or (rest[0] == a.get("name") and pane and pane.get("dialog")):
+        if a is None:
             fail("agent_not_found", "no agent %s" % rest[0], cmd)
         out(cmd, {"type": "agent_info", "agent": f.agent_entry(a)})
     elif (group, verb) == ("agent", "rename"):
@@ -429,6 +449,8 @@ def main():
                                  "argv": args, "into_dialog": pane.get("dialog") if pane is not None else None})
         a["agent_status"] = "working"
         f.commit()
+        if scen.get("prompt_hang"):
+            time.sleep(float(scen["prompt_hang"]))      # --wait: the text was delivered, the reply is slow
         out(cmd, {"type": "agent_prompted", "agent": f.agent_entry(a)})
     else:
         sys.stderr.write("fake herdr: unsupported: %s\n" % " ".join(args))
