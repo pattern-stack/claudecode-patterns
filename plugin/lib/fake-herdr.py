@@ -11,7 +11,7 @@ JSON errors on stderr (exit 1), and herdr's text error for an unknown machine (e
 
 Scenario keys per machine: agents (count of busy agents), unreachable, hang, workspaces, gates, idle_with_gate,
 unnamed_after_gate, focus_target, marker_stuck, stuck, redraw_lag, swap_before_enter, marker_glyph, missing_cwd,
-no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd, slow_create, slow_recent, fail_visible_read_n, ticker, slow_close, prompt_hang.
+no_process_argv, raw_screen, start_error, prompt_error, prompt_error_once (+ prompt_gate), name_taken_once, lag_enter_only, torn_reads, swap_at_read, augment_at_read, late_dialog, done_agents, resolve_cwd, slow_create, slow_recent, fail_visible_read_n, ticker, slow_close, prompt_hang, start_error_once, slow_start.
 """
 import json
 import os
@@ -381,6 +381,11 @@ def main():
             fail("pane_not_found", "no pane %s" % opt("--pane"), cmd)
         if pane.get("fg", "bash") not in ("bash", "zsh", "sh", "fish", "dash") or f.agent_on(pane) is not None:
             fail("pane_not_at_shell", "the pane is not at an interactive shell prompt", cmd)
+        if scen.get("start_error_once") and not f.s["used"].get("start_failed"):
+            f.s["used"]["start_failed"] = True
+            f.commit()
+            time.sleep(float(scen.get("slow_start", 0)))
+            fail(scen["start_error_once"], "start failed", cmd)
         if scen.get("start_error"):
             fail(scen["start_error"], "start failed", cmd)
         used = f.s["used"]
@@ -421,6 +426,8 @@ def main():
         a = f.agent(rest[0])
         if a is None:
             fail("agent_not_found", "no agent %s" % rest[0], cmd)
+        if any(x is not a and x.get("name") == rest[1] for x in f.s["agents"]):
+            fail("agent_name_taken", "name %s is taken" % rest[1], cmd)
         a["name"] = rest[1]
         if a.get("interactive_ready") is None:
             a["interactive_ready"] = True

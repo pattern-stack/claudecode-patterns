@@ -55,6 +55,7 @@ GH_NOT_LOGGED_IN = "sdlc-delegate: gh is not logged in on {machine}"
 OUTPUT_LINES = 40                               # pane lines shown after a failed start
 LOCK_WAIT = 15.0                                # seconds a run waits for another delegate on the same machine
 LOCK_POLL = 0.2
+STARTING_MARGIN = 60.0                          # seconds a provisional record outlives its writer's start timeout
 # Delivery of the brief is certain not to have happened for these herdr codes: the pane may be closed.
 NOT_DELIVERED = ("agent_blocked", "agent_not_ready", "agent_not_found")
 GIT_TIMEOUT = 5.0
@@ -170,6 +171,7 @@ class Decision:
     name_explicit: bool = False
     prompt: Optional[str] = None
     warnings: Tuple[str, ...] = ()
+    heavy: bool = False                         # the role needs full-suite, browser or docker
     alternates: Tuple["Decision", ...] = ()     # other fitting machines, tried in order if the lock or recheck refuses
 
 
@@ -197,6 +199,7 @@ class Started:
     name: str = ""                              # the name the agent finally has
     briefed: bool = False
     warnings: Tuple[str, ...] = ()
+    deadline: Optional[float] = None            # provisional records only: the writer's absolute wall-clock deadline
 
 
 # ── pure helpers ─────────────────────────────────────────────────────────────
@@ -418,6 +421,7 @@ def _record_dict(s: Started, started_at: str) -> dict:
         "claude_args": list(d.claude_args), "argv": list(s.argv), "argv_source": s.argv_source,
         "first_start": list(s.gates_answered), "startup": list(s.startup),
         "briefed": s.briefed, "status": s.status, "started_at": started_at, "pid": os.getpid(),
+        **({"deadline": s.deadline} if s.deadline is not None else {}),
     }
 
 
@@ -570,7 +574,8 @@ def decide(role: str, *, kind: Optional[str] = None, machine_arg: str = "auto",
         except herdr.HerdrError as exc:
             verdicts.append(Verdict(mname, False, "unreachable: %s" % exc.detail))
             continue
-        live = frozenset(a.get("name") for a in agents if isinstance(a, dict) and isinstance(a.get("name"), str))
+        live = frozenset(a.get("name") for a in agents if isinstance(a, dict) and isinstance(a.get("name"), str)) \
+            | reserved_names(m.name, env, start_timeout)
         n = len(agents)
         limit = m.limits.agents
         if limit is not None and n >= limit:
@@ -609,7 +614,7 @@ def decide(role: str, *, kind: Optional[str] = None, machine_arg: str = "auto",
                                issue=issue, repo=repo, prompt=prompt)
         return Decision(role, placement.kind or kind, final, m, lab, wd, placement, via, overrides, marked,
                         tuning, tuple(args), is_browser_job(needs), issue, repo, mission, name is not None, prompt,
-                        tuple(warnings))
+                        tuple(warnings), is_heavy(needs))
 
     best = build(ranked[0])
     alternates: List[Decision] = []
@@ -702,11 +707,15 @@ def _alive(pid: Any) -> bool:
 
 
 def _stale(record: dict, stale_after: float) -> bool:
-    """A provisional (status: starting) record whose process is dead, or that is older than the start timeout."""
+    """A provisional (status: starting) record whose process is dead, or whose writer's own deadline has passed.
+    `stale_after` only applies to a record without a deadline: it is measured from started_at."""
     if record.get("status") != "starting":
         return False
     if not _alive(record.get("pid")):
         return True
+    deadline = record.get("deadline")
+    if isinstance(deadline, (int, float)) and not isinstance(deadline, bool):
+        return time.time() > deadline
     try:
         began = datetime.strptime(str(record.get("started_at")), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
@@ -716,11 +725,24 @@ def _stale(record: dict, stale_after: float) -> bool:
 
 def browser_jobs(machine: str, agents: List[dict], env: Optional[Mapping[str, str]] = None,
                  stale_after: float = START_TIMEOUT) -> int:
-    """Live browser jobs on `machine`: records with browser_job true whose name and pane match a live agent.
-    Provisional records of a dead or timed-out start don't count."""
-    pairs = set((a.get("name"), a.get("pane_id")) for a in agents)
-    return sum(1 for r in read_records(machine, env) if r.get("browser_job") is True
-               and (r.get("name"), r.get("pane_id")) in pairs and not _stale(r, stale_after))
+    """Live browser jobs on `machine`: records with browser_job true on a live agent's pane. A provisional record
+    counts by pane alone (its agent may still be unnamed); others also need the name to match. Provisional records of
+    a dead or timed-out start don't count."""
+    names = {a.get("pane_id"): a.get("name") for a in agents}
+    count = 0
+    for r in read_records(machine, env):
+        if r.get("browser_job") is not True or r.get("pane_id") not in names or _stale(r, stale_after):
+            continue
+        if r.get("status") == "starting" or names[r.get("pane_id")] == r.get("name"):
+            count += 1
+    return count
+
+
+def reserved_names(machine: str, env: Optional[Mapping[str, str]] = None,
+                   stale_after: float = START_TIMEOUT) -> FrozenSet[str]:
+    """Names held by another delegate's live provisional record, whether or not herdr shows the agent named yet."""
+    return frozenset(r["name"] for r in read_records(machine, env)
+                     if r.get("status") == "starting" and isinstance(r.get("name"), str) and not _stale(r, stale_after))
 
 
 def recheck(decision: Decision, env: Optional[Mapping[str, str]] = None, *,
@@ -743,6 +765,7 @@ def recheck(decision: Decision, env: Optional[Mapping[str, str]] = None, *,
             raise Refused("%s is now full: %s, limit %d" % (d.machine.name, _plural(jobs, "browser job"),
                                                               limits.browser_jobs), d.considered)
     live = set(a.get("name") for a in agents if isinstance(a.get("name"), str))
+    live |= reserved_names(d.machine.name, env, stale_after)
     if d.name not in live:
         return d
     if d.name_explicit:
@@ -813,7 +836,8 @@ def plan_commands(decision: Decision, plan: PanePlan, *, start_timeout: float = 
         pane, out = plan.pane_id or "<pane>", [q("tab", "rename", plan.tab_id or "<tab>", tab_label)]
     else:
         pane, out = "<new-pane>", [q("tab", "create", "--workspace", plan.workspace_id or "<workspace>",
-                                     "--label", tab_label, "--cwd", wd, "--no-focus")]
+                                     "--label", tab_label + ".<nonce>", "--cwd", wd, "--no-focus"),
+                                   q("tab", "rename", "<new-tab>", tab_label)]
     out.append(q("agent", "start", name, "--kind", "claude", "--pane", pane, "--timeout",
                  str(int(start_timeout * 1000)), "--", *decision.claude_args))
     declared = [g for g in decision.machine.first_start if g in GATES]
@@ -1059,6 +1083,8 @@ class _Run:
         self.creating: Optional[PanePlan] = None    # a create call was sent and its reply not yet read
         self.prompting = False                      # agent prompt has been invoked and not definitely rejected
         self.lock_info: Optional[LockInfo] = None
+        self.nonce = os.urandom(3).hex()            # makes this run's temporary tab label unique
+        self.ws_before: FrozenSet[Any] = frozenset()
 
     def save(self, s: Started) -> Started:
         try:
@@ -1073,10 +1099,15 @@ class _Run:
                        "unknown", None, None, self.name, False, ())
         return replace(base, **changes)
 
+    def _temp_label(self) -> str:
+        """A tab label no other run uses, so an interrupted create can find exactly its own tab."""
+        return "%s%s.%s" % (TAB_PREFIX, self.d.name, self.nonce)
+
     def _create_pane(self, plan: PanePlan) -> None:
         d, label = self.d, self.d.label
         tab_label = TAB_PREFIX + self.name
         if plan.action == "create-workspace":
+            self.ws_before = frozenset(w.get("workspace_id") for w in herdr.workspace_list(label))
             self.creating = plan
             made = herdr.workspace_create(label, WORKSPACE_LABEL, d.workdir)
             self.creating = None
@@ -1093,17 +1124,19 @@ class _Run:
             herdr.tab_rename(label, self.tab, tab_label)
         else:
             self.creating = plan
-            made = herdr.tab_create(label, plan.workspace_id or "", tab_label, d.workdir)
+            made = herdr.tab_create(label, plan.workspace_id or "", self._temp_label(), d.workdir)
             self.creating = None
             self.ws, self.tab, self.pane = plan.workspace_id, made["tab"].get("tab_id"), made["root_pane"].get("pane_id")
             if not (self.ws and self.tab and self.pane):
                 raise herdr.HerdrError("unexpected output")
             _wait_cwd(d, self.ws, self.pane, self.sleep, self.clock)
+            herdr.tab_rename(label, self.tab, tab_label)
 
     def _start_agent(self) -> None:
         d, label = self.d, self.d.label
         assert self.pane is not None
         taken = set(next((v.live_names for v in d.considered if v.machine == d.machine.name and v.eligible), frozenset()))
+        taken |= reserved_names(d.machine.name, self.env, self.start_timeout)
         tries = 0
         while True:
             try:
@@ -1131,11 +1164,11 @@ class _Run:
             if plan.action == "create-workspace":
                 found: List[str] = []
                 for w in herdr.workspace_list(label):
-                    if w.get("label") == WORKSPACE_LABEL:
+                    if w.get("label") == WORKSPACE_LABEL and w.get("workspace_id") not in self.ws_before:
                         found += [p.get("pane_id") for p in herdr.pane_list(label, w.get("workspace_id"))]
                 return [p for p in found if p]
             tabs = set(t.get("tab_id") for t in herdr.tab_list(label, plan.workspace_id or "")
-                       if t.get("label") == TAB_PREFIX + self.name)
+                       if t.get("label") == self._temp_label())
             return [p.get("pane_id") for p in herdr.pane_list(label, plan.workspace_id or "")
                     if p.get("tab_id") in tabs and p.get("pane_id")]
         except herdr.HerdrError:
@@ -1152,15 +1185,30 @@ class _Run:
         try:
             with machine_lock(machine_name, self.env, wait=self.lock_wait, sleep=self.sleep, clock=self.clock) as info:
                 self.lock_info = info
-                d = self.d = recheck(d, self.env, stale_after=self.start_timeout)
-                self.name = d.name
-                self._create_pane(self.plan or choose_pane(d))
-                assert self.pane is not None
-                self.session = _Startup(d, self.pane, self.sleep, self.clock)
-                self._start_agent()
-                self.stage = "starting"
-                # A provisional record, so the next delegate's recheck counts this job as load.
-                self.state = self.save(self.current(status="starting"))
+                try:
+                    d = self.d = recheck(d, self.env, stale_after=self.start_timeout)
+                    self.name = d.name
+                    if info.fallback and d.heavy:
+                        raise Refused("the state directory is not writable, so no records can be kept and %s work "
+                                      "can't be counted against %s's limits; fix the state directory, or delegate a "
+                                      "light role" % ("/".join(HEAVY_CAPS), machine_name))
+                    self._create_pane(self.plan or choose_pane(d))
+                    assert self.pane is not None
+                    self.session = _Startup(d, self.pane, self.sleep, self.clock)
+                    self._start_agent()
+                    self.stage = "starting"
+                    # A provisional record, so the next delegate's recheck counts this job as load and as a name.
+                    self.state = self.save(self.current(
+                        status="starting", deadline=time.time() + self.start_timeout + STARTING_MARGIN))
+                except StartFailed:
+                    raise
+                except BaseException as exc:
+                    if isinstance(exc, Refused) and self.pane is None and self.creating is None:
+                        raise                                 # refused before anything was touched
+                    # Clean up while still holding the lock: otherwise the half-made pane looks free to the
+                    # next delegate, which could reuse it just before this run closes it.
+                    reason, interrupt = self._classify(exc)
+                    self._failed(reason, interrupt)
             # The lock is released: the first-start loop and the brief can take minutes.
             session = self.session
             entry = session.first_start(self.start_timeout)
@@ -1207,22 +1255,9 @@ class _Run:
             reason = exc.reason
         except StartFailed as exc:
             exc.label = label
-            raise                                             # choose_pane failed before any pane existed
-        except _Fail as exc:
-            reason = exc.reason
-        except herdr.HerdrError as exc:
-            if self.prompting:
-                reason = "briefing failed on %s: %s" % (machine_name, exc.detail)
-            else:
-                reason = "herdr failed on %s: %s" % (machine_name, exc.detail)
+            raise                                             # a cleanup already done in the lock, or choose_pane failed
         except BaseException as exc:                          # Ctrl-C, SIGTERM, or an unexpected error: never leak the pane
-            if isinstance(exc, KeyboardInterrupt):
-                interrupt = exc
-                reason = "interrupted (%s)" % ("SIGTERM" if isinstance(exc, Terminated) else "Ctrl-C")
-            else:
-                reason = "unexpected error: %s: %s" % (type(exc).__name__, exc)
-                if not isinstance(exc, Exception):
-                    interrupt = exc
+            reason, interrupt = self._classify(exc)
 
         if reason is None:
             assert self.state is not None and self.session is not None
@@ -1236,6 +1271,18 @@ class _Run:
             return self.save(replace(self.state, briefed=briefed, status=status, warnings=tuple(warnings),
                                      gates_answered=tuple(self.session.answered), startup=tuple(self.session.rounds)))
         return self._failed(reason, interrupt)
+
+    def _classify(self, exc: BaseException) -> Tuple[str, Optional[BaseException]]:
+        """(the failure text, the interrupt if there was one) for an exception raised during a start."""
+        machine_name = self.d.machine.name
+        if isinstance(exc, (Refused, _Fail)):
+            return exc.reason, None
+        if isinstance(exc, herdr.HerdrError):
+            return ("%s on %s: %s" % ("briefing failed" if self.prompting else "herdr failed", machine_name, exc.detail),
+                    None)
+        if isinstance(exc, KeyboardInterrupt):
+            return "interrupted (%s)" % ("SIGTERM" if isinstance(exc, Terminated) else "Ctrl-C"), exc
+        return "unexpected error: %s: %s" % (type(exc).__name__, exc), (None if isinstance(exc, Exception) else exc)
 
     def _failed(self, reason: str, interrupt: Optional[BaseException]) -> Started:
         """Cleanup. Signals stay blocked until bin/sdlc has printed the failure (restore_signals)."""
@@ -1268,9 +1315,9 @@ class _Run:
                     closed = True
                 except herdr.HerdrError as exc:
                     close_error = exc.detail
-                if closed:
+                if closed and record_path is not None:        # only the record this run wrote
                     try:
-                        os.unlink(str(_state_dir(self.env) / d.machine.name / ("%s.json" % self.name)))
+                        os.unlink(str(record_path))
                     except OSError:
                         pass
                     record_path = None

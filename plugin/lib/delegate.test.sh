@@ -654,7 +654,7 @@ t "(a) workspace create --label sdlc-delegate --cwd /w2 --no-focus, then a tab r
 newrow "$WS_B"; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
 t "(b) a free pane is reused: no tab create, tab renamed" chk 'n(r"^tab create") == 0 and n(r"^workspace create") == 0 and n(r"^tab rename \S+ sdlc:reviewer-139") == 1'
 newrow '{"worker-2":{"agents":0,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/w2","fg":"node"}]}]}]}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
-t "(c) a pane running node is not reused: tab create" chk 'n(r"^tab create --workspace \S+ --label sdlc:reviewer-139 --cwd /w2 --no-focus") == 1'
+t "(c) a pane running node is not reused: tab create" chk 'n(r"^tab create --workspace \S+ --label sdlc:reviewer-139\.[0-9a-f]+ --cwd /w2 --no-focus") == 1 and n(r"^tab rename \S+ sdlc:reviewer-139$") == 1'
 newrow '{"worker-2":{"agents":0,"workspaces":[{"label":"sdlc-delegate","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/w2","fg":"bash","agent":"old1"}]}]}]}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
 t "(d) a pane with a live agent is not reused: tab create" chk 'n(r"^tab create") == 1'
 newrow '{"worker-2":{"agents":0,"workspaces":[{"label":"sdlc","tabs":[{"label":"sdlc:old","panes":[{"cwd":"/w2","fg":"bash"}]}]}]}}'; D $B1 "$CFG_ANY" reviewer --issue 139 --machine worker-2
@@ -832,6 +832,7 @@ NOPANES='not json.load(open(d + "/state.json")).get("worker-1", {}).get("panes")
 bg_delegate INT
 t "SIGINT: exit 130" rc_is 130
 t "SIGINT: no pane or agent is left" chk "$NOPANES"
+t "SIGINT: the pane was closed without reading its output" chk 'n(r"recent-unwrapped") == 0 and n(r"^pane close") == 1'
 t "SIGINT: left behind: nothing (pane closed)" bash -c 'case "$1" in *"left behind: nothing (pane "*" closed)"*) ;; *) exit 1;; esac' _ "$ERR"
 bg_delegate TERM
 t "SIGTERM: exit 143" rc_is 143
@@ -1166,6 +1167,77 @@ if [ "$(id -u)" = 0 ]; then
 fi
 mkdir -p "$TMP/run/sdlc-delegate"; chmod 0700 "$TMP/run/sdlc-delegate"; lockrow
 t "(f) our own 0700 directory is used: exit 0" rc_is 0
+rm -rf "$TMP/run"
+
+echo "D69 a failure in the locked phase is cleaned up before the lock is released"
+stag() {   # stag SCENARIO GAP ARGS_A ARGS_B : A, then B GAP seconds later; rc and output in $TMP/s{a,b}.*
+  local scen=$1 gap=$2 argsa=$3 argsb=$4
+  newrow "$scen"; rm -f "$TMP"/sa.* "$TMP"/sb.*
+  ( cd "$TMP/cwd" && timeout 120 env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate ${ROLE_A:-reviewer} $argsa \
+      --registry "${STAGREG:-$REGF}" --config "${STAGCFG:-$CFG_W1}" --start-timeout 60 >"$TMP/sa.out" 2>"$TMP/sa.err"; echo $? >"$TMP/sa.rc" ) &
+  local pa=$!
+  if [ -n "${WAITRX:-}" ]; then
+    local i; for i in $(seq 1 100); do chk "n(r'$WAITRX') >= 1" && break; sleep 0.2; done
+  fi
+  sleep "$gap"
+  ( cd "$TMP/cwd" && timeout 120 env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate ${ROLE_B:-reviewer} $argsb \
+      --registry "${STAGREG:-$REGF}" --config "${STAGCFG:-$CFG_W1}" --start-timeout 60 >"$TMP/sb.out" 2>"$TMP/sb.err"; echo $? >"$TMP/sb.rc" ) &
+  wait
+  RCA=$(cat "$TMP/sa.rc"); RCB=$(cat "$TMP/sb.rc")
+  OUT="$(cat "$TMP/sb.out")"; ERR="$(cat "$TMP/sb.err")"
+}
+WAITRX='^agent start' stag '{"worker-1":{"agents":0,"start_error_once":"internal_error","slow_start":3,"slow_close":3}}' 1 "--issue 21" "--issue 22"
+t "A's start fails (exit 3) and B, waiting on the lock, starts (exit 0)" bash -c '[ "$1" = 3 ] && [ "$2" = 0 ]' _ "$RCA" "$RCB"
+t "B did not get A's pane: A's pane is the only one closed, and B's agent is alive" chk '(lambda starts, closes: len(closes) == 1 and closes[0] == starts[0]["argv"][starts[0]["argv"].index("--pane") + 1] and len(starts) == 2 and starts[1]["argv"][starts[1]["argv"].index("--pane") + 1] != closes[0] and len(json.load(open(d + "/state.json"))["worker-1"]["agents"]) == 1)([c for c in calls if c["j"].startswith("agent start")], [c["argv"][2] for c in calls if c["j"].startswith("pane close")])'
+
+echo "D70 the provisional record reserves the slot and the name while the agent is still unnamed"
+SLOWUN='{"worker-1":{"agents":0,"gates":["trust-prompt"],"unnamed_after_gate":true,"lag_enter_only":true,"redraw_lag":14}}'
+BJREG2="$TMP/reg-bj2.yaml"; reg_file "$BJREG2" '0,/browser_jobs: 2/s//browser_jobs: 1/'
+STAGREG="$BJREG2" STAGCFG="$BROWSER_CFG" ROLE_A=validator ROLE_B=validator WAITRX='^agent start' stag "$SLOWUN" 1 "--issue 31 --machine worker-1" "--issue 32 --machine worker-1"
+t "(a) browser_jobs: 1, the first agent still unnamed: the first starts, the second is refused" bash -c '[ "$1" = 0 ] && [ "$2" = 1 ]' _ "$RCA" "$RCB"
+t "(a) the refusal is about browser jobs" has "browser job"
+t "(a) only one agent was started" chk 'n(r"^agent start") == 1'
+STAGREG="$REGF" STAGCFG="$CFG_W1" ROLE_A=reviewer ROLE_B=reviewer WAITRX='^agent start' stag "$SLOWUN" 1 "--issue 139" "--issue 139"
+t "(b) two runs with the same default name: the second takes -2" bash -c 'printf "%s\n" "$1" | head -1 | grep -q "^reviewer-139-2: worker-1"' _ "$OUT"
+t "(b) both started" bash -c '[ "$1" = 0 ] && [ "$2" = 0 ]' _ "$RCA" "$RCB"
+
+echo "D71 the writer's deadline decides staleness, not the reader's --start-timeout"
+mkrec2() {   # mkrec2 NAME PANE PID STARTED_AGO_S DEADLINE_IN_S : a live-looking provisional browser-job record
+  mkdir -p "$STATE/worker-1"
+  printf '{"name":"%s","pane_id":"%s","browser_job":true,"status":"starting","pid":%s,"started_at":"%s","deadline":%s}\n' \
+    "$1" "$2" "$3" "$(date -u -d "-$4 seconds" +%Y-%m-%dT%H:%M:%SZ)" "$(( $(date +%s) + $5 ))" > "$STATE/worker-1/$1.json"
+}
+newrow '{"worker-1":{"agents":3}}'; mkrec busy1 w9:p1 working $$; mkrec2 busy2 w9:p2 $$ 100 300
+D $B1 "$BROWSER_CFG" validator --issue 1 --machine worker-1 --start-timeout 10
+t "a reader with a short --start-timeout still counts a writer whose deadline is ahead: 2 of 2, exit 1" has "full: 2 browser jobs, limit 2"
+newrow '{"worker-1":{"agents":3}}'; mkrec busy1 w9:p1 working $$; mkrec2 busy2 w9:p2 $$ 100 -10
+D $B1 "$BROWSER_CFG" validator --issue 1 --machine worker-1 --start-timeout 250
+t "a writer past its own deadline isn't counted, whatever the reader's timeout: exit 0" first_is "validator-1: worker-1"
+
+echo "D72 a failed run doesn't delete another job's record"
+newrow '{"worker-1":{"missing_cwd":true}}'
+mkdir -p "$STATE/worker-1"; printf '{"name":"reviewer-139","pane_id":"w9:p9","status":"working","briefed":true}\n' > "$STATE/worker-1/reviewer-139.json"
+D $B1 "$CFG_W1" reviewer --issue 139
+t "the run fails at the cwd check (exit 3)" rc_is 3
+t "an earlier finished job's record with the same name survives" test -f "$STATE/worker-1/reviewer-139.json"
+
+echo "D73 only the provisional record can make a slow first start count as load"
+newrow '{"worker-1":{"agents":0,"gates":["trust-prompt"],"lag_enter_only":true,"redraw_lag":14}}'
+( cd "$TMP/cwd" && timeout 120 env -u HERDR_ENV PATH="$TMP/pybin" HERDR_ENV=1 "$PY" "$SDLC" delegate validator --issue 41 \
+    --registry "$BJREG2" --config "$BROWSER_CFG" --machine worker-1 --start-timeout 60 >"$TMP/p41.out" 2>"$TMP/p41.err"; echo $? >"$TMP/p41.rc" ) &
+for i in $(seq 1 100); do chk 'n(r"^agent start") >= 1' && break; sleep 0.2; done
+sleep 1.5
+REGU="$BJREG2" D $B1 "$BROWSER_CFG" validator --issue 42 --machine worker-1
+wait
+t "the second browser job is refused while the first is still in its first start" has "browser job"
+t "exit 1" rc_is 1
+
+echo "D74 no records means no heavy work"
+newrow; XENV=(XDG_STATE_HOME="$TMP/notadir" XDG_RUNTIME_DIR="$TMP/run"); mkdir -p "$TMP/run"
+D $B1 "$BROWSER_CFG" validator --issue 1 --machine worker-1
+t "a browser role is refused when only the fallback lock is available" has "no records can be kept"
+t "exit 1 and nothing was started" bash -c '[ "$1" = 1 ]' _ "$RC"
+t "no pane was made" chk 'not mut()'
 rm -rf "$TMP/run"
 
 echo "D46 plugin/bin/sdlc is executable; the fake herdr is executable"

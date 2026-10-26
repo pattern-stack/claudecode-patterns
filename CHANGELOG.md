@@ -45,8 +45,11 @@ back through GitHub only.
 - **One at a time per machine.** A lock (flock) is held from the load recheck through `agent start` and a provisional
   record (`status: starting`, counted as load, including `browser_jobs`; dead or timed-out ones are not). It is not
   held through the first-start dialogs or the brief. Under `auto` or `any`, a busy lock or a failed recheck moves on to
-  the next fitting machine. If the state directory can't be written, the lock goes under `$XDG_RUNTIME_DIR` or
-  `/tmp/sdlc-delegate-<uid>` and no record is written (with a warning).
+  the next fitting machine. A provisional record also reserves the agent's name and carries its writer's own
+  deadline. If the state directory can't be written, the lock goes under `$XDG_RUNTIME_DIR` or
+  `/tmp/sdlc-delegate-<uid>` and no record is written (with a warning); roles that need `browser`, `full-suite`
+  or `docker` are then refused. That directory is used only if it is a real directory owned by you and not
+  writable by others; otherwise the start fails with exit 3 (`is not safe to use`).
 - **GitHub is the only return path.** A job that comments or opens a pull request needs `gh` logged in on the worker
   and prints `sdlc-delegate: gh is not logged in on <machine>` when it isn't; a job that only pushes a branch needs
   only push access.
