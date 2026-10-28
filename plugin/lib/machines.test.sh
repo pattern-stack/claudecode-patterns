@@ -471,10 +471,10 @@ sys.stdout, sys.stderr = out, err
 r = machines.load('$LONG')
 sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
 sys.exit(0 if (not r.usable and r.errors and r.errors[0].where == 'registry' and not out.getvalue() and not err.getvalue()) else 1)"
-t "unsearchable directory (PermissionError from exists): error Issue, no raise" env PYTHONPATH="$LIB" "$PY" -c "
-import sys, pathlib, machines
-def boom(self): raise PermissionError(13, 'Permission denied')
-pathlib.Path.exists = boom
+t "unsearchable directory (PermissionError from stat): error Issue, no raise" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, machines
+def boom(*a, **k): raise PermissionError(13, 'Permission denied')
+machines.os.stat = boom
 r = machines.load()
 sys.exit(0 if (not r.usable and r.errors and 'Permission denied' in r.errors[0].message) else 1)"
 t "catch-all: a bug inside validate becomes an error Issue" env PYTHONPATH="$LIB" "$PY" -c "
