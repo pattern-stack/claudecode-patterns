@@ -18,6 +18,9 @@ trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"
 mkdir -p "$HOME"
 unset SDLC_MACHINES XDG_CONFIG_HOME
+# Keep the placement pass deterministic: no sdlc.yml here, rather than walking up into the repo the suite runs in.
+export CLAUDE_PROJECT_DIR="$TMP/proj"
+mkdir -p "$TMP/proj"
 export PYTHONDONTWRITEBYTECODE=1
 FX="$TMP/fx"; mkdir -p "$FX"
 
@@ -468,10 +471,10 @@ sys.stdout, sys.stderr = out, err
 r = machines.load('$LONG')
 sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
 sys.exit(0 if (not r.usable and r.errors and r.errors[0].where == 'registry' and not out.getvalue() and not err.getvalue()) else 1)"
-t "unsearchable directory (PermissionError from exists): error Issue, no raise" env PYTHONPATH="$LIB" "$PY" -c "
-import sys, pathlib, machines
-def boom(self): raise PermissionError(13, 'Permission denied')
-pathlib.Path.exists = boom
+t "unsearchable directory (PermissionError from stat): error Issue, no raise" env PYTHONPATH="$LIB" "$PY" -c "
+import sys, machines
+def boom(*a, **k): raise PermissionError(13, 'Permission denied')
+machines.os.stat = boom
 r = machines.load()
 sys.exit(0 if (not r.usable and r.errors and 'Permission denied' in r.errors[0].message) else 1)"
 t "catch-all: a bug inside validate becomes an error Issue" env PYTHONPATH="$LIB" "$PY" -c "
@@ -559,28 +562,33 @@ YML
   done
 
   echo "32  alias-nested values are bounded in time and message length"
-  "$PY" - "$FX/c32.yaml" <<'PYG'
+  # Depth 7 for PyYAML (aliases share objects). yq expands aliases itself, so its file is depth 5, which it can finish.
+  for spec in "c32 7" "c32yq 5"; do
+    set -- $spec
+    "$PY" - "$FX/$1.yaml" "$2" <<'PYG'
 import sys
+depth = int(sys.argv[2])
 lines = ["l0: &l0 {a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9}"]
-for n in range(1, 8):
+for n in range(1, depth + 1):
     lines.append("l%d: &l%d {%s}" % (n, n, ", ".join("k%d: *l%d" % (i, n - 1) for i in range(9))))
 lines += ["machines:", "  here: {transport: local}",
-          "  w: {transport: {herdr: w}, workdir: /w, caps: *l7, limits: *l7, keeps: *l7}"]
+          "  w: {transport: {herdr: w}, workdir: /w, caps: *l%d, limits: *l%d, keeps: *l%d}" % (depth, depth, depth)]
 open(sys.argv[1], "w").write("\n".join(lines) + "\n")
 PYG
+  done
   for be in "${BACKENDS[@]}"; do
-    PYP="$LIB"; PPATH="$PATH"; BOUND=2
+    PYP="$LIB"; PPATH="$PATH"; BOUND=2; C32="$FX/c32.yaml"
     # yq expands aliases itself and gives up after YQ_TIMEOUT (2 s), so its bound is that plus slack.
-    [ "$be" = yq ] && { PYP="$LIB:$TMP/noyaml"; PPATH="$TMP/pyyq"; BOUND=4; }
+    [ "$be" = yq ] && { PYP="$LIB:$TMP/noyaml"; PPATH="$TMP/pyyq"; BOUND=4; C32="$FX/c32yq.yaml"; }
     t "[$be] alias bomb: load() returns in under ${BOUND}s, every message <= 300 chars" env PYTHONPATH="$PYP" PATH="$PPATH" "$PY" -c "
 import sys, time, machines
 t0 = time.time()
-r = machines.load('$FX/c32.yaml')
+r = machines.load('$C32')
 dt = time.time() - t0
 longest = max([len(i.message) for i in r.issues] or [0])
 sys.exit(0 if (dt < $BOUND and longest <= 300) else 1)"
     t0=$(date +%s%N)
-    run $be machines check --registry "$FX/c32.yaml"
+    run $be machines check --registry "$C32"
     t1=$(date +%s%N)
     t "[$be] alias bomb: check returns in under ${BOUND}s with no traceback" bash -c '[ $(( ($1 - $2) / 1000000 )) -lt $(( $3 * 1000 )) ] && ! echo "$4" | grep -q Traceback' _ "$t1" "$t0" "$BOUND" "$OUT"
     t "[$be] alias bomb: no printed line over 400 chars" bash -c '! echo "$1" | awk "length > 400 {f=1} END {exit !f}"' _ "$OUT"
