@@ -1,0 +1,37 @@
+# sdlc machine registry. Keep it on the box you coordinate from, where you run Claude Code and
+# start agents: `local` means that box. Put it at ~/.config/sdlc/machines.yaml, or point
+# $SDLC_MACHINES at it. Don't copy it to worker boxes: a box without the file runs everything
+# locally, which is right for an agent that was delegated there.
+# A machine says what it CAN do (caps) and what it HOLDS (keeps, secrets). Placement (a later
+# release) matches a step's needs against both, trust boundary first, capacity second.
+# Booleans are true/false (yes/no/on/off are errors). secrets is one of: none < dev < prod.
+# Check the file with: sdlc machines check   (--probe asks herdr too)
+machines:
+  workstation:                      # the box you run Claude Code on
+    transport: local                # exactly one machine is local
+    role: dev
+    limits: { mem_gb: 32 }
+    caps: [edit, test, browser]     # what work it can take
+    keeps: [checkouts, services]    # what lives only here; steps that need it stay here
+    secrets: dev                    # credentials it holds: none < dev < prod (default: none)
+    gaming_sensitive: true          # shares hardware with something heavy work must not starve
+    busy_flag: ~/.config/sdlc/busy  # while this file exists, heavy steps aren't placed here
+                                    # (setting busy_flag alone implies gaming_sensitive: true)
+    backup: true
+    persistence: durable
+
+  worker-1:                         # a disposable box reached through herdr
+    transport: { herdr: worker-1, ssh: agent@192.0.2.10 }   # herdr label from `herdr machine list`
+    workdir: /home/agent/work       # where delegated agents start
+    role: worker
+    limits: { cores: 12, mem_gb: 16, browser_jobs: 3, agents: 4 }
+    caps: [edit, test, browser, docker, full-suite]
+    keeps: []
+    secrets: none
+    backup: false
+    persistence: disposable         # push or lose
+    first_start: [trust-prompt, fullscreen-notice]   # prompts a fresh Claude Code shows there
+
+  control:                          # runs the infrastructure; never given work
+    role: control-plane
+    assignable: false               # nothing may be placed here, so it needs no transport

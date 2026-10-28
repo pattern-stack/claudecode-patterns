@@ -5,6 +5,29 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.40] — 2026-10-25
+
+### Added — a machine registry and `sdlc machines`
+
+Everything sdlc spawns runs on the coordinator's box. A team with more than one box (a workstation plus a disposable
+worker, say) has had nowhere to record what each box can do, what it holds, and which box must never be given work.
+The registry is that record: one file per person, kept on the box you coordinate from. This release only describes and
+checks machines; placing work on them comes later. With no file, nothing changes.
+
+- **Where it lives.** `${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml`, or the path in `$SDLC_MACHINES`, or `--registry PATH`.
+  `transport: local` means the box the file is on, so don't copy it to workers. `plugin/machines.example.yaml` is a
+  commented starting point.
+- **`sdlc machines list` and `sdlc machines check [--probe]`.** `check` exits 1 on any error. `--probe` also asks
+  herdr whether each herdr machine answers and how many agents it runs.
+- **`just sdlc::machines`.** Agents in a Claude Code session get `sdlc` on the Bash tool's PATH (a plugin's `bin/`
+  is added there); in a terminal or CI use the just recipe.
+- **PyYAML or yq.** Either can read the file, and booleans mean the same under both: only `true` and `false` are
+  booleans, so `yes`, `no`, `on` and `off` are errors rather than a value that depends on the box.
+- **A bad value loads as its restrictive value.** A mistyped `assignable` loads as `false` and a mistyped
+  `gaming_sensitive` as `true`, so one typo can't open a box to work. That machine is marked not `ok`, and `list`
+  shows the cell with a `!`. A close misspelling of `assignable`, `gaming_sensitive` or `busy_flag` (case and `-` ignored), a blank trust key, and a repeated key are errors too.
+- **The tests run in CI** (`plugin/lib/machines.test.sh`), because the placement work builds on these modules.
+
 ## [0.2.39] — 2026-10-23
 
 ### Changed — browser MCP servers start only when `browser-pilot` runs

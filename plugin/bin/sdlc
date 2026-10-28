@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""sdlc: command line for the sdlc plugin.
+
+    sdlc machines [--registry PATH] [list [--registry PATH]]
+    sdlc machines [--registry PATH] check [--registry PATH] [--probe] [--timeout SECS]
+
+Exit codes: 0 ok or inert (no registry), 1 an error was found (check) or list had nothing to
+show, 2 usage error.
+
+Reserved for later releases, not built here: `sdlc machines where <role>` (#137) and
+`sdlc delegate <role> ...` (#139).
+
+Claude Code puts a plugin's bin/ on the PATH of its Bash tool, so agents in a session call `sdlc`
+bare. Humans and CI use `just sdlc::machines ...`, which runs this file by absolute path.
+"""
+import sys
+
+sys.dont_write_bytecode = True  # keep __pycache__ out of the plugin install directory
+
+from pathlib import Path  # noqa: E402
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PLUGIN_ROOT / "lib"))
+
+import argparse  # noqa: E402
+import math  # noqa: E402
+from typing import List, Optional  # noqa: E402
+
+import herdr  # noqa: E402
+import machines  # noqa: E402
+
+LEGEND = "! = invalid value, shown as the restrictive value it loads as; run: sdlc machines check"
+
+
+def _path_arg(text: str) -> str:
+    if not text.strip():
+        raise argparse.ArgumentTypeError("--registry needs a path, got an empty value")
+    return text
+
+
+def _timeout_arg(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r is not a number" % text)
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number of seconds > 0, got %r" % text)
+    return value
+
+
+def _eprint(text: str) -> None:
+    print(text, file=sys.stderr)
+
+
+def _inert(reg: "machines.Registry") -> None:
+    print("No machine registry at %s. Machines are off, so everything runs on this box." % reg.path)
+    print("To set one up: cp %s %s   (or set $%s)" % (
+        PLUGIN_ROOT / "machines.example.yaml", reg.path, machines.REGISTRY_ENV))
+
+
+def _plural(n: int, word: str) -> str:
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
+def _cell(text: str, bad: bool) -> str:
+    return (text or "-") + ("!" if bad else "")
+
+
+def _row(m: "machines.Machine") -> List[str]:
+    inv = m.invalid
+    return [
+        _cell(m.name, bool(inv)),
+        _cell(m.transport.describe(), any(k.split(".")[0] == "transport" for k in inv)),
+        _cell(m.role or "", "role" in inv),
+        _cell("yes" if m.assignable else "no", "assignable" in inv),
+        _cell(",".join(m.caps), "caps" in inv),
+        _cell(",".join(m.keeps), "keeps" in inv),
+        _cell(m.secrets, "secrets" in inv),
+    ]
+
+
+def _table(reg: "machines.Registry") -> bool:
+    """Print the table; return True when any '!' was printed."""
+    rows = [["NAME", "TRANSPORT", "ROLE", "ASSIGNABLE", "CAPS", "KEEPS", "SECRETS"]]
+    rows += [_row(m) for m in reg.machines.values()]
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    for r in rows:
+        print("  ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip())
+    return any(not m.ok for m in reg.machines.values())
+
+
+def _counts(reg: "machines.Registry") -> str:
+    return "%s, %s" % (_plural(len(reg.errors), "error"), _plural(len(reg.warnings), "warning"))
+
+
+def _load(args: argparse.Namespace) -> "machines.Registry":
+    return machines.load(getattr(args, "registry", None))
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    reg = _load(args)
+    if reg.inert and not reg.errors:
+        _inert(reg)
+        return 0
+    print("Registry: %s" % reg.path)
+    if not reg.machines:
+        for issue in reg.errors:
+            _eprint("error    %s: %s" % (issue.where, issue.message))
+        return 1
+    marked = _table(reg)
+    if marked:
+        _eprint(LEGEND)
+    if reg.errors or reg.warnings:
+        _eprint("%s; run: sdlc machines check" % _counts(reg))
+    return 0
+
+
+def _summary(reg: "machines.Registry") -> str:
+    ms = list(reg.machines.values())
+    parts = []
+    for n, label in (
+        (sum(1 for m in ms if m.transport.kind == "local"), "local"),
+        (sum(1 for m in ms if m.transport.kind == "herdr"), "herdr"),
+        (sum(1 for m in ms if m.transport.kind == "none"), "without transport"),
+    ):
+        if n:
+            parts.append("%d %s" % (n, label))
+    head = _plural(len(ms), "machine")
+    return "%s: %s" % (head, ", ".join(parts)) if parts else head
+
+
+def _probe(reg: "machines.Registry", timeout: float) -> List["machines.Issue"]:
+    out: List[machines.Issue] = []
+    targets = [m for m in reg.machines.values() if m.transport.kind == "herdr"]
+    if not targets:
+        return out
+    if not herdr.available():
+        return [machines.Issue("error", "probe", "herdr not found on PATH")]
+    for m in targets:
+        where = "machines.%s.transport" % m.name
+        try:
+            agents = herdr.agent_list(m.transport.herdr, timeout=timeout)
+        except herdr.HerdrError as exc:
+            out.append(machines.Issue("error", where, "herdr probe failed: %s" % exc.detail))
+            continue
+        text = "reachable via herdr:%s, %s" % (m.transport.herdr, _plural(len(agents), "agent"))
+        limit = m.limits.agents
+        if limit is not None:
+            text += " (limit %s)" % limit
+            if len(agents) >= limit:
+                text += ", full"
+        out.append(machines.Issue("info", where, text))
+    return out
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    reg = _load(args)
+    if reg.inert and not reg.errors:
+        _inert(reg)
+        return 0
+    print("Registry: %s" % reg.path)
+    issues = list(reg.issues)
+    if reg.machines:
+        print(_summary(reg))
+    if getattr(args, "probe", False):
+        issues += _probe(reg, args.timeout)
+    for issue in issues:
+        print("%-8s %s: %s" % (issue.level, issue.where, issue.message))
+    errors = sum(1 for i in issues if i.level == "error")
+    warnings = sum(1 for i in issues if i.level == "warning")
+    print("check: %s (errors=%d, warnings=%d)" % ("failed" if errors else "ok", errors, warnings))
+    return 1 if errors else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sdlc", description="sdlc plugin command line")
+    top = parser.add_subparsers(dest="command", metavar="COMMAND")
+    top.required = True
+
+    mp = top.add_parser("machines", help="show and check the machine registry")
+    mp.add_argument("--registry", metavar="PATH", type=_path_arg, default=None,
+                    help="registry file (default: $SDLC_MACHINES, then ${XDG_CONFIG_HOME:-~/.config}/sdlc/machines.yaml)")
+    sub = mp.add_subparsers(dest="machines_command", metavar="{list,check}")
+
+    lp = sub.add_parser("list", help="print the machines")
+    # SUPPRESS: a leaf default would overwrite a --registry given before the subcommand.
+    lp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
+    lp.set_defaults(func=cmd_list)
+
+    cp = sub.add_parser("check", help="validate the registry (exit 1 on any error)")
+    cp.add_argument("--registry", metavar="PATH", type=_path_arg, default=argparse.SUPPRESS, help="registry file")
+    cp.add_argument("--probe", action="store_true", help="also ask herdr whether each herdr machine answers")
+    cp.add_argument("--timeout", type=_timeout_arg, default=herdr.DEFAULT_TIMEOUT, metavar="SECS",
+                    help="per-machine probe timeout (default: %g)" % herdr.DEFAULT_TIMEOUT)
+    cp.set_defaults(func=cmd_check)
+
+    mp.set_defaults(func=cmd_list)
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
