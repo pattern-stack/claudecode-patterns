@@ -98,6 +98,12 @@ release only answers "where"; acting on the answer comes later.
   so an alias-heavy `sdlc.yml` makes yq fail instead of eating the box; a failure to apply the limit is a parse error.
 - **The tests run in CI** under both YAML backends (`plugin/lib/placement.test.sh`).
 
+### Fixed — a path that can't be read is an error on every Python
+
+From Python 3.14, `Path.exists()` and `Path.is_file()` return False for every OSError. So an sdlc.yml or registry
+path that is too long or blocked by permissions read as "no file", which means machines are off, instead of an error.
+Both lookups now call `os.stat` directly: only "no such file" means absent, and any other failure is reported.
+
 ## [0.2.40] — 2026-10-25
 
 ### Added — a machine registry and `sdlc machines`

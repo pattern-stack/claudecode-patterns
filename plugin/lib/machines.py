@@ -74,6 +74,7 @@ import os
 import re
 import reprlib
 import shutil
+import stat
 import subprocess
 import time
 from collections import Counter
@@ -822,6 +823,16 @@ def validate(doc: object) -> Tuple[Dict[str, Machine], List[Issue]]:
     return machines, issues
 
 
+def _stat(path: Path) -> Optional[os.stat_result]:
+    """os.stat, or None when nothing is there. Any other OSError is raised: from Python 3.14
+    Path.exists() and Path.is_file() return False for every OSError, which would turn a path we
+    cannot read (too long, no permission) into a missing file."""
+    try:
+        return os.stat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+
+
 def load(explicit: Optional[str] = None,
          env: Optional[Mapping[str, str]] = None) -> Registry:
     """Locate, parse and validate the registry. Never raises: any failure becomes an error Issue."""
@@ -832,7 +843,7 @@ def load(explicit: Optional[str] = None,
                             [Issue("error", "registry", "--registry was given an empty path")])
         path, source = registry_path(explicit, env)
         try:
-            exists = path.exists()
+            exists = _stat(path) is not None
         except (OSError, ValueError) as exc:
             return Registry(path, source, False, {}, [Issue(
                 "error", "registry", "cannot access %s: %s" % (path, getattr(exc, "strerror", None) or exc))])
@@ -1243,7 +1254,8 @@ def load_placement(explicit: Optional[str] = None, *, project_dir: Optional[str]
         if path is None:
             return _new_config(None, "none", False)
         try:
-            exists = path.is_file()
+            st = _stat(path)
+            exists = st is not None and stat.S_ISREG(st.st_mode)
         except (OSError, ValueError) as exc:
             return _broken(path, source, False, "cannot access %s: %s" % (path, getattr(exc, "strerror", None) or exc))
         if not exists:
