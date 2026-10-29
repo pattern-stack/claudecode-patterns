@@ -5,7 +5,7 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
-## [0.2.42] — 2026-10-25
+## [0.2.43] — 2026-10-28
 
 ### Added — sdlc delegate: start a phase or agent on another machine
 
