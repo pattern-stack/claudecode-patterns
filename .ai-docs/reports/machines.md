@@ -3,7 +3,7 @@
 Brief: `~/maplelog/hq/briefs/sdlc/20261025-machines.md` · ADR: `~/maplelog/hq/docs/adrs/009-machines.md`
 Worktree: `/root/wt/claudecode-patterns/machines`, branch `dugshub/machines` (from origin/main 0711be6).
 
-## State — 2026-10-26: all 4 PRs READY FOR HQ MERGE
+## State — 2026-10-28: #140-#142 merged; #143 READY FOR HQ MERGE (95a2c80, CI 4/4)
 
 Issues: epic #135; #136, #137, #138, #139 (all `gate:auto`).
 
@@ -93,3 +93,10 @@ No decisions are pending. Two actions on devbox-n2 are open:
 - **Coordinator check before spawning (from the #138 Gate 1.5 review, N6).** Under D3 the hook can only hint, and the hint reaches the coordinator after a foreground subagent has already run locally. So the first local run of a placed role can't be prevented. The real fix is prose in the coordinator, `/develop` and `/orchestrate`: check `sdlc machines where <role>` before spawning, and use `sdlc delegate` when the result isn't local. A deny mode (a D3 escalation) is the alternative.
 - **Trust entries on devbox-n2 (from the #139 live check).** `/root/work` was already trusted, so neither run W added anything. A future run F would leave `/root/work/sdlc-live` on Claude Code's trusted-folder list on devbox-n2. Nothing else persists: the clone and the `sdlc-delegate` workspace are removed.
 - **devbox-n2's `agents` limit (from the #143 live check).** The hand-written `~/.config/sdlc/machines.yaml` sets `agents: 10` for devbox-n2, but the box had 13 live agents, all idle or done, during the check. `delegate` counts finished agents until they're stopped, so today it would treat devbox-n2 as full. HQ/Doug should either raise the limit or stop the finished workers. The live check used a temporary registry with `agents: 30`.
+
+## Merge log — 2026-10-28
+- **#140:** squash-merged as be8652b.
+- **#141:** I merged origin/main in (ef8f5ea; the tree was unchanged because main matched 799621a). CI then failed placement B14b, because ubuntu-26.04 runs Python 3.14, where `Path.is_file()`/`exists()` return False instead of raising OSError. A path that was too long or unreadable read as "no sdlc.yml". The fix, c7bbe7a, calls `os.stat` directly for both sdlc.yml and the registry. CI 4/4. Squash-merged as c429fc9.
+- **#142:** I merged c7bbe7a in, then origin/main (tree unchanged). Head 512db1b, CI 4/4. Squash-merged as 250b941.
+- **#143:** I bumped it to 0.2.43 (8909103), then merged origin/main in (95a2c80). Conflicts were resolved by keeping both sides: the CHANGELOG entries, both verify.yml steps, and both README sections, with the placement intro reworded. CI 4/4. Suites pass on Python 3.12 and 3.14.
+- No rebase and no force push at any step.
