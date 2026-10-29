@@ -18,20 +18,22 @@ machines:
     gaming_sensitive: true          # shares hardware with something heavy work must not starve
     busy_flag: ~/.config/sdlc/busy  # while this file exists, heavy steps aren't placed here
                                     # (setting busy_flag alone implies gaming_sensitive: true)
+                                    # (an absolute or ~ path on this box, the one you coordinate from)
     backup: true
     persistence: durable
+    # workdir: ~/work               # set it to let sdlc delegate start agents here too
 
   worker-1:                         # a disposable box reached through herdr
     transport: { herdr: worker-1, ssh: agent@192.0.2.10 }   # herdr label from `herdr machine list`
-    workdir: /home/agent/work       # where delegated agents start
+    workdir: /home/agent/work       # where `sdlc delegate` starts agents (it needs one on every machine it uses; a remote one must be its canonical path)
     role: worker
-    limits: { cores: 12, mem_gb: 16, browser_jobs: 3, agents: 4 }
+    limits: { cores: 12, mem_gb: 16, browser_jobs: 3, agents: 4 }   # `agents` and `browser_jobs` cap what `sdlc delegate` sends here
     caps: [edit, test, browser, docker, full-suite]
     keeps: []
     secrets: none
     backup: false
     persistence: disposable         # push or lose
-    first_start: [trust-prompt, fullscreen-notice]   # prompts a fresh Claude Code shows there
+    first_start: [trust-prompt, fullscreen-notice]   # dialogs `sdlc delegate` may answer on a fresh box or directory
 
   control:                          # runs the infrastructure; never given work
     role: control-plane

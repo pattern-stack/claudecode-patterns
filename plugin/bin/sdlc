@@ -4,6 +4,9 @@
     sdlc machines [--registry PATH] [list [--registry PATH]]
     sdlc machines [--registry PATH] [--config FILE] check [--registry PATH] [--config FILE] [--probe] [--timeout SECS]
     sdlc machines [--registry PATH] [--config FILE] where ROLE [--kind phase|agent] [--registry PATH] [--config FILE]
+    sdlc delegate ROLE [--issue N] [--machine auto|any|local|NAME] [--prompt TEXT|@FILE] [--name NAME]
+                       [--kind phase|agent] [--dry-run] [--keep-failed] [--start-timeout SECS]
+                       [--registry PATH] [--config FILE]
 
 `where ROLE` answers "where does ROLE run?" from the repo's .claude/sdlc.yml and the registry; its
 first line is the answer. `check` also checks the repo's placement once the registry is usable.
@@ -13,7 +16,12 @@ show, 2 usage error. `where` exits 0 when the role is placed, or when machines a
 there is no registry or the repo places nothing; 1 for a fallback, nowhere to run, or machines
 off because of an error (a broken registry or sdlc.yml); 2 for usage (including `--config ""`).
 
-Reserved for a later release, not built here: `sdlc delegate <role> ...` (#139).
+`delegate ROLE` starts a phase or agent on the machine its placement picks (trust and fit first, then the
+fewest live agents), in that machine's `workdir`, answers the first-start dialogs the registry declares, and
+briefs it with a mission whose only return path is GitHub. Its first line is the answer. `--dry-run` decides
+and prints the commands without changing anything. Exit codes: 0 started (dry run: a machine was chosen);
+1 refused, nothing started; 2 usage; 3 start failed after a machine was chosen, or an unexpected error (the
+output says what was left); 130 Ctrl-C and 143 SIGTERM, after the pane is cleaned up.
 
 Claude Code puts a plugin's bin/ on the PATH of its Bash tool, so agents in a session call `sdlc`
 bare. Humans and CI use `just sdlc::machines ...`, which runs this file by absolute path.
@@ -29,8 +37,12 @@ sys.path.insert(0, str(PLUGIN_ROOT / "lib"))
 
 import argparse  # noqa: E402
 import math  # noqa: E402
+import re  # noqa: E402
+import shlex  # noqa: E402
+import signal  # noqa: E402
 from typing import List, Optional  # noqa: E402
 
+import delegate  # noqa: E402
 import herdr  # noqa: E402
 import machines  # noqa: E402
 
@@ -63,6 +75,55 @@ def _timeout_arg(text: str) -> float:
     if not math.isfinite(value) or value <= 0:
         raise argparse.ArgumentTypeError("must be a finite number of seconds > 0, got %r" % text)
     return value
+
+
+def _issue_arg(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r is not a whole number" % text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("an issue number must be positive, got %r" % text)
+    return value
+
+
+def _name_arg(text: str) -> str:
+    if not re.fullmatch(delegate.AGENT_NAME, text):
+        raise argparse.ArgumentTypeError("%r is not a herdr agent name (%s)" % (text, delegate.AGENT_NAME))
+    return text
+
+
+def _start_timeout_arg(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r is not a number" % text)
+    if not math.isfinite(value) or value <= 3 or value > 300:
+        raise argparse.ArgumentTypeError("must be more than 3 and at most 300 seconds (herdr's bounds), got %r" % text)
+    return value
+
+
+def _prompt_arg(text: str) -> str:
+    limit = delegate.MISSION_MAX - 4096         # bytes, leaving room for the rest of the mission
+    if text.startswith("@"):
+        try:
+            with open(text[1:], "r", encoding="utf-8") as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            raise argparse.ArgumentTypeError("cannot read the prompt file %s: %s" % (
+                text[1:], getattr(exc, "strerror", None) or exc))
+    if not text.strip():
+        raise argparse.ArgumentTypeError("the prompt is empty; give the task, or leave --prompt out")
+    size = len(text.encode("utf-8"))
+    if size > limit:
+        raise argparse.ArgumentTypeError("the prompt is %d bytes; the limit is %d" % (size, limit))
+    return text
+
+
+def _machine_arg(text: str) -> str:
+    if not text.strip():
+        raise argparse.ArgumentTypeError("--machine needs auto, any, local or a machine name, got an empty value")
+    return text
 
 
 def _eprint(text: str) -> None:
@@ -266,6 +327,154 @@ def cmd_where(args: argparse.Namespace) -> int:
     return 1
 
 
+def _considered_lines(verdicts) -> List[str]:
+    return [machines.cap_text("%s: %s" % (v.machine, v.why)) for v in verdicts]
+
+
+def _field(label: str, text: str) -> str:
+    return machines.cap_text("  %-13s%s" % (label + ":", text))
+
+
+def _print_considered(verdicts) -> None:
+    for i, text in enumerate(_considered_lines(verdicts)):
+        print(_field("considered", text) if i == 0 else machines.cap_text(" " * 15 + text))
+
+
+def _role_line(d: "delegate.Decision") -> str:
+    text = "%s (%s)" % (d.role, d.kind) if d.kind else d.role
+    if d.issue is not None:
+        text += ", issue #%d" % d.issue + (" in %s" % d.repo if d.repo else "")
+    return text
+
+
+def _print_decision(d: "delegate.Decision", name: str, head_suffix: str = "") -> None:
+    print(machines.cap_text("%s: %s%s" % (name, d.machine.name, head_suffix)))
+    print(_field("role", _role_line(d)))
+    print(_field("placement", d.via + ("; overrides " + d.overrides if d.overrides else "")))
+    _print_considered(d.considered)
+    print(_field("workdir", d.workdir))
+
+
+def _print_started(s: "delegate.Started") -> None:
+    d = s.decision
+    _print_decision(d, s.name)
+    where = "local" if d.label is None else "herdr:%s" % d.label
+    print(_field("where", "%s, workspace %s (%s), tab %s (%s%s), pane %s" % (
+        where, s.workspace_id, delegate.WORKSPACE_LABEL, s.tab_id, delegate.TAB_PREFIX, s.name, s.pane_id)))
+    print(_field("claude", " ".join(shlex.quote(a) for a in s.argv)))
+    print(_field("first start", "%s answered" % ", ".join(s.gates_answered) if s.gates_answered else "none shown"))
+    print(_field("status", s.status))
+    print(_field("results", "GitHub only (a pushed branch, or a comment%s)" % (
+        " on issue #%d" % d.issue if d.issue is not None else "")))
+    if s.record_path is not None:
+        print(_field("record", str(s.record_path)))
+    for key, text in delegate.follow_up(d.label, s.pane_id).items():
+        print(_field(key, text))
+
+
+def _print_dry_run(d: "delegate.Decision", plan: "delegate.PanePlan", start_timeout: float) -> None:
+    _print_decision(d, d.name, " (dry run: nothing started)")
+    print(_field("claude", " ".join(shlex.quote(a) for a in ("claude",) + d.claude_args)))
+    print("  would run:")
+    for command in delegate.plan_commands(d, plan, start_timeout=start_timeout):
+        print(machines.cap_text("    " + command))
+    print("  mission:")
+    for line in d.mission.splitlines():
+        print("    | " + line)
+
+
+def _print_failure(exc: "delegate.StartFailed", label: Optional[str]) -> None:
+    _eprint(machines.cap_text("sdlc delegate: start failed on %s: %s" % (exc.machine, exc.reason)))
+    if exc.output.strip():
+        _eprint("  pane %s output (last %d lines):" % (exc.pane_id, delegate.OUTPUT_LINES))
+        for line in exc.output.rstrip("\n").splitlines()[-delegate.OUTPUT_LINES:]:
+            _eprint(machines.cap_text("    | " + line))
+    if exc.pane_id is None:
+        _eprint("  left behind: nothing")
+        return
+    follow = delegate.follow_up(label, exc.pane_id)
+    if exc.pane_closed:
+        _eprint("  left behind: nothing (pane %s closed)" % exc.pane_id)
+        return
+    _eprint("  left behind: pane %s" % exc.pane_id)
+    if exc.close_error:
+        _eprint(machines.cap_text("  could not close pane %s (%s); close it with: %s" % (
+            exc.pane_id, exc.close_error, follow["stop"])))
+    if exc.record_path is not None:
+        _eprint("  record:      %s" % exc.record_path)
+    _eprint("  read:        %s" % follow["read"])
+    _eprint("  stop:        %s" % follow["stop"])
+
+
+def _refused(exc: "delegate.Refused") -> int:
+    _eprint(machines.cap_text("sdlc delegate: refused: %s" % exc.reason))
+    for line in _considered_lines(exc.considered):
+        _eprint("  " + line)
+    return 1
+
+
+def _delegate(args: argparse.Namespace) -> int:
+    try:
+        d = delegate.decide(args.role, kind=args.kind, machine_arg=args.machine, issue=args.issue,
+                            prompt=args.prompt, name=args.name, registry_file=args.registry,
+                            config_file=args.config, start_timeout=args.start_timeout)
+    except delegate.Refused as exc:
+        return _refused(exc)
+    for text in d.warnings:
+        _eprint(machines.cap_text("warning: %s" % text))
+    if args.dry_run:
+        try:
+            plan = delegate.choose_pane(d)
+        except delegate.StartFailed as exc:
+            _eprint(machines.cap_text("sdlc delegate: dry run: %s" % exc.reason))
+            return 3
+        _print_dry_run(d, plan, args.start_timeout)
+        return 0
+    try:
+        started = delegate.start(d, start_timeout=args.start_timeout, keep_failed=args.keep_failed)
+    except delegate.Refused as exc:
+        return _refused(exc)
+    except delegate.StartFailed as exc:
+        _print_failure(exc, exc.label)
+        if isinstance(exc.interrupt, delegate.Terminated):
+            code = 143
+        else:
+            code = 130 if exc.interrupt is not None else 3
+        try:
+            delegate.restore_signals(exc.sigmask)      # a signal that arrived during the cleanup is delivered now
+        except delegate.Terminated:
+            return 143
+        except KeyboardInterrupt:
+            return 130
+        return code
+    _print_started(started)
+    for text in started.warnings:
+        _eprint(machines.cap_text("warning: %s" % text))
+    if started.record_error:
+        _eprint(machines.cap_text("warning: could not write the record: %s" % started.record_error))
+    return 0
+
+
+def _on_sigterm(signum, frame) -> None:
+    raise delegate.Terminated()
+
+
+def cmd_delegate(args: argparse.Namespace) -> int:
+    """Exit 0 started, 1 refused, 3 start failed or an unexpected error, 130 Ctrl-C, 143 SIGTERM."""
+    # SIGINT is left alone: Python already turns it into KeyboardInterrupt, unless it was inherited as ignored
+    # (`sdlc delegate &`), and then it stays ignored.
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    try:
+        return _delegate(args)
+    except delegate.Terminated:
+        return 143
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        _eprint(machines.cap_text("sdlc delegate: unexpected error: %s: %s" % (type(exc).__name__, exc)))
+        return 3
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sdlc", description="sdlc plugin command line")
     top = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -299,12 +508,35 @@ def build_parser() -> argparse.ArgumentParser:
     wp.add_argument("--config", metavar="FILE", type=_config_arg, default=argparse.SUPPRESS, help="the repo's sdlc.yml")
     wp.set_defaults(func=cmd_where)
 
+    dp = top.add_parser("delegate", help="start a phase or agent on the machine its placement picks")
+    dp.add_argument("role", type=_role_arg, help="a phase or agent name, e.g. validator (a leading sdlc: is ignored)")
+    dp.add_argument("--issue", metavar="N", type=_issue_arg, default=None,
+                    help="the tracker issue the job is for (goes into the mission and the default agent name)")
+    dp.add_argument("--machine", metavar="auto|any|local|NAME", type=_machine_arg, default="auto",
+                    help="auto follows the repo's placement (default); any, local or a machine name overrides it")
+    dp.add_argument("--prompt", metavar="TEXT|@FILE", type=_prompt_arg, default=None,
+                    help="the task; @FILE reads a UTF-8 file (default: work on the issue)")
+    dp.add_argument("--name", metavar="NAME", type=_name_arg, default=None,
+                    help="the herdr agent name (default: <role>-<issue>)")
+    dp.add_argument("--kind", choices=machines.KINDS, default=None, help="read only the phase or only the agent placement")
+    dp.add_argument("--dry-run", action="store_true", help="decide and print the commands; change nothing")
+    dp.add_argument("--keep-failed", action="store_true", help="on a start failure, leave the pane for inspection")
+    dp.add_argument("--start-timeout", metavar="SECS", type=_start_timeout_arg, default=delegate.START_TIMEOUT,
+                    help="how long the agent may take to become ready, first-start dialogs included (default: %g)"
+                    % delegate.START_TIMEOUT)
+    dp.add_argument("--registry", metavar="PATH", type=_path_arg, default=None, help="registry file")
+    dp.add_argument("--config", metavar="FILE", type=_config_arg, default=None, help="the repo's sdlc.yml")
+    dp.set_defaults(func=cmd_delegate)
+
     mp.set_defaults(func=cmd_list)
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "delegate" and args.issue is None and args.prompt is None:
+        parser.error("delegate needs --issue or --prompt: there would be nothing to do")
     return args.func(args)
 
 

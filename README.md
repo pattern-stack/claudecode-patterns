@@ -266,7 +266,7 @@ A repo says where each phase and agent runs in `.claude/sdlc.yml`; the commented
 - **Write each key once.** A repeated placement key is an error, never last-wins.
 - **Ask and check:** `sdlc machines where validator` prints the answer on its first line and exits 0 when the role is placed, or when machines are off because there is no registry or the repo places nothing. `sdlc machines check` adds a line per role and an error for every refusal.
 
-Placement only answers "where". The phase-tuning hook uses the answer to point the coordinator at the right box (next section); starting work on another box comes in a later release.
+Placement only answers "where". The phase-tuning hook uses the answer to point the coordinator at the right box, and `sdlc delegate` starts the work there (next two sections).
 
 ### The remote hint
 
@@ -281,6 +281,25 @@ A subagent always runs on the coordinator's box, so a role the repo places elsew
 - **No change** for local roles, roles the repo doesn't place (even under a remote `default_machine`), repos that place nothing, and boxes with no registry. The hook's output is byte-for-byte what it was.
 - **An unplaceable role** that the repo places (nowhere in the registry fits it) gets a one-line warning; the spawn runs here anyway. A role the repo doesn't place stays silent.
 - **Time:** none added unless the repo places something. A slow registry or `sdlc.yml` read is cut off by the hook's own 3.5 s deadline (`HOOK_DEADLINE`), and the spawn then gets its tuning with no hint.
+
+### Starting work on another box: `sdlc delegate`
+
+```
+sdlc delegate validator --issue 42 --dry-run   # the decision and the exact commands; changes nothing
+sdlc delegate validator --issue 42             # start it
+```
+
+The first line of the output is the answer (`validator-42: worker-2`); the rest says why, where the agent is, and how to check on it or stop it (`check:`, `read:` and `stop:` are pasteable herdr commands).
+
+- **Choosing a machine.** Trust and fit first (the same filters as `where`), then load: the machine with the fewest live agents wins, ties go to fit order (local first for `any`). `limits.agents` and `limits.browser_jobs` are caps; a full or unreachable machine is skipped. `--machine auto|any|local|NAME` overrides the repo's placement, and works in a repo that places nothing. An unassignable machine, such as a control plane, is always refused.
+- **`workdir` is required** on every machine `delegate` uses, the local one included, and a remote one must be its canonical, absolute path (no symlinks, since herdr reports the resolved directory). The local machine is used only from inside herdr (`HERDR_ENV=1`).
+- **The busy flag.** A heavy role (`full-suite`, `browser` or `docker` in its `needs.caps`) is refused on a machine whose `busy_flag` file exists, even with an explicit `--machine`. The flag is read on the box you run `delegate` from. Remove the file when the box is free, or name another machine.
+- **Load.** Finished agents keep their slot until you stop them with the printed `stop:` command. Browser jobs are counted from the records `delegate` writes, so agents started some other way don't count against `browser_jobs`.
+- **First start.** `first_start` in the registry lists the dialogs `delegate` may answer on a fresh box or directory (`trust-prompt`, `fullscreen-notice`). The fullscreen notice can come back on a box's first three starts. Anything else fails the start with the pane output and exit 3. Only the plain trust dialog is answered: the stronger one ("No, continue without these permissions", shown when the folder pre-approves permissions, adds MCP servers or runs a `headersHelper`) is never answered, so a settings file planted in the `workdir` is not accepted for you; trust that folder once by hand.
+- **Results come back through GitHub only**: a pushed branch, or a comment on the issue or pull request. A job that comments or opens a pull request needs `gh` logged in on the worker, and prints `sdlc-delegate: gh is not logged in on <machine>` (grep the pane for it) when it isn't. A job that only pushes a branch needs only push access.
+- **The record** of each placement is `${XDG_STATE_HOME:-~/.local/state}/sdlc/delegates/<machine>/<name>.json`.
+- **Exit codes:** 0 started (with `--dry-run`: a machine was chosen); 1 refused, nothing started; 2 usage; 3 start failed after a machine was chosen, or an unexpected error (the output says what was left behind); 130 Ctrl-C and 143 SIGTERM, after the pane is closed (unless `--keep-failed`). Starting is serialised per machine (a lock held from the load check through `agent start`, not through the first-start dialogs or the brief): a second run waits up to 15 s, then tries the next fitting machine under `auto` or `any`, and refuses only when none is free. Ctrl-C twice is safe: the cleanup runs with SIGINT and SIGTERM blocked, then the signal ends the run. If the state directory can't be written, the lock moves to `$XDG_RUNTIME_DIR/sdlc-delegate` (or `/tmp/sdlc-delegate-<uid>`), no record is written, and `delegate` says so; roles that need `browser`, `full-suite` or `docker` are refused then, since their load can't be counted. That directory must be a real directory you own that others can't write to; if it isn't (exit 3, `is not safe to use`), remove it or fix its owner and mode (0700), then retry.
+- **Troubleshooting.** An exit 3 showing a dialog `delegate` doesn't know, such as "Teach auto mode about your environment?", means answering it once by hand on that box, then running `delegate` again.
 
 ---
 
