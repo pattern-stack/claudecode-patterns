@@ -78,6 +78,11 @@ jobs:
           SDLC_REQUIRE_BOTH_BACKENDS: "1"
         run: bash plugin/lib/placement.test.sh
 
+      - name: Phase-tuning hook tests
+        env:
+          SDLC_REQUIRE_BOTH_BACKENDS: "1"
+        run: bash plugin/hooks/phase-tuning.test.sh
+
       - name: Delegate tests
         env:
           SDLC_REQUIRE_BOTH_BACKENDS: "1"

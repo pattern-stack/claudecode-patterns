@@ -38,11 +38,18 @@
 #   - maxTurns  — frontmatter field name; the spawn-arg key is a best-effort guess.
 #   - isolation — proven for "worktree" (same channel /develop + coordinator use).
 #
+# Placement hint: when sdlc.yml places the spawned role on another machine (see
+# plugin/lib/machines.py), the hook adds `additionalContext` saying the spawn still
+# runs on this box and the NEXT run should start there (`sdlc delegate <role>`).
+# It never sets a permission decision, so the user's permission rules still apply.
+#
 # Design contract:
 # - FAILS OPEN. No python3, no sdlc.yml, unparseable JSON/YAML, or ANY error →
 #   exit 0 with no stdout, i.e. the spawn runs exactly as the model issued it. A
 #   tuning hook must never wedge a spawn — it is a policy layer, not a gate.
-# - The Python does all logic and only prints on a real injection. Wired in
+#   Placement too: no registry, no placement, or any placement error → no hint
+#   (the tuning is kept), and a lookup past the hook's own 3.5 s deadline is cut off.
+# - The Python does all logic and only prints on an injection or a hint. Wired in
 #   plugin/hooks/hooks.json, matcher "Agent|TeamCreate", async:false (input
 #   rewrite must complete before the tool runs).
 
@@ -56,7 +63,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 [ -z "$DIR" ] && exit 0
 
-# The .py always exits 0 and prints only on a real injection; the `|| true`
+# The .py always exits 0 and prints only on an injection or a hint; the `|| true`
 # is a belt-and-suspenders guarantee the wrapper never fails the spawn.
 printf '%s' "$INPUT" | python3 "$DIR/phase-tuning.py" 2>/dev/null || true
 exit 0
