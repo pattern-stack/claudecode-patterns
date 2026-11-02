@@ -15,7 +15,10 @@ import type { Pairing } from "../pairing.js";
 
 const COOKIE_MAX_AGE = 400 * 24 * 60 * 60; // browsers cap cookie lifetime at 400 days
 
-const page = (trusted: boolean) => `<!doctype html>
+const hostCommand = (port: number) =>
+  `<p class="fine">Or on the host's terminal:</p><pre>curl -s -X POST -H 'content-type: application/json' -d '{}' http://127.0.0.1:${port}/pair/new</pre>`;
+
+const page = (trusted: boolean, port: number) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pair device · cc-viewer</title>
 <style>
@@ -29,12 +32,14 @@ const page = (trusted: boolean) => `<!doctype html>
   button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
   .code { font: 700 32px ui-monospace, monospace; letter-spacing: .2em; color: var(--accent); }
   #msg { display: block; margin-top: 12px; min-height: 1.5em; } .bad { color: var(--bad); }
+  .fine { font-size: 14px; margin: 18px 0 6px; } pre { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 </style></head><body><main><div class="card">
 ${
   trusted
     ? `<h1>Pair another device</h1>
 <p>Get a one-time code here, then type it on the new device at <b>/pair</b>. It works once, for 10 minutes.</p>
 <button id="new">Get a code</button><span id="msg"></span>
+${hostCommand(port)}
 <script>
 document.getElementById("new").onclick = async () => {
   const msg = document.getElementById("msg");
@@ -48,6 +53,7 @@ document.getElementById("new").onclick = async () => {
 <p>On a device that already has the dashboard (or on the host), open <b>/pair</b> and get a code, then type it here.</p>
 <form id="f"><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Pairing code"> <button>Pair</button></form>
 <span id="msg"></span>
+${hostCommand(port)}
 <script>
 document.getElementById("f").onsubmit = async (e) => {
   e.preventDefault();
@@ -61,11 +67,11 @@ document.getElementById("f").onsubmit = async (e) => {
 }
 </div></main></body></html>`;
 
-export function pairRoutes(pairing: Pairing): Hono {
+export function pairRoutes(pairing: Pairing, port = 3993): Hono {
   const app = new Hono();
   const jsonOnly = (type: string | undefined) => (type ?? "").toLowerCase().startsWith("application/json");
 
-  app.get("/pair", (c) => c.html(page(isLocal(c) || isPaired(c, pairing))));
+  app.get("/pair", (c) => c.html(page(isLocal(c) || isPaired(c, pairing), port)));
 
   app.post("/pair/new", (c) => {
     if (!jsonOnly(c.req.header("content-type"))) return c.json({ error: "send JSON" }, 415);

@@ -21,6 +21,8 @@ export interface ServerConfig {
   readonly pairing?: Pairing;
   /** How /admin/input/send reaches a live terminal (input/index.ts). */
   readonly input: SessionInput;
+  /** The plain-http port, for the commands the pairing page shows. */
+  readonly port?: number;
   /** The voice page and its routes. Absent = off. */
   readonly voice?: VoiceService;
 }

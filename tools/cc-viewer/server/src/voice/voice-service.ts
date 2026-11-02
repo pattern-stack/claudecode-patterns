@@ -17,7 +17,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from "node:path";
 import type { SessionInput } from "../input/index.js";
 import { speakable } from "./speakable.js";
-import type { SpeechRecognizer, SpeechSynthesizer, VoiceProfile } from "./speech.js";
+import type {
+  SpeechKeyStatus,
+  SpeechKeyStore,
+  SpeechRecognizer,
+  SpeechSynthesizer,
+  VoiceProfile,
+} from "./speech.js";
 
 /** The one Claude Code session the voice page talks to. Chosen from sessions the viewer already knows. */
 export interface VoiceLink {
@@ -50,6 +56,15 @@ export interface VoiceSettings {
   readonly liveCaptions: boolean;
 }
 
+/** What the page needs to know about host speech, before anyone talks. Never carries the key. */
+export interface SpeechView {
+  /** Answers are spoken by the host's voice (else the browser's). */
+  readonly tts: boolean;
+  /** Replies are written down by the host (else only by the browser's recognition, where it has one). */
+  readonly stt: boolean;
+  readonly key: SpeechKeyStatus | null;
+}
+
 export type LinkStatus = "idle" | "working" | "waiting" | "ended" | "unknown";
 
 /** The viewer's session registry (EventStore.sessions). */
@@ -63,6 +78,8 @@ export interface VoiceDeps {
   readonly sessions?: SessionDirectory;
   readonly synth?: SpeechSynthesizer;
   readonly recognizer?: SpeechRecognizer;
+  /** The key both adapters use. When given, they count as available only while it holds a key. */
+  readonly speechKey?: SpeechKeyStore;
   readonly profile: VoiceProfile;
   /** Put in front of every reply so Claude reads it as a transcript. Never empty. */
   readonly replyPrefix?: string;
@@ -170,7 +187,7 @@ export class VoiceService {
       sessionId: this.link.sessionId,
       text,
       speech: speakable(text, this.maxSpeech),
-      audio: !!this.deps.synth,
+      audio: this.canSpeak(),
     });
     this.broadcast("answer", { ...entry, primary: this.primary() });
     if (entry.audio && this.clients.size) void this.audio(entry.id); // start synthesis before the page asks
@@ -184,7 +201,7 @@ export class VoiceService {
     if (existsSync(file)) return Promise.resolve(new Uint8Array(readFileSync(file)));
     const entry = this.history.find((h) => h.id === id && h.kind === "answer");
     const synth = this.deps.synth;
-    if (!entry || !synth) return Promise.resolve(null);
+    if (!entry || !synth || !this.canSpeak()) return Promise.resolve(null);
     let p = this.clips.get(id);
     if (!p) {
       p = synth.synth(entry.speech ?? entry.text, this.deps.profile).then((r) => {
@@ -204,7 +221,7 @@ export class VoiceService {
   /** "Got it." in the answer voice, made once per voice profile. */
   ack(): Promise<Uint8Array | null> {
     const synth = this.deps.synth;
-    if (!synth) return Promise.resolve(null);
+    if (!synth || !this.canSpeak()) return Promise.resolve(null);
     const key = createHash("sha256")
       .update(JSON.stringify(this.deps.profile))
       .digest("hex")
@@ -221,12 +238,60 @@ export class VoiceService {
   }
 
   transcribe(audio: Blob, ext: string) {
-    if (!this.deps.recognizer)
+    if (!this.deps.recognizer || !this.canHear())
       return Promise.resolve({
         ok: false as const,
-        reason: "no speech-to-text configured on the host",
+        reason: "no OpenAI key on the host, so it can't write replies down (add one in Settings)",
       });
     return this.deps.recognizer.transcribe(audio, ext);
+  }
+
+  // ---- host speech: the key ----------------------------------------------------------------------------------
+  speechView(): SpeechView {
+    return {
+      tts: this.canSpeak(),
+      stt: this.canHear(),
+      key: this.deps.speechKey?.status() ?? null,
+    };
+  }
+
+  async saveKey(
+    key: string,
+  ): Promise<{ ok: true; speech: SpeechView } | { ok: false; reason: string }> {
+    const store = this.deps.speechKey;
+    if (!store) return { ok: false, reason: "This viewer has no key store." };
+    const r = await store.save(key);
+    if (!r.ok) return r;
+    this.log(`voice: OpenAI key saved (…${r.status.hint})`);
+    return this.speechChanged();
+  }
+
+  clearKey(): { ok: true; speech: SpeechView } | { ok: false; reason: string } {
+    const store = this.deps.speechKey;
+    if (!store) return { ok: false, reason: "This viewer has no key store." };
+    const r = store.clear();
+    if (!r.ok) return r;
+    this.log("voice: OpenAI key removed");
+    return this.speechChanged();
+  }
+
+  private speechChanged() {
+    this.ackClip = null;
+    const speech = this.speechView();
+    this.broadcast("speech", speech);
+    return { ok: true as const, speech };
+  }
+
+  private keyHeld(): boolean {
+    return this.deps.speechKey ? this.deps.speechKey.status().configured : true;
+  }
+
+  private canSpeak(): boolean {
+    return !!this.deps.synth && this.keyHeld();
+  }
+
+  private canHear(): boolean {
+    return !!this.deps.recognizer && this.keyHeld();
   }
 
   // ---- in: replies through the input port --------------------------------------------------------------------
@@ -344,6 +409,7 @@ export class VoiceService {
           client: id,
           settings: this.settings,
           history: this.linkHistory(),
+          speech: this.speechView(),
           ...this.linkView(),
           now: Date.now(),
         });

@@ -55,3 +55,28 @@ describe("voice routes sit behind the device check", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("the key routes", () => {
+  test("speech status needs a paired device and never carries a key", async () => {
+    expect((await app.request("/admin/voice/speech")).status).toBe(401);
+    const r = await app.request("/admin/voice/speech", {
+      headers: { "x-viewer-key": pairing.key },
+    });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toHaveProperty("stt");
+  });
+
+  test("an unpaired device can't set the key, and another site can't either", async () => {
+    const body = JSON.stringify({ key: "sk-xxxxxxxxxxxxxxxxxxxxxxxx" });
+    const h = { "content-type": "application/json" };
+    expect(
+      (await app.request("/admin/voice/key", { method: "POST", headers: h, body })).status,
+    ).toBe(401);
+    const cross = await app.request("/admin/voice/key", {
+      method: "POST",
+      headers: { ...h, cookie: `ccv_key=${pairing.key}`, origin: "https://evil.example" },
+      body,
+    });
+    expect(cross.status).toBe(403);
+  });
+});

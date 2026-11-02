@@ -38,11 +38,30 @@ the key as an `HttpOnly`, `SameSite=Strict` cookie. Scripts and hooks on other m
   code and tables) and types your spoken reply back into that session through the same port, prefixed `[voice] `.
   Hands-free opens the mic only when the answer ends with a question; push to talk only while Talk or Space is held.
   The mic is released between turns, a "Got it" plays the moment a reply lands, and the transcript stays on screen.
-  Link a session on the page or with `POST /admin/voice/link {"session_id": …}`. Key: `OPENAI_API_KEY`, else
-  `CC_VOICE_KEY_FILE`, else `~/.config/cc-voice/key`; without one the page uses the browser's voice. `CC_VIEWER_VOICE=0`
-  turns it off.
-- **Known limit:** browsers give a page the microphone only over HTTPS or on localhost. From another device the page
-  speaks but can't hear you; tunnel the port (`ssh -L 3993:localhost:3993 <host>`) and open `http://localhost:3993/voice`.
+  Link a session on the page or with `POST /admin/voice/link {"session_id": …}`. `CC_VIEWER_VOICE=0` turns it off.
+- **The OpenAI key is set from the page.** Settings → *OpenAI key* checks a pasted key with OpenAI, then saves it to
+  `~/.config/cc-voice/key` (0600); *Remove* deletes it. The key is read on every use, so a key saved from the page or by
+  hand works from the next answer, with no restart. `OPENAI_API_KEY` in the viewer's environment wins over the file
+  and the page shows it as set there. The page never receives the key, only its last four characters, and won't send
+  one from a plain-http page on another device.
+- **Missing speech is said up front.** Without a key the page shows a banner (and a line on the Start card) before you
+  talk: answers use the browser's voice, and replies fall back to the browser's own speech recognition, or can't be
+  written down where the browser has none. A failed transcription says the key is missing instead of a generic error.
+- **HTTPS, built in.** Browsers give a page the microphone only over HTTPS or on localhost. When a certificate exists
+  the viewer also listens on `CC_VIEWER_TLS_PORT` (default 3443) over https, with the same app and device check.
+  `cc-viewer tls` makes a self-signed certificate for this machine's names and addresses
+  (`~/.local/state/cc-viewer/tls/`, or `CC_VIEWER_TLS_CERT` / `CC_VIEWER_TLS_KEY`) and prints how to trust it on macOS
+  and iOS. Over https the pairing key and cookie stop crossing the network in clear text.
+- **`cc-viewer pair`** prints a one-time pairing code from the host's terminal; `/pair` shows the equivalent `curl`.
+- **`CC_VIEWER_PORT`** sets the dashboard's port (`PORT` still works; the hook sets it).
+- **Known limit:** a long spoken reply reaches Claude wrapped as `<pasted_content>`: Claude Code frames any long
+  bracketed paste that way. The text is intact; the model reads it as pasted material. Short replies arrive bare.
+
+### Fixed — the dashboard showed no sessions until new activity arrived
+
+The session list seeds itself from the last 5,000 hook events, but `useEventStream` only read its `initialEvents` on the
+first render, before that fetch returned, so the history was dropped and sessions appeared one by one as they next
+emitted a hook. A seed that arrives later is now merged in.
 
 ## [0.2.43] — 2026-10-28
 

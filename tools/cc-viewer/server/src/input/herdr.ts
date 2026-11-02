@@ -9,6 +9,10 @@
  * input box, so a draft on the host is never merged into the text. The text goes in as one bracketed paste
  * (`herdr agent prompt`): raw keystrokes lost the start of long text (2026-10-25: 1,147 characters sent, ~150
  * arrived). `--wait` confirms Claude started; a prompt left unsubmitted gets one Enter.
+ * A long paste reaches Claude intact but framed: Claude Code wraps it as `<pasted_content id=…>…</pasted_content>`
+ * (seen 2026-11-01: 2,064 characters sent, the same 2,064 inside the tags). Short replies arrive bare. The
+ * model then reads a long reply as pasted material rather than the user's own words; the `[voice] ` prefix sits
+ * inside the tags.
  *
  * Moved from the voice relay (~/.claude/skills/final-answer/web/server.ts, `paneInfo` / `inputBox` / `sendReply`).
  */

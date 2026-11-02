@@ -100,6 +100,11 @@
   .field select, .field input[type=text], .field input[type=number] { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
   .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
   .check { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .keybox { border-top: 1px solid var(--line); margin: 6px 0 12px; padding-top: 12px; }
+  .keybox h3 { margin: 0 0 4px; font-size: 15px; }
+  .keybox .keyrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .keybox .keyrow input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .keybox .ok { color: var(--ok); }
   @media (max-width: 520px) { .big { flex: 1 1 100%; } #hist li { grid-template-columns: 1fr auto; } #hist .who { grid-column: 1 / -1; } }
 </style>
 </head>
@@ -114,6 +119,7 @@
   <button id="voiceBtn" class="toggle" aria-pressed="true" title="Read answers aloud">Voice on</button>
   <button id="setBtn" aria-label="Settings" title="Settings">Settings</button>
 </header>
+<div id="speechBanner" class="banner" hidden><span id="speechBannerText"></span> <button id="speechBannerBtn">Add a key</button></div>
 <div id="notPrimary" class="banner" hidden>Another page is the active one, so this one only shows text. <button id="claimBtn">Use this page</button></div>
 <main>
   <section class="stage" id="stage" data-state="off" aria-live="polite">
@@ -154,6 +160,7 @@
     <p>The linked Claude Code session's answers are read aloud here. When Claude asks you something the page listens, and sends your reply as soon as you stop talking. Say "cancel" or tap Cancel to stop it.</p>
     <button id="startBtn" class="big primary">Start</button>
     <p class="fine" id="startNote">The browser asks for the microphone once.</p>
+    <p class="fine err" id="startSpeech" hidden></p>
   </div>
 </div>
 
@@ -166,6 +173,16 @@
     <label class="field"><span>Keep listening after an answer (seconds)</span><input type="number" name="listenWindowMs" min="5" max="600" step="5"></label>
     <label class="field"><span>Speech threshold (× room noise; higher ignores more)</span><input type="number" name="sensitivity" min="1.2" max="8" step="0.1"></label>
     <label class="check"><input type="checkbox" name="liveCaptions"> Live captions and quick "cancel" (browser speech recognition)</label>
+    <div class="keybox">
+      <h3>OpenAI key (host speech)</h3>
+      <p class="fine" id="keyStatus">…</p>
+      <div class="keyrow" id="keyRow">
+        <input type="password" id="keyInput" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-label="OpenAI API key">
+        <button type="button" id="keySave">Save key</button>
+        <button type="button" id="keyClear" class="ghost">Remove</button>
+      </div>
+      <p class="fine" id="keyMsg"></p>
+    </div>
     <p class="fine err" id="setErr"></p>
     <div class="row"><button value="cancel" formnovalidate>Close</button><button id="setSave" value="save" class="primary">Save</button></div>
   </form>
@@ -189,6 +206,7 @@ const api = (path, body) => fetch("/admin/voice/" + path, {
 // ---- state ----------------------------------------------------------------------------------------------------
 let settings = { silenceMs: 1700, countdownMs: 0, listenWindowMs: 90000, sensitivity: 2.5, liveCaptions: true };
 let link = null, linkStatus = "unknown";
+let speech = null; // { tts, stt, key } from the host; null until the first hello
 let S = "off", started = false, isPrimary = true, wasPrimary = false;
 let micOn = store.get("mic", true), voiceOn = store.get("voice", true);
 // "handsfree": after an answer the mic opens only if Claude asked something. "ptt": only while Talk (or Space) is used.
@@ -389,7 +407,7 @@ async function speechEnded() {
     else if (cap) { text = cap; } else throw new Error(r.reason);
   } catch (e) {
     if (cap) text = cap;
-    else { if (g === gen) fail("Couldn't write that down (" + e.message + "). Tap Talk to try again.", "Sorry, I couldn't make that out."); return; }
+    else { if (g === gen) fail("Couldn't write that down (" + e.message + "). Tap Talk to try again.", /no OpenAI key/i.test(e.message) ? "There's no OpenAI key on the host." : "Sorry, I couldn't make that out."); return; }
   }
   if (g !== gen) return;
   text = text.trim();
@@ -439,7 +457,7 @@ async function sendDraft() {
     fail(r.reason, "Not sent. " + spokenReason(r.reason));
   }
 }
-const spokenReason = (reason) => /draft/i.test(reason) ? "There's a draft in Claude's box on the Mac." : /question or approval/i.test(reason) ? "Claude is waiting on a question on the Mac."
+const spokenReason = (reason) => /no OpenAI key/i.test(reason) ? "There's no OpenAI key on the host." : /draft/i.test(reason) ? "There's a draft in Claude's box on the Mac." : /question or approval/i.test(reason) ? "Claude is waiting on a question on the Mac."
   : /no session is linked/i.test(reason) ? "No session is linked." : /no herdr pane|no live terminal|isn't running/i.test(reason) ? "That session isn't open in a terminal." : "Check the page.";
 
 function fail(reason, spoken) {
@@ -589,7 +607,7 @@ function connect() {
   es.addEventListener("hello", (m) => {
     const d = JSON.parse(m.data);
     settings = { ...settings, ...d.settings }; history = d.history || [];
-    renderLink(d);
+    renderLink(d); renderSpeech(d.speech);
     const answers = history.filter((e) => e.kind === "answer");
     if (!current || !playing) current = answers[answers.length - 1] || null;
     renderAnswer(); renderHistory(); setState(S);
@@ -606,8 +624,9 @@ function connect() {
   // The Mac asked every page to reload (index.html changed). A started page tries to start again by itself.
   es.addEventListener("reload", () => { if (started) store.set("autostart", Date.now()); location.reload(); });
   es.addEventListener("reply", (m) => { history.push(JSON.parse(m.data)); renderHistory(); });
-  es.addEventListener("settings", (m) => { settings = { ...settings, ...JSON.parse(m.data) }; });
+  es.addEventListener("settings", (m) => { settings = { ...settings, ...JSON.parse(m.data) }; renderSpeech(); });
   es.addEventListener("link", (m) => renderLink(JSON.parse(m.data)));
+  es.addEventListener("speech", (m) => renderSpeech(JSON.parse(m.data)));
   es.addEventListener("status", (m) => renderLink(JSON.parse(m.data)));
   // The page was linked to another session: show that session's conversation.
   es.addEventListener("history", (m) => {
@@ -630,6 +649,54 @@ function renderLink(d) {
   pill.title = link.cwd || "";
   $("chatLink").href = "/chat/" + encodeURIComponent(link.sessionId); $("chatLink").hidden = false;
 }
+// Host speech, said up front: without a key the page can still talk (browser voice) but may not be able to listen.
+function renderSpeech(d) {
+  if (d !== undefined) speech = d;
+  const s = speech;
+  const browserEars = !!SR && settings.liveCaptions;
+  let warn = "";
+  if (s && !s.stt) warn = browserEars
+    ? "No OpenAI key on the host: answers use this browser's voice, and replies are written down by the browser's own speech recognition (less accurate)."
+    : "No OpenAI key on the host, and this browser has no speech recognition of its own: answers are read in the browser's voice, but spoken replies can't be written down.";
+  $("speechBanner").hidden = !warn || (s && s.key && !s.key.editable);
+  $("speechBannerText").textContent = warn;
+  $("startSpeech").hidden = !warn; $("startSpeech").textContent = warn;
+  renderKeyBox();
+}
+function renderKeyBox() {
+  const k = speech && speech.key;
+  const st = $("keyStatus");
+  $("keyRow").hidden = !k || !k.editable;
+  $("keyClear").hidden = !k || k.source !== "file";
+  if (!k) { st.textContent = "This viewer can't store a key."; return; }
+  if (k.source === "env") st.textContent = "Set by OPENAI_API_KEY in the viewer's environment (…" + k.hint + "). Change it there.";
+  else if (k.configured) { st.innerHTML = ""; st.append(Object.assign(document.createElement("span"), { className: "ok", textContent: "Key saved (…" + k.hint + ")." }), " Answers use OpenAI's voice and replies are transcribed by OpenAI. Paste a new key to replace it."); }
+  else st.textContent = "No key. Paste one to use OpenAI's voice and transcription; it's checked with OpenAI and kept on the host only (" + k.file + ").";
+  // A key typed on a plain-http page from another device would cross the network in clear text.
+  const safe = window.isSecureContext;
+  $("keyInput").disabled = $("keySave").disabled = !safe;
+  if (!safe) $("keyMsg").textContent = "Open this page over https (or on the host) to send a key.";
+}
+const keyMsg = (text, bad) => { $("keyMsg").textContent = text; $("keyMsg").className = "fine" + (bad ? " err" : ""); };
+$("keySave").onclick = async () => {
+  const key = $("keyInput").value.trim();
+  if (!key) return keyMsg("Paste a key first.", true);
+  $("keySave").disabled = true; keyMsg("Checking the key with OpenAI…");
+  try {
+    const r = await api("key", { key });
+    if (!r.ok) return keyMsg(r.reason, true);
+    $("keyInput").value = ""; renderSpeech(r.speech); keyMsg("Saved. It's used from the next answer and reply.");
+  } catch (e) { keyMsg(e.message, true); } finally { $("keySave").disabled = !window.isSecureContext; }
+};
+$("keyClear").onclick = async () => {
+  if (!confirm("Remove the saved OpenAI key from the host?")) return;
+  try {
+    const r = await api("key/clear", {});
+    if (!r.ok) return keyMsg(r.reason, true);
+    renderSpeech(r.speech); keyMsg("Removed.");
+  } catch (e) { keyMsg(e.message, true); }
+};
+$("speechBannerBtn").onclick = () => $("setBtn").click();
 // Play the newest answer if this browser hasn't heard it and it arrived in the last ten minutes.
 function playIfUnheard() {
   const a = history.filter((e) => e.kind === "answer").pop();
@@ -736,7 +803,7 @@ document.addEventListener("keydown", (e) => {
 
 $("setBtn").onclick = async () => {
   const f = $("setForm");
-  $("setErr").textContent = "";
+  $("setErr").textContent = ""; keyMsg(""); renderKeyBox();
   // Replies can only go to sessions the dashboard already knows; nobody types a target.
   const sel = $("linkSelect"); sel.textContent = "";
   try {
@@ -766,6 +833,7 @@ $("setSave").onclick = async (e) => {
     if (!r.ok) { $("setErr").textContent = r.reason; return; }
     settings = { ...settings, ...r.settings };
     if (!settings.liveCaptions) stopCaptions();
+    renderSpeech();
     $("settings").close();
   } catch (err) { $("setErr").textContent = err.message; }
 };

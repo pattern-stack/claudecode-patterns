@@ -180,3 +180,85 @@ describe("settings", () => {
     });
   });
 });
+
+describe("host speech follows the key", () => {
+  const keyStore = () => {
+    let key = "";
+    return {
+      set: (k: string) => {
+        key = k;
+      },
+      store: {
+        current: () => key,
+        status: () => ({
+          configured: !!key,
+          source: (key ? "file" : "none") as "file" | "none",
+          hint: key ? key.slice(-4) : null,
+          file: "/k",
+          editable: true,
+        }),
+        save: async (k: string) => {
+          key = k;
+          return {
+            ok: true as const,
+            status: {
+              configured: true,
+              source: "file" as const,
+              hint: k.slice(-4),
+              file: "/k",
+              editable: true,
+            },
+          };
+        },
+        clear: () => {
+          key = "";
+          return {
+            ok: true as const,
+            status: {
+              configured: false,
+              source: "none" as const,
+              hint: null,
+              file: "/k",
+              editable: true,
+            },
+          };
+        },
+      },
+    };
+  };
+  const recognizer = {
+    name: "fake",
+    transcribe: async () => ({ ok: true as const, text: "yes", model: "m" }),
+  };
+
+  test("no key: the page is told before anyone talks, answers have no host audio, transcription refuses", async () => {
+    const k = keyStore();
+    const v = make({ speechKey: k.store, recognizer });
+    expect(v.speechView()).toMatchObject({ tts: false, stt: false, key: { configured: false } });
+    v.setLink("sess-1");
+    expect(v.announce("Done.")?.audio).toBe(false);
+    const t = await v.transcribe(new Blob([new Uint8Array([1])]), "webm");
+    expect(t.ok).toBe(false);
+    expect(!t.ok && t.reason).toContain("no OpenAI key");
+    expect(synthCalls).toEqual([]);
+  });
+
+  test("a key saved while running is used straight away and pushed to open pages", async () => {
+    const k = keyStore();
+    const v = make({ speechKey: k.store, recognizer });
+    const { stream } = v.connect("page");
+    const r = await v.saveKey("sk-whatever-1234");
+    expect(r).toMatchObject({ ok: true, speech: { tts: true, stt: true, key: { hint: "1234" } } });
+    expect((await v.transcribe(new Blob([new Uint8Array([1])]), "webm")).ok).toBe(true);
+    v.setLink("sess-1");
+    expect(v.announce("Done.")?.audio).toBe(true);
+    const reader = stream.getReader();
+    let text = "";
+    while (!text.includes("event: speech"))
+      text += new TextDecoder().decode((await reader.read()).value);
+    expect(text).toContain('"stt":true');
+    expect(text).not.toContain("sk-whatever");
+    reader.cancel();
+    expect(v.clearKey()).toMatchObject({ ok: true, speech: { stt: false } });
+  });
+});

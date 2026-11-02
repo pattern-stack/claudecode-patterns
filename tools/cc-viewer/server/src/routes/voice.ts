@@ -3,7 +3,8 @@
  * device check like every other route: this machine, or a paired device.
  *
  *   GET  /voice                     the page
- *   GET  /admin/voice/events        SSE for one page: hello, primary, answer, reply, history, link, status, settings, reload
+ *   GET  /admin/voice/events        SSE for one page: hello, primary, answer, reply, history, link, status, settings,
+ *                                   speech, reload
  *   POST /admin/voice/claim         { client } → this page plays and listens
  *   GET  /admin/voice/audio/:id     an answer's mp3 (made on first request)
  *   GET  /admin/voice/ack           "Got it." in the answer voice
@@ -12,6 +13,9 @@
  *   GET  /admin/voice/sessions      sessions the dashboard knows (the only link targets)
  *   POST /admin/voice/link          { session_id } → link the page to that session
  *   GET|POST /admin/voice/settings  the page's listening settings
+ *   GET  /admin/voice/speech        { tts, stt, key: { configured, source, hint, file, editable } } — never the key
+ *   POST /admin/voice/key           { key } → checked with OpenAI, then saved (0600); used from the next request
+ *   POST /admin/voice/key/clear     remove the saved key
  *   GET  /admin/voice/status        { pages, link, status }
  *   POST /admin/voice/reload        reload every open page
  */
@@ -103,6 +107,17 @@ export function voiceRoutes(voice: VoiceService): Hono {
       (await c.req.json().catch(() => ({}))) as Record<string, unknown>,
     );
     return r.ok ? c.json(r) : c.json(r, 400);
+  });
+
+  app.get("/admin/voice/speech", (c) => c.json(voice.speechView()));
+  app.post("/admin/voice/key", async (c) => {
+    const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown };
+    const r = await voice.saveKey(typeof key === "string" ? key : "");
+    return r.ok ? c.json(r) : c.json(r, 400);
+  });
+  app.post("/admin/voice/key/clear", (c) => {
+    const r = voice.clearKey();
+    return r.ok ? c.json(r) : c.json(r, 409);
   });
 
   app.get("/admin/voice/status", (c) => c.json({ pages: voice.pageCount, ...voice.linkView() }));

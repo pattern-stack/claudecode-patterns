@@ -21,7 +21,7 @@ export function createServer(config: ServerConfig): Hono {
   if (config.pairing) app.use("*", deviceAuth(config.pairing));
   app.onError(errorHandler);
 
-  if (config.pairing) app.route("/", pairRoutes(config.pairing));
+  if (config.pairing) app.route("/", pairRoutes(config.pairing, config.port));
 
   // API first (so they beat the SPA fallback).
   // transcriptRoutes registers the static `/hooks/TranscriptDelta` path —
