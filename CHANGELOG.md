@@ -5,6 +5,45 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.44] — 2026-11-01
+
+### Fixed — the dashboard and the bridge were open to the whole network
+
+`cc-viewer` (3993) and `cc-bridge` (3994) called `Bun.serve` without a hostname, so Bun bound them to every interface.
+Anyone on the network could read session transcripts from the dashboard with no login, and the bridge's
+`POST /sessions/register` would tail any path it was given. The dashboard also answered CORS with `*`, so any website
+open in the browser could read it through localhost, and its write routes (including `/admin/input/send`, which types
+into a terminal) accepted cross-site requests.
+
+- **cc-bridge** binds `127.0.0.1` (`CC_BRIDGE_HOST` to change) and forwards to the dashboard on `127.0.0.1`.
+- **cc-viewer** stays on the network (`CC_VIEWER_HOST`, default `0.0.0.0`), but only this machine and paired devices
+  get in (below). Its CORS allows local origins only, and a write whose `Origin` names another site is refused (403).
+
+### Added — device pairing for the dashboard
+
+The same model as the maplelog board. One secret key, made on first start in `~/.local/state/cc-viewer/viewer-key`
+(0600). This machine needs nothing: a loopback peer that also names a loopback `Host`, so a DNS-rebinding page can't pass
+as local. Any other device opens the dashboard, lands on `/pair`, and types a one-time code: 6 digits, 10 minutes, one
+use, void after 5 wrong guesses, minted at `/pair` on this machine or on a device that is already paired. Browsers keep
+the key as an `HttpOnly`, `SameSite=Strict` cookie. Scripts and hooks on other machines send it as `X-Viewer-Key`:
+`emit.sh` sends `CC_VIEWER_KEY` when it is set.
+
+### Added — the chat box and a voice page reach Herdr panes
+
+- **`/admin/input/send` is a port with adapters.** The route the chat box uses was keyed by working directory and
+  could only call ghostty-bridge. It now takes an optional `session_id` and tries adapters in order (`CC_VIEWER_INPUT`,
+  default `herdr,ghostty`). The Herdr adapter finds the pane by Claude session id, refuses (423) while Claude waits on an
+  approval or the input box holds a draft, and sends one bracketed paste, so a long message arrives whole.
+- **`/voice`** speaks the linked session's final message at the end of each turn (OpenAI text-to-speech, cleaned of
+  code and tables) and types your spoken reply back into that session through the same port, prefixed `[voice] `.
+  Hands-free opens the mic only when the answer ends with a question; push to talk only while Talk or Space is held.
+  The mic is released between turns, a "Got it" plays the moment a reply lands, and the transcript stays on screen.
+  Link a session on the page or with `POST /admin/voice/link {"session_id": …}`. Key: `OPENAI_API_KEY`, else
+  `CC_VOICE_KEY_FILE`, else `~/.config/cc-voice/key`; without one the page uses the browser's voice. `CC_VIEWER_VOICE=0`
+  turns it off.
+- **Known limit:** browsers give a page the microphone only over HTTPS or on localhost. From another device the page
+  speaks but can't hear you; tunnel the port (`ssh -L 3993:localhost:3993 <host>`) and open `http://localhost:3993/voice`.
+
 ## [0.2.43] — 2026-10-28
 
 ### Added — sdlc delegate: start a phase or agent on another machine
