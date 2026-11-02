@@ -34,6 +34,10 @@ CURL_ARGS=(-fsS -m 0.5 -X POST -H 'content-type: application/json' --data-binary
 if [ -n "${AP_RUNNER_CORRELATION_ID:-}" ]; then
   CURL_ARGS+=(-H "x-ap-runner-correlation-id: ${AP_RUNNER_CORRELATION_ID}")
 fi
+# A dashboard on another machine needs this machine paired: set CC_VIEWER_KEY to the key /pair/claim returned.
+if [ -n "${CC_VIEWER_KEY:-}" ]; then
+  CURL_ARGS+=(-H "x-viewer-key: ${CC_VIEWER_KEY}")
+fi
 
 ERR="$(curl "${CURL_ARGS[@]}" "${BASE}/hooks/${EVENT}" 2>&1 >/dev/null)" || \
   echo "[cc-viewer-hook] ${EVENT}: ${ERR:-request failed}" >&2

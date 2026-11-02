@@ -159,19 +159,20 @@ export interface SendInputResult {
 }
 
 /**
- * Send text into the live terminal session identified by `cwd` (proxied to
- * ghostty-bridge). `submit` presses Enter after the paste (default true).
- * Throws Error with the server's message on failure (e.g. no live pane).
+ * Send text into the live terminal running a session. The server picks the
+ * adapter: Herdr finds the pane by `sessionId`, ghostty-bridge by `cwd`.
+ * `submit` presses Enter after the paste (default true). Throws Error with
+ * the server's message on failure (e.g. no live pane, a draft in the box).
  */
 export async function sendAgentInput(
-  args: { cwd: string; text: string; submit?: boolean },
+  args: { cwd: string; sessionId?: string; text: string; submit?: boolean },
   opts: { baseUrl?: string } = {},
 ): Promise<SendInputResult> {
   const base = opts.baseUrl ?? "";
   const res = await fetch(`${base}/admin/input/send`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ cwd: args.cwd, text: args.text, submit: args.submit ?? true }),
+    body: JSON.stringify({ session_id: args.sessionId, cwd: args.cwd, text: args.text, submit: args.submit ?? true }),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {

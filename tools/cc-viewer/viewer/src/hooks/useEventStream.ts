@@ -20,8 +20,11 @@ interface UseEventStreamResult {
 
 export interface UseEventStreamOptions {
   /**
-   * Events to seed `events` with on first render. Pages that hydrate from
-   * REST history pass these in so the UI doesn't start empty on cold load.
+   * Events to seed `events` with. Pages that hydrate from REST history pass
+   * these in so the UI doesn't start empty on cold load. The history usually
+   * arrives after the first render (the fetch resolves later), so a seed that
+   * shows up later is merged in front of whatever streamed meanwhile — once per
+   * array identity.
    */
   initialEvents?: StreamEvent[];
   /**
@@ -54,6 +57,17 @@ export function useEventStream(
   const counterRef = useRef(0);
   const retryDelayRef = useRef(INITIAL_RETRY_MS);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const seededRef = useRef<StreamEvent[] | undefined>(options.initialEvents);
+
+  const seed = options.initialEvents;
+  useEffect(() => {
+    if (!seed || seed.length === 0 || seed === seededRef.current) return;
+    seededRef.current = seed;
+    setEvents((prev) => {
+      const next = [...seed, ...prev];
+      return next.length > maxEvents ? next.slice(-maxEvents) : next;
+    });
+  }, [seed, maxEvents]);
 
   useEffect(() => {
     // Allow callers to defer the connection by passing an empty path. Useful

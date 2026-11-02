@@ -18,6 +18,7 @@ interface Client {
 
 export class SSEBroadcaster {
   private readonly clients = new Map<ReadableStream<Uint8Array>, Client>();
+  private readonly listeners = new Set<(name: string, data: unknown) => void>();
   private readonly encoder = new TextEncoder();
   private readonly keepaliveFrame: Uint8Array;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -56,8 +57,24 @@ export class SSEBroadcaster {
     this.clients.delete(stream);
   }
 
+  /**
+   * In-process subscribers (the voice module) see every event the SSE clients see, in the same order.
+   * Returns the unsubscribe function. A throwing listener never stops the broadcast.
+   */
+  subscribe(listener: (name: string, data: unknown) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   /** Push a named event to every connected client. */
   broadcast(name: string, data: unknown): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(name, data);
+      } catch {
+        // a subscriber's bug must not cost the dashboard its events
+      }
+    }
     if (this.clients.size === 0) return;
     const frame = this.encoder.encode(
       `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`,
