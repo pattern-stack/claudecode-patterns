@@ -5,6 +5,23 @@ All notable user-facing changes to the `sdlc` Claude Code plugin.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version field lives in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) — bumping it is what triggers Claude Code's `/plugin update` to actually refresh the cache for existing consumers.
 
+## [0.2.44] — 2026-11-05
+
+### Added — watch.sh: watchers and loops a person can read
+
+herdr-app shows every `hc` terminal under the agent that started it, and people open them. A watcher that prints
+nothing until it fires, and echoes `^[` when someone presses Escape in it, explains nothing.
+
+- **`plugin/lib/watch.sh`**, sourced by a bash watcher: `watch_header` (`● what · every · until · wakes`),
+  `watch_beat` (a dim line rewritten in place after each check), `watch_line`, `watch_event ok|wait|fail` (the
+  machine line exactly as given, then a green, yellow or red sentence), `watch_end` (`■ stopped: <why>`; an EXIT trap
+  writes one if the script doesn't, and keeps the exit code), plus `watch_hhmm` and `watch_age`.
+- **Plain when piped**: the heartbeat and sentences only when stdout is a TTY, colour only with `NO_COLOR` unset,
+  `WATCH_PLAIN=1` to force plain. The machine line is never coloured or changed, so parents keep matching it.
+- **Typed keys ignored**: echo off and stdin from `/dev/null` while it runs; echo restored on exit.
+- **Convention**: `plugin/skills/skill-authoring/watchers.md` (naming, `role=watch|loop` and `owner=` labels, the
+  rules), linked from the skill-authoring skill. Tests: `plugin/lib/watch.test.sh`, run in CI.
+
 ## [0.2.43] — 2026-10-28
 
 ### Added — sdlc delegate: start a phase or agent on another machine
