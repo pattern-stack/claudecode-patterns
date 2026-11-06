@@ -212,6 +212,12 @@ These templates show only the **project overlay**. For complete platform frontma
 - **Command** — this project's `templates/command.md` (mission format is a project convention)
 - **Agent** — `claude-platform/templates/subagent-rich.md` + this project's `templates/agent.md` overlay
 
+## Watchers and loops
+
+A component that starts a background watcher or loop (an `hc run --bg` program that wakes its owner, or a deploy or
+refresh loop) follows [watchers.md](watchers.md): a name that says what it watches, `role=watch|loop` and `owner=`
+labels, and `plugin/lib/watch.sh` for the header, heartbeat, coloured events and the `■ stopped:` line.
+
 ## Naming
 
 - Lowercase + hyphens: `task-management`, `quality-gates`
